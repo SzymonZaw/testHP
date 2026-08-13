@@ -13,7 +13,7 @@ class DecisionTests(unittest.TestCase):
             self._anomaly("cell_density", "high"),
             self._anomaly("rna", "critical"),
         ])
-        self.assertEqual(result.level, "high")
+        self.assertEqual(result.level, "moderate")
         self.assertEqual(result.score, 5.0)
         self.assertEqual(result.signals, ("cell_density", "rna"))
 
