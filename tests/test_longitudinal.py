@@ -1,94 +1,52 @@
-"""
-Testy dla models/longitudinal_model.py
+import unittest
 
-Uruchomienie:
-    pytest tests/test_longitudinal.py -v
-"""
-
-import pytest
-import torch
+from core.biological_state import BiologicalState
+from core.longitudinal import compare_states, trajectory
 
 
-def test_longitudinal_module_import():
-    """Sprawdza import modelu longitudinal."""
-    try:
-        from models import longitudinal_model  # noqa: F401
-    except Exception as exc:
-        pytest.fail(
-            f"Nie można zaimportować models.longitudinal_model: {exc}"
-        )
+class LongitudinalTests(unittest.TestCase):
+    def test_compare_states(self):
+        baseline = BiologicalState("person-001", "T0")
+        current = BiologicalState("person-001", "T1")
+        baseline.set_dimension("cell_density", 100.0)
+        current.set_dimension("cell_density", 90.0)
+
+        comparison = compare_states(baseline, current, elapsed_days=365)
+
+        change = comparison.changes[0]
+        self.assertEqual(change.name, "cell_density")
+        self.assertEqual(change.delta, -10.0)
+        self.assertAlmostEqual(change.rate_per_day, -10.0 / 365)
+        self.assertAlmostEqual(change.relative_change, -0.1)
+
+    def test_subject_mismatch_is_rejected(self):
+        a = BiologicalState("person-001", "T0")
+        b = BiologicalState("person-002", "T1")
+        with self.assertRaises(ValueError):
+            compare_states(a, b, 30)
+
+    def test_non_positive_interval_is_rejected(self):
+        a = BiologicalState("person-001", "T0")
+        b = BiologicalState("person-001", "T1")
+        with self.assertRaises(ValueError):
+            compare_states(a, b, 0)
+
+    def test_trajectory(self):
+        states = []
+        for timepoint, value in [("T0", 100), ("T1", 95), ("T2", 91)]:
+            state = BiologicalState("person-001", timepoint)
+            state.set_dimension("cell_density", value)
+            states.append(state)
+
+        result = trajectory(states, [0, 365, 730])
+        self.assertEqual(result["cell_density"], [100.0, 95.0, 91.0])
+
+    def test_trajectory_rejects_mixed_subjects(self):
+        a = BiologicalState("person-001", "T0")
+        b = BiologicalState("person-002", "T1")
+        with self.assertRaises(ValueError):
+            trajectory([a, b], [0, 365])
 
 
-def test_longitudinal_model_creation():
-    """Sprawdza inicjalizację modelu."""
-    from models.longitudinal_model import LongitudinalModel
-
-    model = LongitudinalModel(
-        input_dim=768,
-        hidden_dim=256,
-    )
-
-    assert model is not None
-
-
-def test_longitudinal_sequence():
-    """
-    Sprawdza przykładową sekwencję T0-T3.
-
-    Format:
-        batch x time x features
-    """
-    sequence = torch.randn(
-        2,
-        4,
-        768,
-    )
-
-    assert sequence.shape == (2, 4, 768)
-    assert torch.isfinite(sequence).all()
-
-
-def test_longitudinal_forward():
-    """Sprawdza forward pass modelu longitudinal."""
-    from models.longitudinal_model import LongitudinalModel
-
-    model = LongitudinalModel(
-        input_dim=768,
-        hidden_dim=256,
-    )
-
-    model.eval()
-
-    x = torch.randn(
-        1,
-        4,
-        768,
-    )
-
-    with torch.no_grad():
-        output = model(x)
-
-    assert output is not None
-
-
-def test_longitudinal_batch():
-    """Sprawdza batch longitudinal."""
-    from models.longitudinal_model import LongitudinalModel
-
-    model = LongitudinalModel(
-        input_dim=768,
-        hidden_dim=256,
-    )
-
-    model.eval()
-
-    x = torch.randn(
-        4,
-        4,
-        768,
-    )
-
-    with torch.no_grad():
-        output = model(x)
-
-    assert output is not None
+if __name__ == "__main__":
+    unittest.main()
