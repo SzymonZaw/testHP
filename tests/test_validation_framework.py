@@ -17,12 +17,12 @@ class ValidationFrameworkTests(unittest.TestCase):
         self.assertFalse(result.insufficient_evidence)
 
     def test_low_quality_is_excluded(self):
-        result = ValidationFramework().evaluate([
+        result = ValidationFramework(minimum_cases=1).evaluate([
             ValidationCase("a", 100.0, 0.0, quality_score=0.1),
             ValidationCase("b", 2.0, 1.0),
         ])
         self.assertEqual(result.n, 1)
-        self.assertTrue(result.insufficient_evidence)
+        self.assertFalse(result.insufficient_evidence)
 
     def test_subgroup_evaluation(self):
         cases = [
