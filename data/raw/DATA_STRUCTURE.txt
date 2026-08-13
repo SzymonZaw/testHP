@@ -1,0 +1,62 @@
+DATA RAW — STRUCTURE AND DATA CONTRACT
+
+This file documents the intended contents of data/raw/. It contains placeholders/documentation only; real datasets must be obtained from their official sources or collected with appropriate consent and governance. Do not commit large or sensitive human datasets to Git unless explicitly intended.
+
+Canonical structure currently present in the repository:
+
+ data/raw/
+ ├── hand/
+ │   ├── InterHand2_6M/
+ │   │   ├── images/
+ │   │   │   ├── train/
+ │   │   │   ├── val/
+ │   │   │   └── test/
+ │   │   └── annotations/
+ │   │       ├── skeleton.txt
+ │   │       ├── subject.txt
+ │   │       ├── train/
+ │   │       ├── val/
+ │   │       └── test/
+ │   ├── media/
+ │   └── own_cohort/
+ ├── images/
+ │   ├── aging_skin/
+ │   ├── lesions/
+ │   ├── normal_skin/
+ │   └── pathology/
+ ├── rna/
+ │   ├── GSE130973/
+ │   ├── GSE226189/
+ │   ├── GSE281449/
+ │   ├── TCGA-SKCM/
+ │   └── spatial_skin_atlas/
+ └── wsi/
+     ├── aging/
+     ├── bcc/
+     ├── melanoma/
+     └── normal/
+
+GENERAL FILE CONTRACTS
+
+1. data/raw/images/**
+   The dataset configuration accepts: .jpg, .jpeg, .png, .tif, .tiff, .bmp.
+   Keep source/dataset provenance outside the image filename when possible; use a companion metadata file if required.
+
+2. data/raw/wsi/**
+   The dataset configuration accepts: .svs, .ndpi, .mrxs, .tif, .tiff.
+   WSI files are large. Store them locally or in governed storage; do not commit them to the repository unless deliberately configured for this purpose.
+
+3. data/raw/rna/**
+   The dataset configuration accepts: .h5ad, .csv, .tsv, .mtx.
+   GEO/TCGA/atlas directories should preserve source dataset identity and provenance. Do not invent a common file format when the source provides a different one; add a documented conversion only when the corresponding loader expects it.
+
+4. data/raw/hand/**
+   The general hand loader accepts .jpg, .jpeg, .png. The InterHand2.6M adapter is configured separately and therefore retains the official dataset's images/ and annotations/ structure.
+
+PRIVACY
+
+The repository configuration requests metadata removal and anonymized patient identifiers. Sensitive or identifiable own-cohort data must remain outside public source control unless appropriately de-identified and governed.
+
+IMPORTANT
+
+The folder structure is a data contract/documentation layer. It does not mean every dataset must be populated immediately. Populate a subfolder only after its loader and expected source format have been verified.
