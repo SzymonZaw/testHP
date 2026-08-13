@@ -27,7 +27,9 @@ def test_demo_loads_and_ingests_quality_filtered_observations():
         )
 
     assert len(twin.history()) == 6
-    assert "microscopy" in twin.snapshot_at("T4").provenance
-    assert twin.snapshot_at("T4").state["cell_size"] == 11.3
+    # T4 microscopy has quality 0.20 and must not enter the snapshot.
+    assert "microscopy" not in twin.snapshot_at("T4").provenance
+    assert all("microscopy" not in key for key in twin.snapshot_at("T4").state)
+    # T5 deliberately contains two MRI measurements and both are retained.
     assert twin.snapshot_at("T5").state["bone_density"] == 1.05
     assert twin.snapshot_at("T5").state["bone_density_alt"] == 1.28
