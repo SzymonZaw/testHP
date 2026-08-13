@@ -1,79 +1,36 @@
-"""
-Testy dla models/intervention_model.py
-
-Uruchomienie:
-    pytest tests/test_intervention.py -v
-"""
+"""Tests for models/intervention_model.py."""
 
 import pytest
 import torch
 
 
 def test_intervention_module_import():
-    """Sprawdza import modelu intervention."""
-    try:
-        from models import intervention_model  # noqa: F401
-    except Exception as exc:
-        pytest.fail(
-            f"Nie można zaimportować models.intervention_model: {exc}"
-        )
+    from models import intervention_model  # noqa: F401
 
 
 def test_intervention_model_creation():
-    """Sprawdza inicjalizację modelu."""
     from models.intervention_model import InterventionModel
-
-    model = InterventionModel(
-        input_dim=768,
-        hidden_dim=256,
-        num_interventions=5,
-    )
-
-    assert model is not None
+    assert InterventionModel() is not None
 
 
 def test_intervention_forward():
-    """Sprawdza forward pass."""
     from models.intervention_model import InterventionModel
-
-    model = InterventionModel(
-        input_dim=768,
-        hidden_dim=256,
-        num_interventions=5,
-    )
-
+    model = InterventionModel()
     model.eval()
-
-    x = torch.randn(1, 768)
-
     with torch.no_grad():
-        output = model(x)
-
-    assert output is not None
+        output = model(risk=torch.randn(1, 128))
+    assert output["intervention_probabilities"].shape == (1, 8)
 
 
 def test_intervention_batch():
-    """Sprawdza działanie dla batcha."""
     from models.intervention_model import InterventionModel
-
-    model = InterventionModel(
-        input_dim=768,
-        hidden_dim=256,
-        num_interventions=5,
-    )
-
+    model = InterventionModel()
     model.eval()
-
-    x = torch.randn(4, 768)
-
     with torch.no_grad():
-        output = model(x)
-
-    assert output is not None
+        output = model(risk=torch.randn(4, 128))
+    assert output["intervention_probabilities"].shape == (4, 8)
 
 
 def test_intervention_input_finite():
-    """Sprawdza brak NaN/Inf."""
-    x = torch.randn(4, 768)
-
+    x = torch.randn(4, 128)
     assert torch.isfinite(x).all()
