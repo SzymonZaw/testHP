@@ -1,0 +1,19 @@
+{
+  "dataset_id": "testHP-demo-v1",
+  "type": "synthetic",
+  "clinical_use": false,
+  "subject_count": 1,
+  "subject_id": "DEMO-001",
+  "timepoints": ["T0", "T1", "T2", "T3", "T4", "T5"],
+  "modalities": ["mri", "microscopy", "blood", "wearable"],
+  "purpose": "deterministic integration testing of the research pipeline",
+  "expected_scenarios": {
+    "normal_longitudinal_variation": true,
+    "low_quality_observation": "T4 microscopy cell_size",
+    "possible_change_point": "bone_density trajectory becomes steeper after T2",
+    "pathology_like_signal": "inflammation_marker rises from T1 to T2 and remains elevated",
+    "modality_disagreement": "T5 contains two intentionally different bone-density observations",
+    "additional_evidence_needed": true
+  },
+  "note": "All values are invented test fixtures and must not be interpreted as real biological or clinical measurements."
+}
