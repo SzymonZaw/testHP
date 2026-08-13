@@ -24,7 +24,6 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          python -m pip install pytest
           if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
           if [ -f pyproject.toml ]; then pip install -e .; fi
 
@@ -32,4 +31,6 @@ jobs:
         run: python -m pytest -q
 
       - name: Run integrated demo
+        env:
+          PYTHONPATH: ${{ github.workspace }}
         run: python scripts/run_demo.py
