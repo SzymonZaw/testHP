@@ -9,7 +9,11 @@ from core.observation import Observation
 
 class MultimodalTests(unittest.TestCase):
     def _measurement(self, identifier, modality):
-        biomarker = Biomarker(identifier=f"b-{identifier}", name="cell_density")
+        biomarker = Biomarker(
+            id=f"b-{identifier}",
+            name="cell_density",
+            category="cellular",
+        )
         return Measurement(
             id=identifier,
             subject_id="person-001",
