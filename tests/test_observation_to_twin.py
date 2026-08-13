@@ -7,7 +7,7 @@ from organism.digital_twin import DigitalBiologicalTwin
 
 class ObservationToTwinPipelineTests(unittest.TestCase):
     def test_ingest_filters_low_quality_and_preserves_provenance(self):
-        twin = DigitalBiologicalTwin()
+        twin = DigitalBiologicalTwin(subject_id="demo-subject")
         pipeline = ObservationToTwinPipeline(twin, minimum_quality=0.5)
         snapshot = pipeline.ingest(
             "t1",
@@ -24,7 +24,9 @@ class ObservationToTwinPipelineTests(unittest.TestCase):
 
     def test_invalid_quality_threshold_is_rejected(self):
         with self.assertRaises(ValueError):
-            ObservationToTwinPipeline(DigitalBiologicalTwin(), minimum_quality=1.5)
+            ObservationToTwinPipeline(
+                DigitalBiologicalTwin(subject_id="demo-subject"), minimum_quality=1.5
+            )
 
 
 if __name__ == "__main__":
