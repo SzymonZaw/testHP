@@ -362,7 +362,7 @@ analysis/
 ├── pathology_analysis.py
 ├── risk_analysis.py
 ├── rna_analysis.py
-a└── tissue_analysis.py
+└── tissue_analysis.py
 ```
 
 These modules currently cover concepts such as:
