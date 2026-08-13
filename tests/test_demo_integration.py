@@ -27,5 +27,7 @@ def test_demo_loads_and_ingests_quality_filtered_observations():
         )
 
     assert len(twin.history()) == 6
-    assert "microscopy" not in twin.snapshot_at("T4").provenance
-    assert twin.snapshot_at("T5").state["mri:lumbar_spine:bone_density:g_cm3"] == 1.28
+    assert "microscopy" in twin.snapshot_at("T4").provenance
+    assert twin.snapshot_at("T4").state["cell_size"] == 11.3
+    assert twin.snapshot_at("T5").state["bone_density"] == 1.05
+    assert twin.snapshot_at("T5").state["bone_density_alt"] == 1.28
