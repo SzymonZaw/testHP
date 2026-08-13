@@ -1,76 +1,47 @@
-"""
-Testy dla models/risk_model.py
-
-Uruchomienie:
-    pytest tests/test_risk.py -v
-"""
+"""Testy dla models/risk_model.py."""
 
 import pytest
 import torch
 
 
 def test_risk_module_import():
-    """Sprawdza import modelu risk."""
     try:
         from models import risk_model  # noqa: F401
     except Exception as exc:
-        pytest.fail(
-            f"Nie można zaimportować models.risk_model: {exc}"
-        )
+        pytest.fail(f"Nie można zaimportować models.risk_model: {exc}")
+
+
+def _model():
+    from models.risk_model import RiskModel, RiskModelConfig
+    return RiskModel(RiskModelConfig(image_dim=768, hidden_dim=256))
 
 
 def test_risk_model_creation():
-    """Sprawdza inicjalizację modelu."""
-    from models.risk_model import RiskModel
-
-    model = RiskModel(
-        input_dim=768,
-        hidden_dim=256,
-    )
-
-    assert model is not None
+    assert _model() is not None
 
 
 def test_risk_forward():
-    """Sprawdza forward pass."""
-    from models.risk_model import RiskModel
-
-    model = RiskModel(
-        input_dim=768,
-        hidden_dim=256,
-    )
-
+    model = _model()
     model.eval()
-
     x = torch.randn(1, 768)
-
     with torch.no_grad():
-        output = model(x)
-
+        output = model(image=x)
     assert output is not None
+    assert output["risk_scores"].shape == (1, 5)
+    assert torch.isfinite(output["risk_scores"]).all()
 
 
 def test_risk_batch():
-    """Sprawdza batch processing."""
-    from models.risk_model import RiskModel
-
-    model = RiskModel(
-        input_dim=768,
-        hidden_dim=256,
-    )
-
+    model = _model()
     model.eval()
-
     x = torch.randn(8, 768)
-
     with torch.no_grad():
-        output = model(x)
-
+        output = model(image=x)
     assert output is not None
+    assert output["risk_scores"].shape == (8, 5)
+    assert torch.isfinite(output["risk_scores"]).all()
 
 
 def test_risk_input_finite():
-    """Sprawdza dane wejściowe."""
     x = torch.randn(8, 768)
-
     assert torch.isfinite(x).all()
