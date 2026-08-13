@@ -1,8 +1,5 @@
 """
-Testy dla models/aging_model.py
-
-Uruchomienie:
-    pytest tests/test_aging.py -v
+Tests for the existing aging model and the new interpretable aging-clock layer.
 """
 
 import pytest
@@ -10,62 +7,77 @@ import torch
 
 
 def test_aging_module_import():
-    """Sprawdza import modelu aging."""
-    try:
-        from models import aging_model  # noqa: F401
-    except Exception as exc:
-        pytest.fail(
-            f"Nie można zaimportować models.aging_model: {exc}"
-        )
+    from models import aging_model  # noqa: F401
 
 
 def test_aging_input():
-    """Sprawdza przykładowy embedding wejściowy."""
     embedding = torch.randn(1, 768)
-
     assert embedding.shape == (1, 768)
     assert torch.isfinite(embedding).all()
 
 
 def test_aging_model_forward():
-    """
-    Sprawdza podstawowy forward pass.
-
-    Jeżeli implementacja modelu używa innego wymiaru
-    wejściowego, test należy dopasować do konfiguracji modelu.
-    """
     from models.aging_model import AgingModel
 
-    model = AgingModel(
-        input_dim=768,
-        hidden_dim=256,
-    )
-
+    model = AgingModel(input_dim=768, hidden_dim=256)
     model.eval()
-
     x = torch.randn(1, 768)
-
     with torch.no_grad():
         output = model(x)
-
     assert output is not None
 
 
 def test_aging_output_finite():
-    """Sprawdza, czy wynik modelu jest skończony."""
     from models.aging_model import AgingModel
 
-    model = AgingModel(
-        input_dim=768,
-        hidden_dim=256,
-    )
-
+    model = AgingModel(input_dim=768, hidden_dim=256)
     model.eval()
-
     x = torch.randn(1, 768)
-
     with torch.no_grad():
         output = model(x)
-
     if isinstance(output, torch.Tensor):
         assert torch.isfinite(output).all()
+
+
+def test_clock_prediction_is_transparent():
+    from aging import AgingClock, estimate_age
+
+    clock = AgingClock("cell_clock", {"senescence": 2.0, "repair": -1.0}, intercept=50)
+    result = estimate_age(clock, {"senescence": 0.5, "repair": 1.0})
+    assert result.score == pytest.approx(50.0)
+    assert result.missing_features == ()
+
+
+def test_missing_features_are_reported():
+    from aging import AgingClock, estimate_age
+
+    clock = AgingClock("tissue_clock", {"fibrosis": 3.0, "repair": -1.0})
+    result = estimate_age(clock, {"fibrosis": 0.5})
+    assert result.missing_features == ("repair",)
+
+
+def test_z_score():
+    from aging.biological_clock import z_score
+    assert z_score(12, 10, 2) == pytest.approx(1.0)
+
+
+def test_invalid_reference_std_is_rejected():
+    from aging.biological_clock import z_score
+    with pytest.raises(ValueError):
+        z_score(12, 10, 0)
+
+
+def test_multilevel_profile():
+    from aging import AgingClock, build_aging_profile
+
+    clocks = {
+        "cellular": AgingClock("cell", {"x": 1.0}),
+        "tissue": AgingClock("tissue", {"x": 2.0}),
+    }
+    profile = build_aging_profile(
+        clocks,
+        {"cellular": {"x": 10}, "tissue": {"x": 5}},
+    )
+    assert profile.scores["cellular"].score == pytest.approx(10.0)
+    assert profile.scores["tissue"].score == pytest.approx(10.0)
+    assert profile.overall_score == pytest.approx(10.0)
