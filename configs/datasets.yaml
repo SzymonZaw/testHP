@@ -202,11 +202,11 @@ datasets:
 
       enabled: true
 
-      root: "data/raw/hand/InterHand2.6M"
+      root: "data/raw/hand/InterHand2_6M"
 
-      images: "data/raw/hand/InterHand2.6M/images"
+      images: "data/raw/hand/InterHand2_6M/images"
 
-      annotations: "data/raw/hand/InterHand2.6M/annotations"
+      annotations: "data/raw/hand/InterHand2_6M/annotations"
 
       use_for_training: true
 
