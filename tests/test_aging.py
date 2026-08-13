@@ -1,6 +1,4 @@
-"""
-Tests for the existing aging model and the new interpretable aging-clock layer.
-"""
+"""Tests for the aging model and biological aging clocks."""
 
 import pytest
 import torch
@@ -18,30 +16,25 @@ def test_aging_input():
 
 def test_aging_model_forward():
     from models.aging_model import AgingModel
-
-    model = AgingModel(input_dim=768, hidden_dim=256)
+    model = AgingModel()
     model.eval()
-    x = torch.randn(1, 768)
     with torch.no_grad():
-        output = model(x)
+        output = model(image_features=torch.randn(1, 768))
     assert output is not None
+    assert output.predicted_age.shape == (1,)
 
 
 def test_aging_output_finite():
     from models.aging_model import AgingModel
-
-    model = AgingModel(input_dim=768, hidden_dim=256)
+    model = AgingModel()
     model.eval()
-    x = torch.randn(1, 768)
     with torch.no_grad():
-        output = model(x)
-    if isinstance(output, torch.Tensor):
-        assert torch.isfinite(output).all()
+        output = model(image_features=torch.randn(1, 768))
+    assert torch.isfinite(output.predicted_age).all()
 
 
 def test_clock_prediction_is_transparent():
     from aging import AgingClock, estimate_age
-
     clock = AgingClock("cell_clock", {"senescence": 2.0, "repair": -1.0}, intercept=50)
     result = estimate_age(clock, {"senescence": 0.5, "repair": 1.0})
     assert result.score == pytest.approx(50.0)
@@ -50,7 +43,6 @@ def test_clock_prediction_is_transparent():
 
 def test_missing_features_are_reported():
     from aging import AgingClock, estimate_age
-
     clock = AgingClock("tissue_clock", {"fibrosis": 3.0, "repair": -1.0})
     result = estimate_age(clock, {"fibrosis": 0.5})
     assert result.missing_features == ("repair",)
@@ -69,7 +61,6 @@ def test_invalid_reference_std_is_rejected():
 
 def test_multilevel_profile():
     from aging import AgingClock, build_aging_profile
-
     clocks = {
         "cellular": AgingClock("cell", {"x": 1.0}),
         "tissue": AgingClock("tissue", {"x": 2.0}),
