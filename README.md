@@ -279,6 +279,75 @@ This repository does **not** currently implement or recommend a rejuvenation the
 
 ---
 
+## Current implementation
+
+The project has now completed the first two architecture milestones.
+
+### Stage 1 — Biological Data Core
+
+The `core/` package defines the common data language used by analysis pipelines:
+
+```text
+core/
+├── anatomy.py
+├── biomarker.py
+├── biological_state.py
+├── measurement.py
+├── observation.py
+├── person.py
+├── timepoint.py
+└── uncertainty.py
+```
+
+The core connects measurements to a subject, timepoint, biological feature, anatomical location, provenance and uncertainty.
+
+### Stage 2 — First end-to-end cell pipeline
+
+A complete baseline pipeline now exists for cell-oriented image analysis:
+
+```text
+image
+  ↓
+segmentation
+  ↓
+cell instance mask
+  ↓
+CellAnalyzer
+  ↓
+cell features
+  ↓
+Measurement
+  ↓
+Observation
+  ↓
+BiologicalState
+```
+
+The implementation is split into:
+
+```text
+segmentation/
+└── cell_segmentation.py
+
+pipelines/
+└── cell_pipeline.py
+```
+
+`segmentation/cell_segmentation.py` provides a simple NumPy-only threshold/connected-component baseline. It is deliberately not presented as a clinical or production-grade cell segmenter. The pipeline also accepts an externally generated instance mask, which allows future integration with Cellpose, StarDist or another validated segmentation model without changing the core data contract.
+
+`pipelines/cell_pipeline.py` connects the existing `analysis/cell_analysis.py` implementation to the new biological data core. A single run creates measurements and observations for metrics such as:
+
+- cell count;
+- cell density;
+- mean cell area;
+- mean cell compactness;
+- mean nearest-neighbour distance;
+- cell distribution score.
+
+Each output is associated with a subject, timepoint, anatomical location, modality, quality/confidence and processing version.
+
+---
+
 ## Current analysis modules
 
 The repository already contains several research-oriented analysis components:
@@ -293,7 +362,7 @@ analysis/
 ├── pathology_analysis.py
 ├── risk_analysis.py
 ├── rna_analysis.py
-└── tissue_analysis.py
+a└── tissue_analysis.py
 ```
 
 These modules currently cover concepts such as:
@@ -418,11 +487,11 @@ A practical development sequence is:
 
 ### Phase 1 — Biological data model
 
-Create common representations for measurements, observations, tissues, organs, biomarkers, uncertainty and timepoints.
+Create common representations for measurements, observations, tissues, organs, biomarkers, uncertainty and timepoints. **Completed.**
 
-### Phase 2 — Reliable modality pipelines
+### Phase 2 — First modality pipeline
 
-Connect real imaging, microscopy and molecular datasets to the analysis modules.
+Connect a real analysis module to the common data model through an end-to-end cell pipeline. **Baseline completed.**
 
 ### Phase 3 — Multimodal integration
 
@@ -462,9 +531,9 @@ The 200-year lifespan objective is a long-term research vision, not a demonstrat
 
 ## Project status
 
-**Stage:** early research / architecture prototype
+**Stage:** early research / architecture prototype — Stages 1 and 2 implemented
 
-The immediate technical priority is to establish a robust common biological data model and connect the existing analysis modules into a reproducible longitudinal pipeline.
+The immediate technical priority is to establish reliable modality pipelines and connect them through the common biological data model.
 
 The intended direction is:
 
