@@ -2,24 +2,22 @@
 
 ## Biological Monitoring & Longevity Research Platform
 
-`testHP` is a research-oriented project aimed at building a **multimodal system for continuous monitoring of the human organism**. The long-term goal is to understand the biological state of a person at multiple levels, detect abnormalities and ageing-related changes early, track their evolution over time, and eventually evaluate whether interventions preserve or restore biological function.
+`testHP` is a research-oriented project for building a **multimodal, longitudinal model of human biological state**. The long-term vision is to monitor the organism at multiple biological levels, detect abnormalities and ageing-related changes, understand how they evolve, and eventually evaluate interventions that preserve or restore biological function.
 
-> **Vision:** build a system capable of monitoring the human body as a dynamic biological system rather than reducing health to a single number or diagnosis.
+> **Vision:** treat the human body as a dynamic biological system rather than reducing health to one score or one diagnosis.
 
-The long-term research ambition is to investigate how biological function could be maintained for an exceptionally long time, potentially including a 200-year human lifespan. This is a research goal, not a current capability or a medical claim.
+The long-term ambition includes research into exceptionally long healthy lifespans, potentially including a 200-year human lifespan. This is a research vision, not a current capability or medical claim.
 
 ---
 
-## What problem is this project trying to solve?
+## What problem is the project solving?
 
-The project treats long-term health as two interacting problems:
+The system treats long-term health as two interacting problems:
 
-1. **Ageing** — gradual changes in cells, tissues, organs and biological systems that reduce function over time.
-2. **Pathology** — diseases, infections, inflammation, cancer, injury and other events that can occur at any age.
+1. **Ageing** — changes in cells, tissues, organs and biological systems over time.
+2. **Pathology** — disease, infection, inflammation, cancer, injury and other abnormalities that can occur at any age.
 
-The system should monitor both simultaneously.
-
-A simplified view is:
+Both should be monitored simultaneously.
 
 ```text
                          HUMAN ORGANISM
@@ -37,7 +35,7 @@ A simplified view is:
                                 |
                          BIOLOGICAL STATE
                                 |
-                     risk / anomaly / trend
+                     anomaly / risk / trend
                                 |
                        next measurement
                                 |
@@ -48,21 +46,19 @@ A simplified view is:
 
 ## Multimodal monitoring
 
-Different parts of the human body require different measurement technologies. The project therefore should not assume that one sensor or one model can describe the entire organism.
+Different biological layers require different measurement technologies. The architecture therefore separates acquisition from interpretation.
 
-Examples include:
+Possible modalities include:
 
-- **MRI** for structures such as the brain, joints and bones;
-- **microscopy** for skin or cellular morphology;
-- **histopathology** for tissue architecture;
-- **cell segmentation** for analysing individual cells and populations;
-- **RNA / transcriptomics** for molecular state;
-- **proteomics and metabolomics** as future molecular modalities;
-- **blood and laboratory measurements**;
-- **physiological and wearable data**;
-- other specialised imaging and diagnostic instruments as the project evolves.
-
-The architecture should allow a new measurement device to be added without redesigning the entire system.
+- MRI for structural measurements;
+- microscopy for cellular and skin morphology;
+- histopathology for tissue architecture;
+- cell segmentation and single-cell analysis;
+- RNA / transcriptomics;
+- future proteomics and metabolomics;
+- blood and laboratory measurements;
+- physiological and wearable data;
+- other specialised instruments as the project evolves.
 
 ```text
  MRI -----------+
@@ -80,71 +76,162 @@ The architecture should allow a new measurement device to be added without redes
                       biological state
 ```
 
+A new device should be addable without redesigning the whole system.
+
 ---
 
 ## Biological state instead of one health score
 
-A central design principle is to avoid reducing the organism to a single value such as:
+The project deliberately avoids reducing a person to a single value such as `biological_age = 52`.
+
+Instead, the model is hierarchical:
 
 ```text
-biological_age = 52
+molecule -> cell -> tissue -> organ -> system -> organism
 ```
 
-Instead, the system should maintain a structured representation of biological state.
+A state can contain organs, biomarkers, ageing scores and anomaly signals. Observations should also retain time, anatomy, modality, provenance, processing/model version and uncertainty where available.
 
-For example:
+The current implementation now has a whole-organism state model and longitudinal history, rather than isolated measurements.
+
+---
+
+## Current architecture
+
+The repository has progressed through **15 development stages**. The implemented architecture currently includes:
 
 ```text
-Person
- |
- +-- Nervous system
- |     +-- neuronal integrity
- |     +-- vascular state
- |     +-- inflammation
- |     +-- functional markers
- |
- +-- Cardiovascular system
- |     +-- cardiac function
- |     +-- vascular integrity
- |
- +-- Skeletal system
- |     +-- bone density
- |     +-- microarchitecture
- |
- +-- Skin
- |     +-- cellular state
- |     +-- extracellular matrix
- |
- +-- Immune system
- |     +-- immune state
- |     +-- inflammatory state
- |
- +-- Molecular state
-       +-- RNA
-       +-- proteins
-       +-- metabolites
+core/
+    common biological data model
+
+analysis/
+    cell / tissue / morphology / pathology / RNA / ageing / anomaly / risk
+
+segmentation/
+    cell segmentation baseline
+
+pipelines/
+    cell analysis pipeline
+
+organs/
+    organ models and dependency graph
+    signal propagation between organs
+
+organism/
+    whole-body state
+    integrated health-state aggregation
+
+longitudinal/
+    trajectory and trend analysis
+
+aging/
+    biological clocks
+    ageing profiles
+    ageing trajectories
+
+monitoring/
+    longitudinal monitoring cycles
+    anomaly -> risk -> investigation loop
+
+tests/
+    unit tests for the implemented components
 ```
 
-Every observation should ideally contain not only a value, but also:
+The architecture is intentionally modular so that future imaging, omics and physiological models can plug into the same biological state representation.
 
-- measurement time;
-- anatomical location;
-- measurement modality;
-- model/version used for analysis;
-- data quality;
-- uncertainty/confidence;
-- provenance/source;
-- relationship to previous observations.
+---
 
-This is important because biological measurements are noisy and incomplete.
+## Development stages completed
+
+### Stage 1 — Biological data core
+
+Established common representations for subjects, timepoints, observations, measurements, biological states, biomarkers, anatomy and uncertainty.
+
+### Stage 2 — First cell pipeline
+
+Connected image/cell analysis to the common data model. The baseline pipeline can produce measurements such as cell count, density, area, compactness and spatial statistics.
+
+### Stage 3 — Organ modelling
+
+Introduced explicit organ-level state representation and organ dimensions.
+
+### Stage 4 — Organ relationships
+
+Added dependencies between organs, creating a graph representation of biological relationships.
+
+### Stage 5 — Anomaly/risk foundation
+
+Established the prototype mechanisms used to represent abnormal signals and aggregate risk-related information.
+
+### Stage 6 — Tissue/organ integration
+
+Connected lower-level biological observations with higher-level organ state.
+
+### Stage 7 — Biological ageing foundation
+
+Introduced ageing-related scoring and biological-clock concepts.
+
+### Stage 8 — Intervention analysis foundation
+
+Established a research representation for evaluating intervention-related observations and effects. It is not a treatment recommendation engine.
+
+### Stage 9 — Risk/pathology integration
+
+Added prototype analysis components for pathology, risk and abnormality interpretation.
+
+### Stage 10 — Organ-level signal propagation
+
+Added `organs/propagation.py` to propagate an observed signal through the organ dependency graph while retaining the propagation path.
+
+### Stage 11 — Whole-body organism model
+
+Added `organism/organism_model.py` with `OrganismState` and `OrganismModel`. The model stores longitudinal organism states and supports comparison of successive biomarker observations.
+
+### Stage 12 — Integrated health state
+
+Added `organism/health_state.py` with `HealthState` and `HealthStateAggregator`, combining organ signals and organism-level anomaly flags into a transparent whole-body summary.
+
+### Stage 13 — Longitudinal trajectories
+
+Added `longitudinal/trajectory.py` and the public trajectory API. The system can calculate direction, change and slope for repeated biological measurements.
+
+### Stage 14 — Ageing trajectories
+
+Added `aging/aging_trajectory.py` so individual biological ageing dimensions can be tracked over time and their rate of change estimated.
+
+### Stage 15 — Continuous monitoring loop
+
+Added the monitoring layer that stores repeated monitoring cycles containing organism state, anomalies, risk information and investigation/next-step information. This establishes the foundation for a closed-loop monitoring architecture.
+
+```text
+measurement
+    ↓
+quality / analysis
+    ↓
+biological state
+    ↓
+anomaly detection
+    ↓
+risk aggregation
+    ↓
+investigation / next measurement
+    ↓
+history
+    ↓
+trajectory + ageing analysis
+    ↓
+updated biological state
+    ↓
+repeat
+```
 
 ---
 
 ## Biological ageing
 
-Ageing should be analysed at multiple levels rather than represented by one universal clock.
+Ageing should be represented by multiple dimensions rather than one universal clock.
 
-Possible future ageing dimensions include:
+Potential dimensions include:
 
 ```text
 Cellular age
@@ -158,7 +245,7 @@ Molecular age
 Functional age
 ```
 
-The system should track both the current state and the **trajectory**:
+The project now supports the conceptual transition from a single measurement to a trajectory:
 
 ```text
 T0 ----> T1 ----> T2 ----> T3
@@ -171,36 +258,32 @@ state    state    state    state
         biological trend
 ```
 
-In many cases, the rate of change may be more informative than a single measurement.
+For ageing research, **rate of change can be more informative than a single age estimate**. The current implementation provides transparent trend/slope primitives; it is not a clinically validated biological-age clock.
 
 ---
 
 ## Abnormality and disease detection
 
-The system should detect both known and potentially unknown abnormalities.
+The intended system should detect both known and potentially unknown abnormalities:
 
-The intended architecture includes:
-
-- anomaly detection;
-- pathology classification;
-- morphology analysis;
 - cellular abnormalities;
 - tissue abnormalities;
+- morphology changes;
 - molecular abnormalities;
-- longitudinal change detection;
-- multimodal disagreement detection.
+- pathology signals;
+- longitudinal changes;
+- disagreement between modalities;
+- open-set or previously unseen patterns.
 
-An important research goal is **open-set anomaly detection**: the system should be able to identify observations that do not resemble known normal or known pathological patterns rather than forcing every observation into a predefined class.
+The system should be allowed to return **insufficient evidence** or **additional measurement required** instead of forcing an unjustified classification.
 
-The system should also be able to say **"insufficient evidence"** or **"additional measurement required"** instead of producing an unjustified confident prediction.
+The current repository contains research prototypes and score aggregators, not clinically validated diagnostic models.
 
 ---
 
-## Digital biological twin
+## Digital Biological Twin
 
-A major long-term component is a **Digital Biological Twin**.
-
-The digital twin is intended to represent the evolving state of an individual across time:
+A major long-term objective is a **Digital Biological Twin**: an evolving computational representation of an individual's biological state.
 
 ```text
                     DIGITAL BIOLOGICAL TWIN
@@ -224,37 +307,17 @@ The digital twin is intended to represent the evolving state of an individual ac
                          uncertainty
 ```
 
-A new examination should update the twin rather than exist as an isolated report.
-
-```text
-new measurement
-      |
-quality control
-      |
-modality analysis
-      |
-feature extraction
-      |
-compare with history
-      |
-update biological state
-      |
-detect changes
-      |
-risk assessment
-      |
-recommend next observation
-```
+The current `organism/`, `longitudinal/`, `aging/` and `monitoring/` layers are foundations for this future component. A complete digital twin is **not yet implemented**.
 
 ---
 
 ## Intervention and rejuvenation research
 
-A long-term goal is to study interventions intended to preserve or restore biological function. This includes research questions around cellular rejuvenation and other future interventions.
+A long-term research objective is to monitor interventions intended to preserve or restore biological function.
 
-For example, partial cellular reprogramming involving **Yamanaka factors** is an area of scientific interest because cellular rejuvenation may potentially be accompanied by serious safety concerns, including loss of normal cellular identity and oncogenic/tumour risk.
+Partial cellular reprogramming involving **Yamanaka factors** is one example of a research direction that illustrates why efficacy and safety must be monitored separately. Potential cellular rejuvenation effects must be evaluated alongside risks such as loss of cell identity, abnormal proliferation and tumour formation.
 
-`testHP` is intended to provide an architecture in which an intervention can be evaluated through separate monitoring channels:
+The intended architecture is:
 
 ```text
                     INTERVENTION
@@ -273,249 +336,90 @@ For example, partial cellular reprogramming involving **Yamanaka factors** is an
                   longitudinal follow-up
 ```
 
-The system should distinguish **benefit monitoring** from **safety monitoring**. A change that looks beneficial in one modality must not automatically be considered safe overall.
-
-This repository does **not** currently implement or recommend a rejuvenation therapy. The goal is to provide a research architecture for analysing biological state and, in the future, evaluating interventions under appropriate scientific and clinical validation.
+`testHP` does **not** currently implement or recommend a rejuvenation therapy. It is a research architecture for measuring biological state and, eventually, evaluating interventions under appropriate scientific and clinical validation.
 
 ---
 
-## Current implementation
+## Safety and decision philosophy
 
-The project has now completed the first two architecture milestones.
+The system is being designed around several safety principles:
 
-### Stage 1 — Biological Data Core
+1. **Observation is not diagnosis.**
+2. **A risk score is not a medical decision.**
+3. **Uncertainty must be represented rather than hidden.**
+4. **Conflicting measurements should trigger investigation, not arbitrary averaging.**
+5. **Potential treatment benefit must be monitored separately from toxicity and safety.**
+6. **Automated outputs require appropriate human and clinical oversight before clinical use.**
 
-The `core/` package defines the common data language used by analysis pipelines:
-
-```text
-core/
-├── anatomy.py
-├── biomarker.py
-├── biological_state.py
-├── measurement.py
-├── observation.py
-├── person.py
-├── timepoint.py
-└── uncertainty.py
-```
-
-The core connects measurements to a subject, timepoint, biological feature, anatomical location, provenance and uncertainty.
-
-### Stage 2 — First end-to-end cell pipeline
-
-A complete baseline pipeline now exists for cell-oriented image analysis:
-
-```text
-image
-  ↓
-segmentation
-  ↓
-cell instance mask
-  ↓
-CellAnalyzer
-  ↓
-cell features
-  ↓
-Measurement
-  ↓
-Observation
-  ↓
-BiologicalState
-```
-
-The implementation is split into:
-
-```text
-segmentation/
-└── cell_segmentation.py
-
-pipelines/
-└── cell_pipeline.py
-```
-
-`segmentation/cell_segmentation.py` provides a simple NumPy-only threshold/connected-component baseline. It is deliberately not presented as a clinical or production-grade cell segmenter. The pipeline also accepts an externally generated instance mask, which allows future integration with Cellpose, StarDist or another validated segmentation model without changing the core data contract.
-
-`pipelines/cell_pipeline.py` connects the existing `analysis/cell_analysis.py` implementation to the new biological data core. A single run creates measurements and observations for metrics such as:
-
-- cell count;
-- cell density;
-- mean cell area;
-- mean cell compactness;
-- mean nearest-neighbour distance;
-- cell distribution score.
-
-Each output is associated with a subject, timepoint, anatomical location, modality, quality/confidence and processing version.
+The long-term decision layer should prefer actions such as **measure again**, **request another modality**, **review by an expert**, or **insufficient evidence** when uncertainty is high.
 
 ---
 
-## Current analysis modules
+## Validation roadmap
 
-The repository already contains several research-oriented analysis components:
+Before any medical use, the project would need substantially more work:
 
 ```text
-analysis/
-├── aging_analysis.py
-├── anomaly_analysis.py
-├── cell_analysis.py
-├── intervention_analysis.py
-├── morphology_analysis.py
-├── pathology_analysis.py
-├── risk_analysis.py
-├── rna_analysis.py
-└── tissue_analysis.py
+prototype
+   ↓
+unit / integration testing
+   ↓
+benchmark datasets
+   ↓
+external validation
+   ↓
+longitudinal cohorts
+   ↓
+prospective studies
+   ↓
+clinical validation
+   ↓
+regulatory / safety assessment
 ```
 
-These modules currently cover concepts such as:
-
-- cell morphology and spatial statistics;
-- tissue-level features;
-- RNA expression statistics and dimensionality reduction;
-- morphology abnormality scoring;
-- ageing-related feature aggregation;
-- anomaly interpretation;
-- pathology prediction interpretation;
-- risk aggregation;
-- candidate intervention/monitoring actions.
-
-At the current stage, many of these components are **prototypes and feature/score aggregators**, not clinically validated diagnostic models.
+Performance must be evaluated separately for different modalities, populations, anatomical regions, diseases and measurement conditions. Reproducibility and data provenance are essential.
 
 ---
 
-## Planned architecture
+## Future roadmap — Stages 16+
 
-The project is moving toward a modular architecture similar to:
+The next development direction should be:
 
-```text
-acquisition/
-    MRI
-    microscopy
-    histology
-    omics
-    laboratory
-    wearable
+### Stage 16 — Unified multimodal observation layer
 
-preprocessing/
+Create a single interface for MRI, microscopy, histology, omics, laboratory and wearable observations.
 
-segmentation/
-    organs
-    tissues
-    cells
+### Stage 17 — Measurement quality and uncertainty engine
 
-biology/
-    cells
-    tissues
-    organs
-    systems
+Formalise quality control, missing data, confidence and conflicting measurements.
 
-aging/
-    clocks
-    senescence
-    trajectories
+### Stage 18 — Multimodal fusion
 
-pathology/
-    cancer
-    infection
-    inflammation
-    degeneration
+Combine independent observations without destroying modality-specific provenance.
 
-multimodal/
-    embeddings
-    fusion
-    alignment
+### Stage 19 — Hierarchical biological state
 
-longitudinal/
+Connect molecule/cell/tissue/organ/system states into one navigable graph.
 
-digital_twin/
+### Stage 20 — Digital Biological Twin foundation
 
-intervention/
-    efficacy
-    safety
-    surveillance
+Create the persistent evolving representation of an individual's biological state.
 
-decision/
+### Stage 21 — Advanced anomaly detection
 
-validation/
-```
+Introduce open-set anomaly detection and cross-modality disagreement analysis.
 
-The architecture is deliberately modular so that specialised models can be introduced without replacing the whole system.
+### Stage 22 — Disease-versus-ageing modelling
 
----
+Separate normal variation, ageing, pathology and measurement artefacts.
 
-## Core principles
+### Stage 23 — Intervention surveillance
 
-### 1. Multimodality
+Track efficacy and safety as separate longitudinal trajectories.
 
-No single measurement describes the whole organism.
+### Stage 24 — Validation framework
 
-### 2. Longitudinal analysis
-
-The system should study change over time, not only isolated snapshots.
-
-### 3. Hierarchical biology
-
-Information should be connected across levels:
-
-```text
-molecule -> cell -> tissue -> organ -> system -> organism
-```
-
-### 4. Uncertainty
-
-Every prediction should carry uncertainty and data-quality information where possible.
-
-### 5. Safety first
-
-A potentially beneficial change must always be evaluated against possible adverse effects.
-
-### 6. Human and clinical oversight
-
-The project is a research platform. Automated outputs should be treated as measurements, hypotheses, alerts or decision support until independently validated.
-
-### 7. Reproducibility
-
-Measurements should retain provenance, model versions, timestamps and processing information.
-
-### 8. Unknowns are allowed
-
-The system should be able to report uncertainty, conflicting evidence and previously unseen patterns.
-
----
-
-## Long-term research roadmap
-
-A practical development sequence is:
-
-### Phase 1 — Biological data model
-
-Create common representations for measurements, observations, tissues, organs, biomarkers, uncertainty and timepoints. **Completed.**
-
-### Phase 2 — First modality pipeline
-
-Connect a real analysis module to the common data model through an end-to-end cell pipeline. **Baseline completed.**
-
-### Phase 3 — Multimodal integration
-
-Combine independent observations into a coherent biological state.
-
-### Phase 4 — Longitudinal modelling
-
-Detect trends and rates of biological change.
-
-### Phase 5 — Disease and ageing separation
-
-Distinguish normal variation, ageing, pathology and measurement artefacts.
-
-### Phase 6 — Digital Biological Twin
-
-Maintain an evolving model of an individual's biological state.
-
-### Phase 7 — Intervention monitoring
-
-Measure both intended effects and safety signals following interventions.
-
-### Phase 8 — Validation
-
-Evaluate the system against high-quality datasets, longitudinal cohorts and appropriately designed prospective studies.
+Build reproducible benchmarks, cohort evaluation and prospective validation infrastructure.
 
 ---
 
@@ -523,30 +427,33 @@ Evaluate the system against high-quality datasets, longitudinal cohorts and appr
 
 `testHP` is currently a **research prototype**. It should not be used to diagnose disease, prescribe treatment, determine biological age for medical purposes, or make autonomous clinical decisions.
 
-Several concepts described in the architecture are future goals rather than completed functionality. In particular, a complete multimodal fusion system, validated biological-age models, full longitudinal inference, digital-twin implementation and clinically validated intervention decision support are still development targets.
+Many concepts in the architecture remain future goals. In particular, a complete multimodal fusion system, clinically validated ageing models, a complete digital biological twin, validated intervention monitoring and clinical decision support are **not yet implemented**.
 
-The 200-year lifespan objective is a long-term research vision, not a demonstrated outcome of the current software.
+The 200-year lifespan objective is a long-term research vision, not a demonstrated outcome of the software.
 
 ---
 
 ## Project status
 
-**Stage:** early research / architecture prototype — Stages 1 and 2 implemented
+**Current stage: Stage 15 — monitoring architecture implemented; early research prototype.**
 
-The immediate technical priority is to establish reliable modality pipelines and connect them through the common biological data model.
+Stages 1–15 establish the core path from biological observations to organism state, longitudinal trends, ageing trajectories and repeated monitoring cycles.
+
+The immediate technical priorities are now reliability, integration and validation rather than simply adding more scoring models.
 
 The intended direction is:
 
 ```text
 measure
+  -> validate quality
   -> analyse
   -> integrate
   -> understand state
   -> detect change
   -> estimate risk
-  -> decide what should be measured next
+  -> choose the next measurement
   -> update the model
   -> repeat
 ```
 
-The ultimate goal is not simply to create an AI that predicts disease. It is to build a platform that can continuously build and update a **computational representation of human biological state**, enabling research into long-term health, ageing, disease prevention and biological rejuvenation.
+The ultimate goal is to build a platform that can continuously construct and update a **computational representation of human biological state**, enabling research into long-term health, ageing, disease prevention and biological rejuvenation.
