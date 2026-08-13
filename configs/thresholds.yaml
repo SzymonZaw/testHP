@@ -1,0 +1,272 @@
+# ============================================================
+# THRESHOLDS CONFIGURATION
+# Doktorat_Kod
+# ============================================================
+
+thresholds:
+
+  # ----------------------------------------------------------
+  # General confidence
+  # ----------------------------------------------------------
+
+  confidence:
+
+    low: 0.50
+
+    moderate: 0.70
+
+    high: 0.85
+
+    very_high: 0.95
+
+  # ----------------------------------------------------------
+  # Abnormality
+  # ----------------------------------------------------------
+
+  abnormality:
+
+    normal_max: 0.40
+
+    uncertain_min: 0.40
+
+    uncertain_max: 0.60
+
+    abnormal_min: 0.60
+
+    high_abnormality: 0.80
+
+  # ----------------------------------------------------------
+  # Pathology
+  # ----------------------------------------------------------
+
+  pathology:
+
+    low_probability: 0.40
+
+    moderate_probability: 0.60
+
+    high_probability: 0.80
+
+    very_high_probability: 0.95
+
+    uncertainty_margin: 0.10
+
+  # ----------------------------------------------------------
+  # Risk
+  # ----------------------------------------------------------
+
+  risk:
+
+    low_max: 0.30
+
+    moderate_min: 0.30
+
+    moderate_max: 0.60
+
+    high_min: 0.60
+
+    very_high_min: 0.80
+
+  # ----------------------------------------------------------
+  # Biological age
+  # ----------------------------------------------------------
+
+  aging:
+
+    biological_age_difference:
+
+      normal_min: -5.0
+
+      normal_max: 5.0
+
+      accelerated_min: 5.0
+
+      strongly_accelerated_min: 10.0
+
+      decelerated_max: -5.0
+
+    aging_rate:
+
+      low: 0.10
+
+      moderate: 0.25
+
+      high: 0.50
+
+  # ----------------------------------------------------------
+  # Longitudinal change
+  # ----------------------------------------------------------
+
+  longitudinal:
+
+    change:
+
+      stable_max: 0.05
+
+      mild_change: 0.10
+
+      moderate_change: 0.20
+
+      strong_change: 0.40
+
+    risk_delta:
+
+      stable_max: 0.05
+
+      warning_min: 0.10
+
+      high_warning_min: 0.20
+
+  # ----------------------------------------------------------
+  # Tissue abnormality
+  # ----------------------------------------------------------
+
+  tissue:
+
+    abnormal_cell_fraction:
+
+      normal_max: 0.05
+
+      mild_max: 0.10
+
+      moderate_max: 0.25
+
+      severe_min: 0.25
+
+    segmentation:
+
+      minimum_mask_area: 25
+
+      maximum_mask_area: 1000000
+
+  # ----------------------------------------------------------
+  # Cell analysis
+  # ----------------------------------------------------------
+
+  cells:
+
+    minimum_cell_area: 20
+
+    maximum_cell_area: 10000
+
+    minimum_confidence: 0.50
+
+    abnormality_score:
+
+      normal_max: 0.40
+
+      suspicious_min: 0.60
+
+      high_min: 0.80
+
+  # ----------------------------------------------------------
+  # RNA
+  # ----------------------------------------------------------
+
+  rna:
+
+    minimum_genes_per_cell: 200
+
+    maximum_genes_per_cell: 6000
+
+    minimum_counts_per_cell: 500
+
+    mitochondrial_fraction_max: 0.20
+
+    highly_variable_genes: 2000
+
+  # ----------------------------------------------------------
+  # Hand analysis
+  # ----------------------------------------------------------
+
+  hand:
+
+    landmark_confidence_min: 0.50
+
+    hand_detection_confidence_min: 0.50
+
+    pose_confidence_min: 0.50
+
+    asymmetry:
+
+      normal_max: 0.05
+
+      mild_max: 0.10
+
+      moderate_max: 0.20
+
+      severe_min: 0.20
+
+  # ----------------------------------------------------------
+  # Digital twin
+  # ----------------------------------------------------------
+
+  digital_twin:
+
+    update_confidence_min: 0.50
+
+    state_change:
+
+      negligible_max: 0.05
+
+      small_max: 0.10
+
+      moderate_max: 0.25
+
+      large_min: 0.25
+
+    risk_update:
+
+      minimum_delta: 0.05
+
+      significant_delta: 0.15
+
+      critical_delta: 0.30
+
+  # ----------------------------------------------------------
+  # Decision engine
+  # ----------------------------------------------------------
+
+  decision:
+
+    minimum_confidence: 0.70
+
+    minimum_evidence_sources: 2
+
+    require_multimodal_confirmation: true
+
+    maximum_uncertainty: 0.30
+
+    abstain_if_confidence_below: 0.50
+
+  # ----------------------------------------------------------
+  # Intervention
+  # ----------------------------------------------------------
+
+  intervention:
+
+    recommendation_confidence_min: 0.80
+
+    require_safety_check: true
+
+    require_risk_assessment: true
+
+    require_multimodal_evidence: true
+
+    minimum_evidence_sources: 2
+
+  # ----------------------------------------------------------
+  # Monitoring
+  # ----------------------------------------------------------
+
+  monitoring:
+
+    low_risk_interval_days: 365
+
+    moderate_risk_interval_days: 180
+
+    high_risk_interval_days: 90
+
+    very_high_risk_interval_days: 30
+
+    immediate_review_threshold: 0.90

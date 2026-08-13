@@ -1,0 +1,619 @@
+# ============================================================
+# Doktorat_Kod - główna konfiguracja projektu
+# ============================================================
+
+project:
+  name: "Doktorat_Kod"
+  version: "0.1.0"
+  description: "Multimodalny system analizy biologicznej, patologicznej i longitudinalnej"
+  seed: 42
+
+# ============================================================
+# ŚRODOWISKO
+# ============================================================
+
+environment:
+  mode: "development"
+  debug: true
+
+  reproducibility:
+    enabled: true
+    deterministic: true
+    benchmark_mode: false
+
+# ============================================================
+# URZĄDZENIE
+# ============================================================
+
+device:
+  type: "cuda"
+  index: 0
+
+  cuda:
+    enabled: true
+    benchmark: true
+    deterministic: false
+
+  fallback_to_cpu: true
+
+# ============================================================
+# ŚCIEŻKI
+# ============================================================
+
+paths:
+
+  root: "."
+
+  data:
+    raw: "data/raw"
+    processed: "data/processed"
+    longitudinal: "data/longitudinal"
+
+    images: "data/raw/images"
+    wsi: "data/raw/wsi"
+    rna: "data/raw/rna"
+    hand: "data/raw/hand"
+
+    processed_images: "data/processed/images"
+    processed_cells: "data/processed/cells"
+    processed_rna: "data/processed/rna"
+    embeddings: "data/processed/embeddings"
+
+  models:
+    root: "models"
+    checkpoints: "models/checkpoints"
+
+    sam2: "models/checkpoints/sam2"
+    dinov2: "models/checkpoints/dinov2"
+    cellpose: "models/checkpoints/cellpose"
+    mano: "models/checkpoints/mano"
+
+  outputs:
+    root: "outputs"
+
+    embeddings: "outputs/embeddings"
+    segmentations: "outputs/segmentations"
+    cell_maps: "outputs/cell_maps"
+    rna_analysis: "outputs/rna_analysis"
+
+    aging: "outputs/aging"
+    abnormalities: "outputs/abnormalities"
+    pathology: "outputs/pathology"
+    risk: "outputs/risk"
+    interventions: "outputs/interventions"
+
+    digital_twin: "outputs/digital_twin"
+    reports: "outputs/reports"
+
+  logs:
+    root: "logs"
+
+# ============================================================
+# DANE
+# ============================================================
+
+data:
+
+  image:
+    enabled: true
+
+    supported_formats:
+      - ".jpg"
+      - ".jpeg"
+      - ".png"
+      - ".tif"
+      - ".tiff"
+
+    normalize: true
+    resize: true
+    target_size: [224, 224]
+
+  wsi:
+    enabled: true
+
+    tile_size: 512
+    overlap: 32
+
+    magnifications:
+      - 10
+      - 20
+      - 40
+
+  cell:
+    enabled: true
+
+    min_cell_area: 20
+    max_cell_area: 10000
+
+  rna:
+    enabled: true
+
+    min_genes_per_cell: 200
+    max_genes_per_cell: 5000
+    min_cells_per_gene: 3
+
+  hand:
+    enabled: true
+
+    landmarks: 21
+
+# ============================================================
+# LONGITUDINAL
+# ============================================================
+
+longitudinal:
+
+  enabled: true
+
+  timepoints:
+    - "T0"
+    - "T1"
+    - "T2"
+    - "T3"
+
+  alignment:
+    enabled: true
+    method: "registration"
+
+  missing_timepoints:
+    strategy: "ignore"
+
+  minimum_timepoints: 2
+
+# ============================================================
+# MODELE
+# ============================================================
+
+models:
+
+  sam2:
+    enabled: true
+    checkpoint: "models/checkpoints/sam2"
+    device: "cuda"
+
+  cellpose:
+    enabled: true
+    checkpoint: "models/checkpoints/cellpose"
+    device: "cuda"
+
+    model_type: "cyto2"
+
+  monai:
+    enabled: true
+
+    device: "cuda"
+
+    spatial_size:
+      - 256
+      - 256
+
+  dinov2:
+    enabled: true
+    checkpoint: "models/checkpoints/dinov2"
+    device: "cuda"
+
+    model_name: "dinov2_vitb14"
+    embedding_dim: 768
+
+  scanpy:
+    enabled: true
+
+    normalization:
+      target_sum: 10000
+
+    highly_variable_genes:
+      enabled: true
+      n_top_genes: 2000
+
+  hand:
+    enabled: true
+
+    mediapipe: true
+    mano: true
+
+    landmark_dim: 63
+
+  fusion:
+    enabled: true
+
+    image_dim: 768
+    cell_dim: 512
+    rna_dim: 512
+    hand_dim: 512
+
+    hidden_dim: 512
+    output_dim: 512
+
+  aging:
+    enabled: true
+
+    input_dim: 512
+    hidden_dim: 256
+    output_dim: 1
+
+  abnormality:
+    enabled: true
+
+    input_dim: 768
+    hidden_dim: 512
+    num_classes: 2
+    dropout: 0.2
+
+  pathology:
+    enabled: true
+
+    input_dim: 512
+    hidden_dim: 256
+    num_classes: 4
+
+  risk:
+    enabled: true
+
+    input_dim: 512
+    hidden_dim: 256
+    output_dim: 1
+
+  intervention:
+    enabled: true
+
+    input_dim: 512
+    hidden_dim: 256
+    num_classes: 5
+
+  longitudinal:
+    enabled: true
+
+    input_dim: 512
+    hidden_dim: 256
+    output_dim: 128
+
+  digital_twin:
+    enabled: true
+
+    state_dim: 512
+    temporal_dim: 256
+
+# ============================================================
+# PIPELINE
+# ============================================================
+
+pipeline:
+
+  preprocessing:
+    enabled: true
+
+    normalize: true
+    remove_artifacts: true
+    quality_control: true
+
+  image:
+    enabled: true
+
+    segmentation: true
+    embedding: true
+
+  cell:
+    enabled: true
+
+    detection: true
+    segmentation: true
+    morphology: true
+
+  rna:
+    enabled: true
+
+    qc: true
+    normalization: true
+    dimensionality_reduction: true
+    clustering: true
+
+  hand:
+    enabled: true
+
+    landmarks: true
+    pose_estimation: true
+    embedding: true
+
+  multimodal:
+    enabled: true
+
+    fusion_method: "late_fusion"
+
+  longitudinal:
+    enabled: true
+
+    temporal_alignment: true
+    trend_analysis: true
+
+# ============================================================
+# ANALIZA
+# ============================================================
+
+analysis:
+
+  tissue:
+    enabled: true
+
+  cell:
+    enabled: true
+
+  morphology:
+    enabled: true
+
+  rna:
+    enabled: true
+
+  aging:
+    enabled: true
+
+  anomaly:
+    enabled: true
+
+  pathology:
+    enabled: true
+
+  risk:
+    enabled: true
+
+  intervention:
+    enabled: true
+
+# ============================================================
+# DECISION ENGINE
+# ============================================================
+
+decision:
+
+  enabled: true
+
+  confidence:
+    enabled: true
+
+    minimum_confidence: 0.70
+
+  safety:
+    enabled: true
+
+    require_confidence: true
+    block_low_confidence: true
+
+  intervention:
+    enabled: true
+
+  monitoring:
+    enabled: true
+
+  human_review:
+    enabled: true
+
+    required_for:
+      - "high_risk"
+      - "pathology"
+      - "low_confidence"
+      - "major_intervention"
+
+# ============================================================
+# DIGITAL TWIN
+# ============================================================
+
+digital_twin:
+
+  enabled: true
+
+  update_frequency: "per_timepoint"
+
+  state:
+
+    tissue: true
+    cells: true
+    biological_age: true
+    risk: true
+    temporal: true
+
+  temporal_model:
+    enabled: true
+
+  persistence:
+    enabled: true
+    format: "json"
+
+# ============================================================
+# TRAINING
+# ============================================================
+
+training:
+
+  enabled: true
+
+  epochs: 50
+
+  batch_size: 32
+
+  learning_rate: 0.0001
+
+  weight_decay: 0.00001
+
+  optimizer: "adamw"
+
+  scheduler:
+    enabled: true
+    type: "cosine"
+
+  mixed_precision:
+    enabled: true
+
+  gradient_clip:
+    enabled: true
+    max_norm: 1.0
+
+  early_stopping:
+    enabled: true
+    patience: 10
+
+  checkpointing:
+    enabled: true
+
+    save_best: true
+    save_last: true
+
+# ============================================================
+# EWALUACJA
+# ============================================================
+
+evaluation:
+
+  enabled: true
+
+  metrics:
+
+    classification:
+      - "accuracy"
+      - "precision"
+      - "recall"
+      - "f1"
+      - "roc_auc"
+
+    regression:
+      - "mae"
+      - "mse"
+      - "rmse"
+      - "r2"
+
+    segmentation:
+      - "dice"
+      - "iou"
+
+    detection:
+      - "precision"
+      - "recall"
+      - "f1"
+
+  save_predictions: true
+  save_metrics: true
+
+# ============================================================
+# THRESHOLDS
+# ============================================================
+
+thresholds:
+
+  abnormality:
+    normal_max: 0.50
+    abnormal_min: 0.50
+
+  pathology:
+    low_risk_max: 0.30
+    medium_risk_max: 0.60
+    high_risk_min: 0.60
+
+  risk:
+    low: 0.30
+    medium: 0.60
+    high: 0.80
+
+  confidence:
+    minimum: 0.70
+    high: 0.90
+
+  anomaly:
+    warning: 0.60
+    critical: 0.85
+
+# ============================================================
+# DATASETS
+# ============================================================
+
+datasets:
+
+  human_cell_atlas:
+    enabled: true
+
+  human_skin_atlas:
+    enabled: true
+
+  geo:
+    enabled: true
+
+  tcga:
+    enabled: true
+
+  local:
+    enabled: true
+
+# ============================================================
+# LOGOWANIE
+# ============================================================
+
+logging:
+
+  enabled: true
+
+  level: "INFO"
+
+  console: true
+  file: true
+
+  file_path: "logs/project.log"
+
+  format: "%(asctime)s | %(levelname)s | %(name)s | %(message)s"
+
+# ============================================================
+# REPRODUCIBILITY
+# ============================================================
+
+reproducibility:
+
+  seed: 42
+
+  python_hash_seed: 42
+
+  numpy: true
+  torch: true
+
+  deterministic: true
+
+# ============================================================
+# RAPORTY
+# ============================================================
+
+reports:
+
+  enabled: true
+
+  format:
+    - "json"
+    - "csv"
+    - "html"
+
+  include:
+
+    preprocessing: true
+    segmentation: true
+    cells: true
+    morphology: true
+    rna: true
+    aging: true
+    abnormalities: true
+    pathology: true
+    risk: true
+    interventions: true
+    longitudinal: true
+    digital_twin: true
+
+# ============================================================
+# SYSTEM
+# ============================================================
+
+system:
+
+  create_directories: true
+
+  overwrite_outputs: false
+
+  save_intermediate_results: true
+
+  cache_embeddings: true
+
+  cache_predictions: true
+
+  verbose: true

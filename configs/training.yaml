@@ -1,0 +1,398 @@
+# ============================================================
+# TRAINING CONFIGURATION
+# Doktorat_Kod
+# ============================================================
+
+training:
+
+  # ----------------------------------------------------------
+  # General
+  # ----------------------------------------------------------
+
+  general:
+
+    seed: 42
+
+    deterministic: true
+
+    device: "auto"
+
+    mixed_precision: true
+
+    num_workers: 4
+
+    pin_memory: true
+
+    persistent_workers: true
+
+  # ----------------------------------------------------------
+  # Data
+  # ----------------------------------------------------------
+
+  data:
+
+    batch_size: 16
+
+    validation_batch_size: 32
+
+    test_batch_size: 32
+
+    shuffle: true
+
+    drop_last: false
+
+    num_workers: 4
+
+    persistent_workers: true
+
+  # ----------------------------------------------------------
+  # Optimizer
+  # ----------------------------------------------------------
+
+  optimizer:
+
+    name: "AdamW"
+
+    learning_rate: 0.0001
+
+    weight_decay: 0.0001
+
+    betas:
+      - 0.9
+      - 0.999
+
+    eps: 1.0e-8
+
+  # ----------------------------------------------------------
+  # Scheduler
+  # ----------------------------------------------------------
+
+  scheduler:
+
+    enabled: true
+
+    name: "CosineAnnealingLR"
+
+    T_max: 100
+
+    eta_min: 1.0e-6
+
+  # ----------------------------------------------------------
+  # Loss
+  # ----------------------------------------------------------
+
+  loss:
+
+    classification:
+      name: "CrossEntropyLoss"
+
+      label_smoothing: 0.0
+
+    binary_classification:
+      name: "BCEWithLogitsLoss"
+
+      pos_weight: null
+
+    regression:
+      name: "MSELoss"
+
+    segmentation:
+      name: "DiceCELoss"
+
+      dice_weight: 0.5
+
+      ce_weight: 0.5
+
+  # ----------------------------------------------------------
+  # Early stopping
+  # ----------------------------------------------------------
+
+  early_stopping:
+
+    enabled: true
+
+    monitor: "val_loss"
+
+    mode: "min"
+
+    patience: 15
+
+    min_delta: 0.0001
+
+  # ----------------------------------------------------------
+  # Checkpoints
+  # ----------------------------------------------------------
+
+  checkpoints:
+
+    save_dir: "models/checkpoints/training"
+
+    save_best: true
+
+    save_last: true
+
+    save_optimizer: true
+
+    save_scheduler: true
+
+    save_every_n_epochs: 10
+
+  # ----------------------------------------------------------
+  # Logging
+  # ----------------------------------------------------------
+
+  logging:
+
+    enabled: true
+
+    log_dir: "outputs/training_logs"
+
+    log_every_n_steps: 10
+
+    tensorboard: true
+
+    wandb: false
+
+    wandb_project: "doktorat_kod"
+
+  # ----------------------------------------------------------
+  # Generic training epochs
+  # ----------------------------------------------------------
+
+  epochs:
+
+    default: 100
+
+    aging: 100
+
+    abnormality: 100
+
+    pathology: 100
+
+    risk: 100
+
+    fusion: 150
+
+    longitudinal: 150
+
+  # ----------------------------------------------------------
+  # Aging model
+  # ----------------------------------------------------------
+
+  aging:
+
+    target: "biological_age"
+
+    loss: "MSELoss"
+
+    metrics:
+
+      - "mae"
+      - "rmse"
+      - "r2"
+
+    batch_size: 32
+
+    learning_rate: 0.0001
+
+    epochs: 100
+
+  # ----------------------------------------------------------
+  # Abnormality model
+  # ----------------------------------------------------------
+
+  abnormality:
+
+    target: "abnormality_label"
+
+    loss: "CrossEntropyLoss"
+
+    metrics:
+
+      - "accuracy"
+      - "precision"
+      - "recall"
+      - "f1"
+      - "roc_auc"
+
+    batch_size: 32
+
+    learning_rate: 0.0001
+
+    epochs: 100
+
+    class_weights: null
+
+  # ----------------------------------------------------------
+  # Pathology model
+  # ----------------------------------------------------------
+
+  pathology:
+
+    target: "pathology_label"
+
+    loss: "CrossEntropyLoss"
+
+    metrics:
+
+      - "accuracy"
+      - "precision_macro"
+      - "recall_macro"
+      - "f1_macro"
+      - "roc_auc_ovr"
+
+    batch_size: 32
+
+    learning_rate: 0.0001
+
+    epochs: 100
+
+    class_weights: null
+
+  # ----------------------------------------------------------
+  # Risk model
+  # ----------------------------------------------------------
+
+  risk:
+
+    target: "risk_class"
+
+    loss: "CrossEntropyLoss"
+
+    metrics:
+
+      - "accuracy"
+      - "precision_macro"
+      - "recall_macro"
+      - "f1_macro"
+      - "roc_auc_ovr"
+
+    batch_size: 32
+
+    learning_rate: 0.0001
+
+    epochs: 100
+
+    class_weights: null
+
+  # ----------------------------------------------------------
+  # Fusion model
+  # ----------------------------------------------------------
+
+  fusion:
+
+    modalities:
+
+      - "image"
+      - "cell"
+      - "rna"
+      - "hand"
+
+    missing_modalities: "mask"
+
+    target: "combined_target"
+
+    loss: "MSELoss"
+
+    batch_size: 16
+
+    learning_rate: 0.00005
+
+    epochs: 150
+
+    gradient_clip_norm: 1.0
+
+  # ----------------------------------------------------------
+  # Longitudinal model
+  # ----------------------------------------------------------
+
+  longitudinal:
+
+    timepoints:
+
+      - "T0"
+      - "T1"
+      - "T2"
+      - "T3"
+
+    target: "future_risk"
+
+    sequence_model: "GRU"
+
+    sequence_length: 4
+
+    loss: "CrossEntropyLoss"
+
+    batch_size: 8
+
+    learning_rate: 0.00005
+
+    epochs: 150
+
+    gradient_clip_norm: 1.0
+
+  # ----------------------------------------------------------
+  # Data augmentation
+  # ----------------------------------------------------------
+
+  augmentation:
+
+    enabled: true
+
+    image:
+
+      horizontal_flip: true
+
+      vertical_flip: false
+
+      rotation: true
+
+      rotation_degrees: 15
+
+      brightness: 0.1
+
+      contrast: 0.1
+
+      gaussian_noise: 0.01
+
+    hand:
+
+      horizontal_flip: true
+
+      rotation_degrees: 10
+
+      scale_range:
+        - 0.9
+        - 1.1
+
+    rna:
+
+      enabled: false
+
+  # ----------------------------------------------------------
+  # Freezing pretrained models
+  # ----------------------------------------------------------
+
+  pretrained:
+
+    freeze_backbones: true
+
+    unfreeze_epoch: 20
+
+    gradual_unfreezing: true
+
+  # ----------------------------------------------------------
+  # Reproducibility
+  # ----------------------------------------------------------
+
+  reproducibility:
+
+    seed: 42
+
+    deterministic: true
+
+    benchmark: false
+
+    save_environment: true
+
+    environment_file: "outputs/training_environment.yaml"

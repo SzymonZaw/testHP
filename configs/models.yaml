@@ -1,0 +1,382 @@
+# ============================================================
+# MODELS CONFIGURATION
+# Doktorat_Kod
+# ============================================================
+
+models:
+
+  # ----------------------------------------------------------
+  # Device
+  # ----------------------------------------------------------
+
+  device:
+    auto: true
+    preferred: "cuda"
+    fallback: "cpu"
+
+  # ----------------------------------------------------------
+  # SAM2
+  # ----------------------------------------------------------
+
+  sam2:
+    enabled: true
+
+    checkpoint_dir: "models/checkpoints/sam2"
+
+    model_type: "sam2_hiera_large"
+
+    checkpoint_file: null
+
+    image_size: 1024
+
+    mask_threshold: 0.0
+
+    multimask_output: true
+
+    use_gpu: true
+
+    compile: false
+
+  # ----------------------------------------------------------
+  # Cellpose
+  # ----------------------------------------------------------
+
+  cellpose:
+    enabled: true
+
+    checkpoint_dir: "models/checkpoints/cellpose"
+
+    model_type: "cyto3"
+
+    model_path: null
+
+    gpu: true
+
+    diameter: null
+
+    channels:
+      cytoplasm: 0
+      nucleus: 0
+
+    flow_threshold: 0.4
+
+    cellprob_threshold: 0.0
+
+    normalize:
+      enabled: true
+      percentile_low: 1.0
+      percentile_high: 99.0
+
+  # ----------------------------------------------------------
+  # MONAI
+  # ----------------------------------------------------------
+
+  monai:
+    enabled: true
+
+    image_size:
+      - 224
+      - 224
+      - 224
+
+    spatial_dims: 3
+
+    in_channels: 1
+
+    out_channels: 2
+
+    roi_size:
+      - 96
+      - 96
+      - 96
+
+    sw_batch_size: 1
+
+    model:
+      name: "UNet"
+
+      channels:
+        - 16
+        - 32
+        - 64
+        - 128
+        - 256
+
+      strides:
+        - 2
+        - 2
+        - 2
+        - 2
+
+      num_res_units: 2
+
+  # ----------------------------------------------------------
+  # DINOv2
+  # ----------------------------------------------------------
+
+  dinov2:
+    enabled: true
+
+    checkpoint_dir: "models/checkpoints/dinov2"
+
+    model_name: "dinov2_vitb14"
+
+    pretrained: true
+
+    embedding_dim: 768
+
+    image_size: 224
+
+    patch_size: 14
+
+    normalize_embeddings: true
+
+    use_gpu: true
+
+    freeze_backbone: true
+
+  # ----------------------------------------------------------
+  # Scanpy / RNA
+  # ----------------------------------------------------------
+
+  scanpy:
+    enabled: true
+
+    n_top_genes: 2000
+
+    target_sum: 10000
+
+    log1p: true
+
+    scale: true
+
+    highly_variable_genes:
+      enabled: true
+      flavor: "seurat"
+      n_top_genes: 2000
+
+    pca:
+      enabled: true
+      n_comps: 50
+
+    neighbors:
+      enabled: true
+      n_neighbors: 15
+      n_pcs: 30
+
+    umap:
+      enabled: true
+
+    clustering:
+      enabled: true
+      method: "leiden"
+      resolution: 1.0
+
+  # ----------------------------------------------------------
+  # MediaPipe
+  # ----------------------------------------------------------
+
+  mediapipe:
+    enabled: true
+
+    static_image_mode: false
+
+    max_num_hands: 2
+
+    min_detection_confidence: 0.5
+
+    min_tracking_confidence: 0.5
+
+  # ----------------------------------------------------------
+  # MANO
+  # ----------------------------------------------------------
+
+  mano:
+    enabled: true
+
+    checkpoint_dir: "models/checkpoints/mano"
+
+    model_path: null
+
+    use_pca: true
+
+    ncomps: 45
+
+    flat_hand_mean: false
+
+    use_face_contour: false
+
+    batch_size: 1
+
+  # ----------------------------------------------------------
+  # Hand model
+  # ----------------------------------------------------------
+
+  hand:
+    enabled: true
+
+    input_dim: 63
+
+    hidden_dim: 256
+
+    embedding_dim: 128
+
+    output_dim: 1
+
+    dropout: 0.2
+
+    use_mano: true
+
+    use_mediapipe: true
+
+  # ----------------------------------------------------------
+  # Fusion model
+  # ----------------------------------------------------------
+
+  fusion:
+    enabled: true
+
+    image_embedding_dim: 768
+
+    cell_embedding_dim: 256
+
+    rna_embedding_dim: 50
+
+    hand_embedding_dim: 128
+
+    fused_dim: 512
+
+    hidden_dim: 256
+
+    output_dim: 1
+
+    dropout: 0.2
+
+    fusion_method: "concatenate"
+
+  # ----------------------------------------------------------
+  # Aging model
+  # ----------------------------------------------------------
+
+  aging:
+    enabled: true
+
+    input_dim: 512
+
+    hidden_dim: 256
+
+    output_dim: 1
+
+    dropout: 0.2
+
+    activation: "relu"
+
+    output_activation: null
+
+  # ----------------------------------------------------------
+  # Abnormality model
+  # ----------------------------------------------------------
+
+  abnormality:
+    enabled: true
+
+    input_dim: 768
+
+    hidden_dim: 512
+
+    num_classes: 2
+
+    dropout: 0.2
+
+    activation: "relu"
+
+  # ----------------------------------------------------------
+  # Pathology model
+  # ----------------------------------------------------------
+
+  pathology:
+    enabled: true
+
+    input_dim: 768
+
+    hidden_dim: 512
+
+    num_classes: 5
+
+    dropout: 0.2
+
+    activation: "relu"
+
+  # ----------------------------------------------------------
+  # Risk model
+  # ----------------------------------------------------------
+
+  risk:
+    enabled: true
+
+    input_dim: 512
+
+    hidden_dim: 256
+
+    num_classes: 3
+
+    dropout: 0.2
+
+    activation: "relu"
+
+  # ----------------------------------------------------------
+  # Intervention model
+  # ----------------------------------------------------------
+
+  intervention:
+    enabled: true
+
+    input_dim: 512
+
+    hidden_dim: 256
+
+    num_classes: 4
+
+    dropout: 0.2
+
+  # ----------------------------------------------------------
+  # Longitudinal model
+  # ----------------------------------------------------------
+
+  longitudinal:
+    enabled: true
+
+    input_dim: 512
+
+    hidden_dim: 256
+
+    temporal_dim: 128
+
+    num_timepoints: 4
+
+    dropout: 0.2
+
+    aggregation: "gru"
+
+  # ----------------------------------------------------------
+  # Digital twin
+  # ----------------------------------------------------------
+
+  digital_twin:
+    enabled: true
+
+    state_dim: 512
+
+    tissue_state_dim: 128
+
+    cell_state_dim: 128
+
+    biological_age_dim: 64
+
+    risk_state_dim: 64
+
+    temporal_state_dim: 128
+
+    update_method: "weighted_update"
+
+    update_rate: 0.1
