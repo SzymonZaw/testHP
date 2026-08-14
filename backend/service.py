@@ -4,23 +4,26 @@ from datetime import datetime, timezone
 from typing import Any
 
 from datasets.dataset_registry import create_default_registry
-from datasets.adapters import adapter_for
+from datasets.fusion import fuse
+from datasets.normalization import normalize_dataset
 from integration.observation_to_twin import ObservationToTwinPipeline
 from organism.digital_twin import DigitalBiologicalTwin
 
 
 def run_datasets(dataset_names: list[str] | None = None) -> dict[str, Any]:
-    """Run the real ingestion path using adapters for the selected raw datasets.
+    """Execute ingestion -> validation -> normalization -> fusion -> twin.
 
-    The adapter layer is deliberately conservative: it exposes observations that
-    can be verified directly from files (counts, bytes and available annotations).
-    No biological interpretation is fabricated at ingestion time.
+    Fusion remains dataset-level unless explicit subject/sample identifiers are
+    available. No biological interpretation is fabricated at ingestion time.
     """
     registry = create_default_registry()
     available = {item.name: item for item in registry.all()}
     selected = dataset_names or sorted(available)
     missing = [name for name in selected if name not in available]
-    invalid = [name for name in selected if name in available and not available[name].has_data()]
+    datasets = [available[name] for name in selected if name in available]
+
+    normalized = {item.name: normalize_dataset(item) for item in datasets}
+    invalid = [name for name, item in normalized.items() if not item.valid]
     if missing or invalid:
         return {
             "status": "blocked",
@@ -28,37 +31,42 @@ def run_datasets(dataset_names: list[str] | None = None) -> dict[str, Any]:
             "missing": missing,
             "invalid": invalid,
             "datasets": [],
+            "fusion": None,
             "snapshot": None,
         }
 
+    fusion = fuse(normalized.values())
     twin = DigitalBiologicalTwin(subject_id="web-demo")
     pipeline = ObservationToTwinPipeline(twin, minimum_quality=0.5)
-    all_observations = []
-    dataset_results = []
+    observations = [observation for item in normalized.values() for observation in item.observations]
+    observations.extend(fusion.observations)
+    snapshot = pipeline.ingest("web-run-1", observations, datetime.now(timezone.utc))
 
-    for name in selected:
-        dataset = available[name]
-        result = adapter_for(name, dataset.path, dataset.modality).load()
-        all_observations.extend(result.observations)
-        dataset_results.append({
-            "name": result.dataset,
-            "path": str(dataset.path),
-            "modality": result.modality,
-            "files": result.files,
-            "bytes": result.bytes,
-            "observations": len(result.observations),
-            "warnings": list(result.warnings),
-            "status": "ok" if result.observations else "empty",
-        })
-
-    captured_at = datetime.now(timezone.utc)
-    snapshot = pipeline.ingest("web-run-1", all_observations, captured_at)
     return {
         "status": "completed",
         "selected": selected,
         "missing": [],
         "invalid": [],
-        "datasets": dataset_results,
+        "datasets": [
+            {
+                "name": item.dataset,
+                "path": item.source_path,
+                "modality": item.modality,
+                "files": item.files,
+                "bytes": item.bytes,
+                "observations": len(item.observations),
+                "warnings": list(item.warnings),
+                "status": "ok",
+            }
+            for item in normalized.values()
+        ],
+        "fusion": {
+            "datasets": list(fusion.datasets),
+            "modalities": list(fusion.modalities),
+            "linked_subjects": fusion.linked_subjects,
+            "warnings": list(fusion.warnings),
+            "observation_count": len(fusion.observations),
+        },
         "snapshot": {
             "timepoint_id": snapshot.timepoint_id,
             "captured_at": snapshot.captured_at.isoformat(),
@@ -66,5 +74,4 @@ def run_datasets(dataset_names: list[str] | None = None) -> dict[str, Any]:
             "provenance": list(snapshot.provenance),
             "state": snapshot.state,
         },
-        "note": "Ingestion and normalization are active. Biological model inference remains a downstream stage.",
     }
