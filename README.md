@@ -1,233 +1,305 @@
 # testHP
 
-## Biological Monitoring & Longevity Research Platform
+## Multimodal Biological Monitoring & Research Platform
 
-`testHP` is a research-oriented platform for building a **multimodal, longitudinal model of human biological state**. The long-term vision is to monitor the organism at multiple biological levels, detect abnormalities and ageing-related changes, understand how they evolve, and eventually evaluate interventions that preserve or restore biological function.
+`testHP` is a research-oriented platform for ingesting, validating, preprocessing and integrating multimodal biological data. Its long-term goal is to build an evolving computational representation of human biological state and study ageing, pathology, longitudinal change and intervention response.
 
-> **Vision:** treat the human body as a dynamic biological system rather than reducing health to one score or one diagnosis.
+> **Research principle:** when the available evidence is inadequate, the system should report insufficient evidence rather than invent certainty.
 
-The long-term ambition includes research into exceptionally long healthy lifespans, potentially including a 200-year human lifespan. This is a research vision, not a current capability or medical claim.
+This repository is a research prototype. It is **not** a clinically validated diagnostic or treatment system.
 
 ---
 
-## Current architecture
+## Current status
 
-Stages 1–30 establish the biological monitoring foundation, multimodal analysis, longitudinal modelling, digital-twin history, intervention surveillance, validation, integration, measurement planning and audit primitives.
+The current implementation contains a working research pipeline covering stages **1–10**:
 
 ```text
-core/          biological data, measurements, anatomy, quality
-analysis/      anomalies, trends, change points
-segmentation/  cell segmentation baseline
-pipelines/     cell analysis
-integration/   observation -> digital twin
-organs/        organ models and signal propagation
-organism/      organism state and digital biological twin
-longitudinal/  trajectory components
-aging/         ageing trajectories and ageing/pathology framework
-monitoring/    longitudinal monitoring cycles
-intervention/  efficacy/safety surveillance
-planning/      additional measurement planning
-validation/    validation metrics and prospective research
-audit/         evidence-linked decision records
-tests/         automated tests for implemented components
+raw data
+   ↓
+1. ingestion & validation
+   ↓
+2. normalization & preprocessing
+   ↓
+3. multimodal fusion
+   ↓
+4. quality & uncertainty
+   ↓
+5. hierarchical biological state
+   ↓
+6. digital biological twin
+   ↓
+7. anomaly & longitudinal analysis
+   ↓
+8. evaluation
+   ↓
+9. research decision support
+   ↓
+10. audit & provenance
 ```
 
-The architecture deliberately separates **observation, inference, intervention surveillance and decision/audit**.
+The implementation is intentionally conservative: public datasets are not assumed to represent the same person, and the system does not fabricate cross-dataset patient identities or longitudinal timepoints.
+
+Stages 1–10 are an engineering/research foundation. They do **not** constitute clinical validation or a complete predictive digital twin.
 
 ---
 
-## Integrated flow
+## Repository structure
 
 ```text
-MULTIMODAL OBSERVATIONS
-          ↓
-QUALITY / UNCERTAINTY
-          ↓
-MODALITY ANALYSIS
-          ↓
-MULTIMODAL FUSION
-          ↓
-HIERARCHICAL BIOLOGICAL STATE
-          ↓
-DIGITAL BIOLOGICAL TWIN
-          ↓
- ┌────────┴────────┐
- ↓                 ↓
-ANOMALY       LONGITUDINAL
-DETECTION       ANALYSIS
- └────────┬────────┘
-          ↓
-   CHANGE-POINT ANALYSIS
-          ↓
- MULTIMODAL DISAGREEMENT
-          ↓
- MEASUREMENT PLANNING
-          ↓
-INTERVENTION SURVEILLANCE
-      ↙          ↘
- efficacy       safety
-      \          /
-       ↓        ↓
-        VALIDATION
-             ↓
-       DECISION + AUDIT
-             ↓
-        UPDATED TWIN
-             ↓
-      NEXT MEASUREMENT
+testHP/
+├── backend/             FastAPI application and API service
+├── core/                common biological data structures and quality logic
+├── datasets/            dataset registry, adapters and normalization
+├── analysis/            anomaly and longitudinal analysis
+├── evaluation/          pipeline readiness/evaluation
+├── decision/            research-level decision support
+├── audit/               provenance and run auditing
+├── organism/            biological hierarchy / digital twin components
+├── integration/         observation-to-twin integration
+├── aging/               ageing/pathology research primitives
+├── intervention/        intervention surveillance primitives
+├── planning/            measurement-planning primitives
+├── validation/          research validation utilities
+├── tests/               automated tests and deterministic fixtures
+├── scripts/             local demo/integration scripts
+├── data/
+│   └── raw/             local source datasets (large data is not committed)
+├── .github/workflows/   GitHub Actions CI
+├── requirements.txt     Python dependencies
+└── README.md
 ```
 
-The system should be able to return **insufficient evidence** rather than forcing an unjustified conclusion.
+The exact set of modules may evolve as the research architecture develops. The README describes the currently supported execution path rather than claiming future functionality.
 
 ---
 
-## Development stages completed
+## Raw data
 
-### Stages 1–15 — Biological monitoring foundation
-
-Established the common biological data model, cell-analysis baseline, organ representation and dependency graph, anomaly/risk foundations, ageing concepts, intervention analysis, whole-body organism state and continuous longitudinal monitoring.
-
-### Stage 16 — Unified multimodal observation layer
-
-Introduced common representations for observations from different modalities with measurement provenance and quality metadata.
-
-### Stage 17 — Measurement quality and uncertainty
-
-Added quality-aware handling so unreliable observations can be excluded or represented as insufficient evidence.
-
-### Stage 18 — Multimodal fusion
-
-Added quality-weighted fusion primitives while retaining modality provenance.
-
-### Stage 19 — Hierarchical biological state
-
-Added `core/hierarchy.py` connecting organism, system, organ, tissue, cell-population, cell and site levels.
-
-### Stage 20 — Digital Biological Twin foundation
-
-Added `organism/digital_twin.py` with longitudinal `TwinSnapshot` objects and persistent twin history. This is a data-model foundation, not a complete predictive twin.
-
-### Stage 21 — Advanced anomaly detection
-
-Added `analysis/advanced_anomaly.py` with transparent anomaly scoring, quality thresholds and explicit insufficient-evidence handling.
-
-### Stage 22 — Longitudinal biological change analysis
-
-Added `analysis/longitudinal.py` for repeated measurements, trend direction, slope, baseline-to-latest change and quality filtering.
-
-### Stage 23 — Intervention surveillance
-
-Added `intervention/surveillance.py` and tests for separate efficacy and safety trajectories. This is a research monitoring primitive, not a treatment recommendation system.
-
-### Stage 24 — Validation framework
-
-Added `validation/framework.py` and tests for MAE, RMSE, bias, quality filtering and subgroup evaluation. This is not clinical validation.
-
-### Stage 25 — Unified observation-to-twin pipeline
-
-Added `integration/observation_to_twin.py` and tests. Quality-filtered observations can now become `TwinSnapshot` objects and enter `DigitalBiologicalTwin` history while retaining modality provenance.
-
-### Stage 26 — Temporal change-point detection
-
-Added `analysis/change_points.py` to identify possible changes in longitudinal trajectory rather than treating every observation independently.
-
-### Stage 27 — Multimodal disagreement and measurement planning
-
-Added `planning/measurement_planner.py` for transparent suggestions of additional modalities when evidence is incomplete or conflicting. It is not autonomous clinical ordering.
-
-### Stage 28 — Ageing versus pathology framework
-
-Added `aging/pathology_framework.py` to represent normal variation, age-associated change, pathology signal, intervention response and insufficient evidence.
-
-### Stage 29 — Prospective validation infrastructure
-
-Added `validation/prospective.py` with cohort, experiment, dataset/model-version and audit primitives for reproducible prospective research.
-
-### Stage 30 — Research decision and audit layer
-
-Added `audit/decision.py` with evidence references, auditable decision records and explicit research-level outcomes such as `measure_again`, `request_modality`, `expert_review`, `insufficient_evidence` and `continue_monitoring`.
-
----
-
-## Biological ageing
-
-Ageing should be represented by multiple dimensions rather than one universal clock:
+Large datasets belong under:
 
 ```text
-Cellular | Tissue | Immune | Vascular | Skeletal
-Neural   | Metabolic | Molecular | Functional
+data/raw/
 ```
 
-The project focuses on trajectories and rates of change rather than treating a single biological-age number as ground truth. It does **not** currently contain a clinically validated biological-age clock.
+The raw directory is treated as **source data**. Dataset-specific loaders/adapters should interpret it without modifying the original source files.
 
-The ageing/pathology layer is intended to distinguish:
+Do **not** commit the full research datasets to GitHub. The repository should contain only small deterministic fixtures/examples required for tests and development.
+
+Typical supported source families include image, WSI, RNA and hand/pose data. The exact directories available on a particular machine can be inspected through the API or dataset registry.
+
+---
+
+## Running the backend locally
+
+Python 3.11 is the recommended development version.
+
+Create/activate a virtual environment and install dependencies:
+
+```bash
+python -m venv .venv
+```
+
+Windows PowerShell:
+
+```powershell
+.venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+```
+
+Linux/macOS:
+
+```bash
+source .venv/bin/activate
+pip install -r requirements.txt
+```
+
+Start FastAPI from the repository root:
+
+```bash
+uvicorn backend.main:app --reload
+```
+
+The API is then available at:
 
 ```text
-normal variation
-      vs
-measurement artefact
-      vs
-age-associated change
-      vs
-pathological change
-      vs
-intervention response
-      vs
-insufficient evidence
+http://127.0.0.1:8000
 ```
 
----
-
-## Digital Biological Twin
-
-The long-term objective is an evolving computational representation of an individual's biological state:
+Interactive API documentation:
 
 ```text
-                 DIGITAL BIOLOGICAL TWIN
-                           |
-        +------------------+------------------+
-        |                  |                  |
-      organs             tissues            cells
-        |                  |                  |
-     function           morphology          state
-        +------------------+------------------+
-                           |
-                    molecular state
-                           |
-                    ageing trajectories
-                           |
-                    disease/risk signals
-                           |
-                     interventions
-                           |
-                       uncertainty
+http://127.0.0.1:8000/docs
 ```
 
-Stage 25 now provides the observation-to-snapshot ingestion path. A complete predictive or mechanistic digital twin is **not yet implemented**.
+Basic health check:
+
+```text
+GET /api/health
+```
+
+Project/data status:
+
+```text
+GET /api/status
+```
+
+Dataset inventory:
+
+```text
+GET /api/datasets
+```
+
+Pipeline description/validation:
+
+```text
+GET  /api/pipeline
+POST /api/pipeline/validate
+```
+
+Pipeline execution:
+
+```text
+POST /api/run
+```
+
+The API currently performs a non-destructive research ingestion/integration path. It does not claim to perform clinical diagnosis or validated biological inference.
 
 ---
 
-## Intervention and rejuvenation research
+## Tests
 
-A long-term research direction is monitoring interventions intended to preserve or restore biological function. Partial cellular reprogramming involving **Yamanaka factors** is an example that illustrates why efficacy and safety must be monitored separately.
+Run the complete Python test suite from the repository root:
 
-Potential rejuvenation effects would need to be evaluated alongside risks such as loss of cell identity, abnormal proliferation and tumour formation. The current software only provides research monitoring primitives; it does not implement, select or recommend a rejuvenation therapy.
+```bash
+python -m pytest -q
+```
+
+Run the demonstration/integration script:
+
+```bash
+python scripts/run_demo.py
+```
+
+The test suite is designed to work with small fixtures and does not require the full multi-gigabyte research datasets.
 
 ---
 
-## Measurement planning and uncertainty
+## GitHub Actions CI
 
-A central design principle is:
+`.github/workflows/main.yml` checks three areas:
 
-> **When evidence is inadequate, the system should seek better evidence rather than invent certainty.**
+```text
+Backend tests
+     ↓
+FastAPI startup / smoke test
+     ↓
+Frontend build (when the frontend package is present)
+     ↓
+CI gate
+```
 
-If modalities disagree or uncertainty is high, the planning layer can represent a request for another measurement. This remains a research planning capability and is deliberately separated from autonomous clinical ordering.
+CI also runs on pushes to `main` and `agent/**` branches and on pull requests targeting `main`.
+
+The CI environment must remain independent of the large datasets in `data/raw/`; deterministic repository fixtures are used instead.
 
 ---
 
-## Validation
+## Web framework
 
-Stages 24 and 29 establish validation infrastructure, but scientific validation remains a future task:
+The backend is implemented with **FastAPI**. The repository is being prepared for a browser-based research interface, but documentation must not imply that a React frontend is production-ready unless its source and build configuration are actually present in the branch.
+
+The current API already exposes the core operations needed by a future UI:
+
+```text
+status → dataset inventory → pipeline validation → pipeline execution
+```
+
+---
+
+## Stages 1–10
+
+### Stage 1 — Ingestion & validation
+
+Discovers the available raw datasets and validates filesystem-level properties such as existence, supported formats, empty files and basic input integrity.
+
+### Stage 2 — Normalization & preprocessing
+
+Dataset-specific adapters convert source data into common normalized observations while retaining source paths and provenance. Preprocessing is deliberately modality-aware.
+
+### Stage 3 — Multimodal fusion
+
+Combines normalized observations from available modalities without inventing relationships between unrelated people or datasets.
+
+### Stage 4 — Quality & uncertainty
+
+Quality metadata and evidence limitations propagate through the pipeline. Low-quality or incomplete evidence can be rejected or marked insufficient.
+
+### Stage 5 — Hierarchical biological state
+
+Represents biological state across levels such as organism, system, organ, tissue, cell population, cell and anatomical site where the available evidence supports those levels.
+
+### Stage 6 — Digital Biological Twin
+
+Creates longitudinal snapshot primitives and retains observation provenance. This is a data-model foundation, **not a complete predictive/mechanistic digital twin**.
+
+### Stage 7 — Anomaly & longitudinal analysis
+
+Supports transparent anomaly and repeated-measurement analysis. A single observation is not treated as evidence of a longitudinal trend.
+
+### Stage 8 — Evaluation
+
+Evaluates pipeline readiness, available modalities, completeness and known limitations. This is engineering/research evaluation, not clinical validation.
+
+### Stage 9 — Research decision support
+
+Propagates evidence, uncertainty and research-level outcomes such as insufficient evidence or need for additional measurement. It is not an autonomous clinical decision system.
+
+### Stage 10 — Audit & provenance
+
+Records run identifiers, timestamps, dataset/source information, pipeline status and provenance so that research results can be inspected and reproduced.
+
+---
+
+## Scientific scope
+
+The long-term research direction includes:
+
+- multimodal characterization of human biological state,
+- ageing trajectories,
+- pathology-related changes,
+- longitudinal monitoring,
+- intervention efficacy and safety surveillance,
+- multimodal disagreement and uncertainty,
+- research-oriented digital biological twins.
+
+Ageing should be treated as multidimensional rather than reduced to a single universal number. Potential dimensions include cellular, tissue, immune, vascular, skeletal, neural, metabolic, molecular and functional state.
+
+The project does **not currently contain a clinically validated biological-age clock**.
+
+---
+
+## Data governance and provenance
+
+Human biological datasets can contain sensitive information. Large source datasets should remain outside version control unless their license and governance explicitly permit redistribution.
+
+Every modality adapter should preserve, where available:
+
+- source dataset,
+- source file/path or identifier,
+- dataset version,
+- observation timestamp,
+- anatomical/site information,
+- quality metadata,
+- model/preprocessing version.
+
+The platform must not manufacture patient identity links merely because two datasets describe similar biology.
+
+---
+
+## Validation roadmap
+
+The current tests establish software correctness and pipeline behaviour. Scientific validation is a separate task:
 
 ```text
 unit tests
@@ -236,104 +308,43 @@ integration tests
    ↓
 benchmark datasets
    ↓
-external validation
+external replication
    ↓
 longitudinal cohorts
    ↓
-prospective studies
+prospective research
    ↓
-clinical validation
-   ↓
-regulatory / safety assessment
+clinical validation where applicable
 ```
 
-Performance must eventually be assessed across populations, modalities, anatomical regions, diseases and measurement conditions. Reproducibility, calibration, provenance and subgroup performance are essential.
-
-A retrospective numerical metric is not proof of clinical utility.
+Numerical performance on a retrospective dataset is not proof of clinical utility.
 
 ---
 
-## Safety and decision philosophy
+## Future development
 
-1. **Observation is not diagnosis.**
-2. **A risk score is not a medical decision.**
-3. **Uncertainty must be represented rather than hidden.**
-4. **Conflicting measurements should trigger investigation, not arbitrary averaging.**
-5. **Intervention benefit must be monitored separately from safety.**
-6. **Automated outputs require appropriate human and clinical oversight before clinical use.**
-7. **Insufficient evidence is a valid outcome.**
-8. **Important decisions should retain evidence, model/version information and an audit trail.**
+The next priorities are:
 
-The current decision layer is research-level decision support, not an autonomous medical decision system.
-
----
-
-## Future roadmap — Stage 31+
-
-The first 30 architectural stages are now represented in the repository. The next phase should prioritize **correctness, execution, reproducibility, data governance and scientific testing** rather than simply adding more scores.
-
-### Stage 31 — End-to-end integration tests
-
-Exercise the complete observation → quality → analysis → twin → validation → audit path with deterministic fixtures.
-
-### Stage 32 — Data schemas and provenance contracts
-
-Formalize identifiers, units, timestamps, anatomical locations, dataset versions, model versions and provenance requirements.
-
-### Stage 33 — Reproducible research runner
-
-Create versioned experiment configurations, deterministic runs, result manifests and machine-readable reports.
-
-### Stage 34 — Governed multimodal datasets
-
-Introduce public/research datasets and modality adapters while keeping sensitive human data out of source control.
-
-### Stage 35 — Calibration and uncertainty evaluation
-
-Evaluate calibration, uncertainty behaviour and failure modes rather than relying only on aggregate accuracy metrics.
-
-### Stage 36 — Mechanistic and predictive modelling
-
-Only after reliable data and validation foundations are established, add predictive biological models and mechanistic hypotheses.
-
-### Stage 37+ — Scientific validation and translation
-
-Progress through external replication, prospective research and, where appropriate, clinical/regulatory evaluation.
+1. strengthen end-to-end integration tests;
+2. formalize schemas, identifiers, units and provenance contracts;
+3. make experiment runs reproducible and versioned;
+4. expand modality adapters for the datasets actually available in `data/raw/`;
+5. improve uncertainty and calibration evaluation;
+6. add predictive/mechanistic modelling only after reliable data and validation foundations are established;
+7. continue development of the browser interface without coupling it to assumptions about unavailable data.
 
 ---
 
-## Important limitations
+## Safety and limitations
 
-`testHP` is currently a **research prototype**. It should not be used to diagnose disease, prescribe treatment, determine biological age for medical purposes, or make autonomous clinical decisions.
+`testHP` is a **research prototype**. It must not be used to diagnose disease, prescribe treatment, determine biological age for medical purposes, or make autonomous clinical decisions.
 
-A complete predictive digital biological twin, clinically validated ageing models, clinically validated multimodal fusion, validated intervention monitoring and clinical decision support are **not yet implemented**.
+The project may eventually support research into healthy longevity and biological rejuvenation, but such goals are research hypotheses and ambitions, not demonstrated capabilities of the current software.
 
-The 200-year lifespan objective is a long-term research vision, not a demonstrated outcome of the software.
+A complete predictive digital biological twin, clinically validated multimodal fusion, clinically validated ageing models and clinical decision support are **not currently implemented**.
 
 ---
 
-## Project status
+## License / dataset licenses
 
-**Current stage: Stage 30 — research decision and audit layer implemented; early research prototype.**
-
-Stages 1–30 establish a path from multimodal observations through quality assessment, fusion, hierarchical state, longitudinal modelling, anomaly/change detection, measurement planning, intervention surveillance, validation and auditable research decisions.
-
-Immediate priorities are **integration, correctness, testing, reproducibility, data governance and scientific validation**.
-
-```text
-measure
-  -> validate quality
-  -> analyse
-  -> integrate
-  -> update biological state
-  -> detect abnormalities and change
-  -> quantify uncertainty/conflicts
-  -> choose additional measurement when justified
-  -> monitor interventions separately
-  -> validate outputs
-  -> record evidence and provenance
-  -> update the twin
-  -> repeat
-```
-
-The ultimate goal is a platform that can continuously construct and update a **computational representation of human biological state**, enabling research into long-term health, ageing, disease prevention and biological rejuvenation.
+Software licensing and dataset licensing are separate concerns. Individual public datasets may impose attribution, non-commercial, data-use or redistribution requirements. Before redistributing or publishing data from `data/raw/`, check the license and terms of the original dataset.
