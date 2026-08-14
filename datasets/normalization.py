@@ -7,6 +7,7 @@ from typing import Any
 
 from datasets.adapters import AdapterResult, adapter_for
 from datasets.dataset_registry import DatasetInfo
+from datasets.preprocessing import preprocess_content
 from datasets.validation import ValidationResult, validate_dataset
 from integration.observation_to_twin import Observation
 
@@ -40,22 +41,13 @@ class NormalizedDataset:
 def normalize_dataset(dataset: DatasetInfo) -> NormalizedDataset:
     validation: ValidationResult = validate_dataset(dataset)
     if not validation.valid:
-        return NormalizedDataset(
-            dataset.name,
-            dataset.modality,
-            str(dataset.path),
-            (),
-            validation.files,
-            validation.bytes,
-            False,
-            validation.warnings,
-            validation.errors,
-        )
+        return NormalizedDataset(dataset.name, dataset.modality, str(dataset.path), (), validation.files, validation.bytes, False, validation.warnings, validation.errors)
 
-    adapter = adapter_for(dataset.name, Path(dataset.path), dataset.modality)
+    path = Path(dataset.path)
+    adapter = adapter_for(dataset.name, path, dataset.modality)
     result: AdapterResult = adapter.load()
     observations = list(result.observations)
-    # Every normalized dataset exposes the same structural contract.
+    observations.extend(preprocess_content(dataset.name, dataset.modality, path))
     observations.extend([
         Observation(f"dataset.{dataset.name}.file_count", float(result.files), 1.0, dataset.modality),
         Observation(f"dataset.{dataset.name}.byte_count", float(result.bytes), 1.0, dataset.modality),
@@ -63,7 +55,7 @@ def normalize_dataset(dataset: DatasetInfo) -> NormalizedDataset:
     return NormalizedDataset(
         dataset.name,
         dataset.modality,
-        str(dataset.path),
+        str(path),
         tuple(observations),
         result.files,
         result.bytes,
