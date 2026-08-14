@@ -92,23 +92,37 @@ jobs:
 
   frontend:
     name: React install and build
-    if: ${{ hashFiles('frontend/package.json') != '' && hashFiles('frontend/package-lock.json') != '' }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+      - name: Check whether frontend exists
+        id: frontend_check
+        shell: bash
+        run: |
+          if [ -f frontend/package.json ] && [ -f frontend/package-lock.json ]; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=false" >> "$GITHUB_OUTPUT"
+          fi
       - name: Set up Node.js
+        if: steps.frontend_check.outputs.present == 'true'
         uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: npm
           cache-dependency-path: frontend/package-lock.json
       - name: Install frontend dependencies
+        if: steps.frontend_check.outputs.present == 'true'
         working-directory: frontend
         run: npm ci
       - name: Build React application
+        if: steps.frontend_check.outputs.present == 'true'
         working-directory: frontend
         run: npm run build
+      - name: Frontend not present yet
+        if: steps.frontend_check.outputs.present == 'false'
+        run: echo "React frontend is not present in this branch; frontend build skipped."
 
   integration:
     name: Full project CI gate
@@ -120,5 +134,5 @@ jobs:
         run: |
           test "${{ needs.backend.result }}" = "success"
           test "${{ needs.api.result }}" = "success"
-          if [ "${{ needs.frontend.result }}" != "success" ] && [ "${{ needs.frontend.result }}" != "skipped" ]; then exit 1; fi
-          echo "Backend and FastAPI checks passed; frontend is passed or not yet present."
+          test "${{ needs.frontend.result }}" = "success"
+          echo "Backend, FastAPI and frontend jobs completed successfully."
