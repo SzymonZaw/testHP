@@ -46,11 +46,12 @@ def _anomaly_and_longitudinal(observations: list[Any]) -> tuple[dict[str, Any], 
 
 
 def run_datasets(dataset_names: list[str] | None = None) -> dict[str, Any]:
-    """Execute stages 1-10 using only data actually present in data/raw.
+    """Run the real data pipeline and report limitations instead of masking them.
 
-    An empty default selection is a valid pipeline smoke run: it exercises every
-    stage without inventing biological observations. Explicitly requested datasets
-    remain strict and report missing/invalid sources as blocked.
+    An empty dataset selection is a valid execution/diagnostic run, but it is not
+    reported as successful analysis. No biological observations are fabricated.
+    Explicitly requested datasets remain strict and report missing/invalid sources
+    as ``blocked``.
     """
     registry = create_default_registry()
     available = {item.name: item for item in registry.all()}
@@ -90,21 +91,27 @@ def run_datasets(dataset_names: list[str] | None = None) -> dict[str, Any]:
     evaluation = evaluate_pipeline(observations=observations, modalities=list(fusion.modalities), warnings=list(fusion.warnings)).to_dict()
     decision = make_pipeline_decision(evaluation=evaluation, quality=float(quality["mean_quality"]), temporal_values=None)
 
+    has_observations = bool(observations)
+    analytical_status = "completed" if has_observations else "insufficient_data"
+    overall_status = "completed" if has_observations else "insufficient_data"
+    limitation = None if has_observations else "No biological observations were available; execution was completed, but analytical conclusions cannot be made."
+
     result = {
-        "status": "completed",
+        "status": overall_status,
         "selected": selected,
         "missing": [],
         "invalid": [],
+        "limitations": [limitation] if limitation else [],
         "stages": [
             {"stage": 1, "name": "ingestion_validation", "status": "completed"},
             {"stage": 2, "name": "normalization_preprocessing", "status": "completed"},
             {"stage": 3, "name": "multimodal_fusion", "status": "completed"},
-            {"stage": 4, "name": "quality_uncertainty", "status": "completed", "summary": quality},
-            {"stage": 5, "name": "hierarchical_biological_state", "status": "completed", "summary": hierarchy},
-            {"stage": 6, "name": "digital_biological_twin", "status": "completed", "summary": {"subject_id": twin.subject_id, "snapshots": len(twin.history())}},
-            {"stage": 7, "name": "anomaly_longitudinal_analysis", "status": "completed", "anomaly": anomaly, "longitudinal": longitudinal},
-            {"stage": 8, "name": "pipeline_evaluation", "status": "completed", "summary": evaluation},
-            {"stage": 9, "name": "decision_support", "status": "completed", "summary": decision},
+            {"stage": 4, "name": "quality_uncertainty", "status": analytical_status, "summary": quality, "reason": limitation},
+            {"stage": 5, "name": "hierarchical_biological_state", "status": analytical_status, "summary": hierarchy, "reason": limitation},
+            {"stage": 6, "name": "digital_biological_twin", "status": analytical_status, "summary": {"subject_id": twin.subject_id, "snapshots": len(twin.history())}, "reason": limitation},
+            {"stage": 7, "name": "anomaly_longitudinal_analysis", "status": "completed" if has_observations else "insufficient_data", "anomaly": anomaly, "longitudinal": longitudinal, "reason": longitudinal["note"]},
+            {"stage": 8, "name": "pipeline_evaluation", "status": analytical_status, "summary": evaluation, "reason": limitation},
+            {"stage": 9, "name": "decision_support", "status": analytical_status, "summary": decision, "reason": limitation},
         ],
         "datasets": [{"name": item.dataset, "path": item.source_path, "modality": item.modality, "files": item.files, "bytes": item.bytes, "observations": len(item.observations), "warnings": list(item.warnings), "status": "ok"} for item in normalized.values()],
         "fusion": {"datasets": list(fusion.datasets), "modalities": list(fusion.modalities), "linked_subjects": fusion.linked_subjects, "warnings": list(fusion.warnings), "observation_count": len(fusion.observations)},
