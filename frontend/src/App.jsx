@@ -1,0 +1,1 @@
+export default function App(){return (<div><h1>Human Pathology Platform</h1><p>Dashboard coming soon</p></div>)}
