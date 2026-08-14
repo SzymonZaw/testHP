@@ -6,17 +6,11 @@ from pathlib import Path
 
 from integration.observation_to_twin import Observation
 
-
 IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".bmp"}
 
 
 def preprocess_content(dataset: str, modality: str, path: Path) -> tuple[Observation, ...]:
-    """Extract deterministic, non-ML content facts from files.
-
-    This deliberately avoids loading large WSI/RNA binary objects into memory.
-    It gives downstream code real content-derived observations rather than only
-    filesystem metadata.
-    """
+    """Extract deterministic, non-ML content facts without loading huge files."""
     observations: list[Observation] = []
     if modality == "image":
         images = [p for p in path.rglob("*") if p.is_file() and p.suffix.lower() in IMAGE_EXTENSIONS]
