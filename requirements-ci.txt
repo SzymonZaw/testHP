@@ -1,0 +1,10 @@
+# Minimal deterministic dependencies for GitHub Actions.
+# Heavy ML/WSI packages remain in requirements.txt and are not required
+# for the repository's unit/integration smoke tests.
+numpy>=1.26,<3
+pytest>=8,<9
+Pillow>=10,<12
+PyYAML>=6,<7
+fastapi>=0.115,<1
+uvicorn[standard]>=0.30,<1
+httpx>=0.27,<1
