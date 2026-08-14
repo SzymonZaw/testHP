@@ -46,12 +46,11 @@ def _anomaly_and_longitudinal(observations: list[Any]) -> tuple[dict[str, Any], 
 
 
 def run_datasets(dataset_names: list[str] | None = None) -> dict[str, Any]:
-    """Execute stages 1-10 using only data actually present and non-empty in data/raw.
+    """Execute stages 1-10 using only data actually present in data/raw.
 
-    Dataset sources are optional inputs. A default run therefore skips registered
-    directories that exist but contain no data instead of blocking the entire
-    engineering pipeline. Explicitly requested dataset names remain strict and
-    report missing/invalid sources as blocked.
+    An empty default selection is a valid pipeline smoke run: it exercises every
+    stage without inventing biological observations. Explicitly requested datasets
+    remain strict and report missing/invalid sources as blocked.
     """
     registry = create_default_registry()
     available = {item.name: item for item in registry.all()}
@@ -63,9 +62,6 @@ def run_datasets(dataset_names: list[str] | None = None) -> dict[str, Any]:
         invalid = [name for name in selected if name in available and not available[name].has_data()]
         datasets = [available[name] for name in selected if name in available and available[name].has_data()]
     else:
-        # Default/demo execution must remain usable when raw data is absent from
-        # the repository or is mounted later by the user. Empty sources are not
-        # evidence and therefore are simply not ingested.
         datasets = [item for item in available.values() if item.has_data()]
         selected = sorted(item.name for item in datasets)
         missing = []
