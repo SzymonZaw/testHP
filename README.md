@@ -74,6 +74,22 @@ The exact set of modules may evolve as the research architecture develops. The R
 
 ---
 
+## Python version
+
+The project targets **CPython 3.14** for local development and CI.
+
+PyTorch 2.10 or newer is required by the current dependency set because Python 3.14 support was added in the PyTorch 2.10 release line. citeturn0search1
+
+Check your interpreter before installing dependencies:
+
+```powershell
+python --version
+```
+
+It should report Python 3.14.x.
+
+---
+
 ## Raw data
 
 Large datasets belong under:
@@ -90,34 +106,42 @@ Typical supported source families include image, WSI, RNA and hand/pose data. Th
 
 ---
 
-## Running the backend locally
+## Running locally
 
-Python 3.11 is the recommended development version.
-
-Create/activate a virtual environment and install dependencies:
-
-```bash
-python -m venv .venv
-```
-
-Windows PowerShell:
+Create a Python 3.14 virtual environment and install dependencies:
 
 ```powershell
+py -3.14 -m venv .venv
 .venv\Scripts\Activate.ps1
-pip install -r requirements.txt
+python -m pip install --upgrade pip
+python -m pip install -r requirements.txt
 ```
 
-Linux/macOS:
+Then verify the interpreter and core dependencies:
 
-```bash
-source .venv/bin/activate
-pip install -r requirements.txt
+```powershell
+python --version
+python -c "import torch; print(torch.__version__)"
 ```
 
-Start FastAPI from the repository root:
+Run the complete Python test suite from the repository root:
 
-```bash
-uvicorn backend.main:app --reload
+```powershell
+python -m pytest -q
+```
+
+Run the demonstration/integration script:
+
+```powershell
+python scripts/run_demo.py
+```
+
+### FastAPI
+
+If the `backend/` package is present in your checkout, start the API from the repository root with:
+
+```powershell
+python -m uvicorn backend.main:app --reload
 ```
 
 The API is then available at:
@@ -198,6 +222,8 @@ Frontend build (when the frontend package is present)
      ↓
 CI gate
 ```
+
+CI runs the Python jobs on **CPython 3.14** and uses the same full dependency set from `requirements-ci.txt` for backend and API validation.
 
 CI also runs on pushes to `main` and `agent/**` branches and on pull requests targeting `main`.
 
