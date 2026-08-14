@@ -6,6 +6,8 @@ header { display: flex; justify-content: space-between; align-items: flex-start;
 h1 { margin: 0; font-size: 38px; letter-spacing: -.03em; }
 h2 { margin: 0; font-size: 20px; }
 .muted, small { color: #687588; }
+.muted { line-height: 1.5; }
+code { padding: 2px 5px; border-radius: 5px; background: #eef1f5; }
 .badge { padding: 7px 12px; border-radius: 999px; background: #e7ebf0; font-size: 13px; font-weight: 700; }
 .badge.ok { background: #dff5e8; color: #167043; }
 .cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-bottom: 20px; }
@@ -14,12 +16,21 @@ h2 { margin: 0; font-size: 20px; }
 .card span { color: #637083; font-size: 13px; }
 .card strong { font-size: 24px; }
 .card small { line-height: 1.4; }
-.panel { padding: 22px; }
-.panel-title { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; }
-.panel-title span { font-size: 12px; color: #637083; }
+.panel { padding: 22px; margin-bottom: 20px; }
+.panel-title { display: flex; justify-content: space-between; align-items: center; gap: 16px; margin-bottom: 14px; }
+.panel-title > span { font-size: 12px; color: #637083; }
+.actions { display: flex; gap: 8px; }
+button { border: 1px solid #d5dce5; border-radius: 9px; padding: 9px 13px; background: white; color: #243044; font: inherit; font-weight: 650; cursor: pointer; }
+button:hover:not(:disabled) { background: #f3f6f9; }
+button.primary { border-color: #243044; background: #243044; color: white; }
+button:disabled { opacity: .5; cursor: not-allowed; }
 .dataset-list { border-top: 1px solid #e8ecf1; }
 .dataset { display: flex; justify-content: space-between; align-items: center; gap: 16px; padding: 15px 4px; border-bottom: 1px solid #e8ecf1; }
 .dataset div { display: flex; flex-direction: column; gap: 5px; }
 .dataset > span { color: #637083; font-size: 13px; }
+.dataset input { width: 18px; height: 18px; }
+.result-box { margin-top: 16px; padding: 15px; border: 1px solid #dfe6ee; border-radius: 10px; display: flex; flex-direction: column; gap: 6px; }
+.success { color: #167043 !important; font-weight: 700; }
+.error-text { color: #9d3030 !important; font-weight: 700; }
 .error { margin-bottom: 18px; padding: 13px 16px; border-radius: 10px; background: #fff0f0; color: #9d3030; }
-@media (max-width: 800px) { .cards { grid-template-columns: 1fr; } header { flex-direction: column; } }
+@media (max-width: 800px) { .cards { grid-template-columns: 1fr; } header { flex-direction: column; } .panel-title { align-items: flex-start; flex-direction: column; } }
