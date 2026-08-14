@@ -1,151 +1,96 @@
-# decision/confidence.py
-
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Dict, Optional
 
 
 @dataclass
-class ConfidenceResult:
-    """
-    Wynik oceny wiarygodności predykcji/decyzji.
-    """
+class SafetyResult:
+    """Result of the research decision safety gate."""
 
-    score: float
-    level: str
-    components: Dict[str, float]
-    explanation: str
+    allowed: bool
+    risk_level: str
+    warnings: list[str]
+    reasons: list[str]
 
 
-class ConfidenceEstimator:
-    """
-    Agreguje różne źródła niepewności.
-
-    Confidence nie jest prawdopodobieństwem medycznym.
-    Jest wewnętrzną miarą jakości/pewności systemu.
-    """
+class SafetyRules:
+    """Conservative safety gate for research-level decision support."""
 
     def __init__(
         self,
-        model_weight: float = 0.40,
-        data_weight: float = 0.20,
-        temporal_weight: float = 0.15,
-        consistency_weight: float = 0.15,
-        completeness_weight: float = 0.10,
-    ):
-        weights = {
-            "model": model_weight,
-            "data": data_weight,
-            "temporal": temporal_weight,
-            "consistency": consistency_weight,
-            "completeness": completeness_weight,
-        }
-
-        total = sum(weights.values())
-
-        if total <= 0:
-            raise ValueError("Sum of confidence weights must be > 0.")
-
-        self.weights = {
-            key: value / total
-            for key, value in weights.items()
-        }
+        minimum_confidence: float = 0.50,
+        high_risk_threshold: float = 0.85,
+        moderate_risk_threshold: float = 0.65,
+        high_abnormality_threshold: float = 0.85,
+    ) -> None:
+        self.minimum_confidence = float(minimum_confidence)
+        self.high_risk_threshold = float(high_risk_threshold)
+        self.moderate_risk_threshold = float(moderate_risk_threshold)
+        self.high_abnormality_threshold = float(high_abnormality_threshold)
 
     @staticmethod
     def _clip(value: float) -> float:
         return max(0.0, min(1.0, float(value)))
 
-    def calculate(
+    def evaluate(
         self,
-        model_confidence: float,
-        data_quality: float = 1.0,
-        temporal_consistency: float = 1.0,
-        multimodal_consistency: float = 1.0,
-        data_completeness: float = 1.0,
-    ) -> ConfidenceResult:
+        confidence: float,
+        risk_score: float = 0.0,
+        data_complete: bool = True,
+        multimodal_consistent: bool = True,
+        temporal_data_available: bool = True,
+        abnormality_score: float = 0.0,
+    ) -> SafetyResult:
+        confidence = self._clip(confidence)
+        risk_score = self._clip(risk_score)
+        abnormality_score = self._clip(abnormality_score)
 
-        components = {
-            "model": self._clip(model_confidence),
-            "data": self._clip(data_quality),
-            "temporal": self._clip(temporal_consistency),
-            "consistency": self._clip(multimodal_consistency),
-            "completeness": self._clip(data_completeness),
-        }
+        warnings: list[str] = []
+        reasons: list[str] = []
+        allowed = True
 
-        score = sum(
-            components[key] * self.weights[key]
-            for key in components
-        )
+        if confidence < self.minimum_confidence:
+            allowed = False
+            warnings.append("insufficient_confidence")
+            reasons.append("Confidence is below the safety threshold.")
 
-        if score >= 0.85:
-            level = "high"
-        elif score >= 0.65:
-            level = "moderate"
-        elif score >= 0.40:
-            level = "low"
+        if not data_complete:
+            allowed = False
+            warnings.append("incomplete_data")
+            reasons.append("Required data are incomplete.")
+
+        if not multimodal_consistent:
+            allowed = False
+            warnings.append("multimodal_inconsistency")
+            reasons.append("Available modalities are inconsistent.")
+
+        if not temporal_data_available:
+            warnings.append("no_longitudinal_data")
+            reasons.append("No longitudinal evidence is available.")
+
+        combined_signal = max(risk_score, abnormality_score)
+        if combined_signal >= self.high_risk_threshold:
+            risk_level = "high"
+        elif combined_signal >= self.moderate_risk_threshold:
+            risk_level = "moderate"
+        elif combined_signal > 0.0:
+            risk_level = "low"
         else:
-            level = "very_low"
+            risk_level = "unknown"
 
-        explanation = (
-            f"Overall confidence={score:.3f}; "
-            f"level={level}."
+        if abnormality_score >= self.high_abnormality_threshold:
+            warnings.append("high_abnormality_signal")
+            reasons.append("A high abnormality signal requires additional review.")
+
+        if not reasons:
+            reasons.append("No safety rule was triggered by the supplied evidence.")
+
+        return SafetyResult(
+            allowed=allowed,
+            risk_level=risk_level,
+            warnings=warnings,
+            reasons=reasons,
         )
 
-        return ConfidenceResult(
-            score=float(score),
-            level=level,
-            components=components,
-            explanation=explanation,
-        )
 
-
-def confidence_from_probability(
-    probability: float,
-    distance_from_uncertainty: bool = True,
-) -> float:
-    """
-    Zamienia prawdopodobieństwo klasy na prostą miarę confidence.
-
-    Dla klasyfikacji binarnej:
-        p=0.5 -> confidence=0
-        p=0.9 -> confidence=0.8
-        p=0.99 -> confidence=0.98
-    """
-
-    p = max(0.0, min(1.0, float(probability)))
-
-    if distance_from_uncertainty:
-        return min(1.0, 2.0 * abs(p - 0.5))
-
-    return p
-
-
-def confidence_from_margin(
-    margin: float,
-) -> float:
-    """
-    Confidence na podstawie marginesu między klasami.
-
-    Przykład:
-        margin=0.0 -> 0
-        margin=0.5 -> 0.5
-        margin=1.0 -> 1
-    """
-
-    return max(0.0, min(1.0, abs(float(margin))))
-
-
-if __name__ == "__main__":
-    estimator = ConfidenceEstimator()
-
-    result = estimator.calculate(
-        model_confidence=0.91,
-        data_quality=0.88,
-        temporal_consistency=0.80,
-        multimodal_consistency=0.92,
-        data_completeness=0.95,
-    )
-
-    print("Confidence result:")
-    print(result)
+__all__ = ["SafetyRules", "SafetyResult"]
