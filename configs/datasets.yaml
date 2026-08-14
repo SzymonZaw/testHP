@@ -1,19 +1,14 @@
 # ============================================================
 # DATASETS CONFIGURATION
-# Doktorat_Kod
+# The configuration describes ONLY datasets currently available
+# in data/raw. Missing future datasets must not block the project.
 # ============================================================
 
 datasets:
 
-  # ----------------------------------------------------------
-  # General paths
-  # ----------------------------------------------------------
-
   paths:
-
     raw:
       root: "data/raw"
-
       images: "data/raw/images"
       wsi: "data/raw/wsi"
       rna: "data/raw/rna"
@@ -21,7 +16,6 @@ datasets:
 
     processed:
       root: "data/processed"
-
       images: "data/processed/images"
       cells: "data/processed/cells"
       rna: "data/processed/rna"
@@ -29,270 +23,167 @@ datasets:
 
     longitudinal:
       root: "data/longitudinal"
-
       T0: "data/longitudinal/T0"
       T1: "data/longitudinal/T1"
       T2: "data/longitudinal/T2"
       T3: "data/longitudinal/T3"
 
   # ----------------------------------------------------------
-  # Own cohort
+  # Actual image datasets
   # ----------------------------------------------------------
+  images:
 
-  own_cohort:
-
-    enabled: true
-
-    root: "data/raw"
-
-    images:
-      path: "data/raw/images"
-      recursive: true
-
-      extensions:
-        - ".jpg"
-        - ".jpeg"
-        - ".png"
-        - ".tif"
-        - ".tiff"
-        - ".bmp"
-
-    wsi:
-      path: "data/raw/wsi"
-      recursive: true
-
-      extensions:
-        - ".svs"
-        - ".ndpi"
-        - ".mrxs"
-        - ".tif"
-        - ".tiff"
-
-    rna:
-      path: "data/raw/rna"
-      recursive: true
-
-      extensions:
-        - ".h5ad"
-        - ".csv"
-        - ".tsv"
-        - ".mtx"
-
-    hand:
-      path: "data/raw/hand"
-
-      recursive: true
-
-      extensions:
-        - ".jpg"
-        - ".jpeg"
-        - ".png"
-
-  # ----------------------------------------------------------
-  # Human Cell Atlas
-  # ----------------------------------------------------------
-
-  human_cell_atlas:
-
-    enabled: true
-
-    name: "Human Cell Atlas"
-
-    local_path: "data/raw/rna/human_cell_atlas"
-
-    modality: "single_cell_rna"
-
-    file_format: "h5ad"
-
-    download: false
-
-    preprocessing:
-
-      normalize: true
-
-      log1p: true
-
-      highly_variable_genes: true
-
-      n_top_genes: 2000
-
-      pca_components: 50
-
-  # ----------------------------------------------------------
-  # Human Skin Atlas
-  # ----------------------------------------------------------
-
-  human_skin_atlas:
-
-    enabled: true
-
-    name: "Human Skin Atlas"
-
-    local_path: "data/raw/rna/human_skin_atlas"
-
-    modality: "single_cell_rna"
-
-    file_format: "h5ad"
-
-    download: false
-
-    preprocessing:
-
-      normalize: true
-
-      log1p: true
-
-      highly_variable_genes: true
-
-      n_top_genes: 2000
-
-      pca_components: 50
-
-  # ----------------------------------------------------------
-  # GEO
-  # ----------------------------------------------------------
-
-  geo:
-
-    enabled: true
-
-    cache_dir: "data/raw/rna/geo"
-
-    download: false
-
-    organisms:
-
-      - "Homo sapiens"
-
-    preferred_formats:
-
-      - "h5ad"
-      - "csv"
-      - "tsv"
-
-  # ----------------------------------------------------------
-  # TCGA
-  # ----------------------------------------------------------
-
-  tcga:
-
-    enabled: true
-
-    root: "data/raw/rna/tcga"
-
-    download: false
-
-    cancer_types:
-
-      - "SKCM"
-
-    modalities:
-
-      expression: true
-      clinical: true
-      mutation: false
-
-  # ----------------------------------------------------------
-  # Hand datasets
-  # ----------------------------------------------------------
-
-  hand_datasets:
-
-    interhand2_6m:
-
+    aging_skin:
       enabled: true
+      path: "data/raw/images/aging_skin"
+      recursive: true
+      formats: [".jpg", ".jpeg", ".png", ".tif", ".tiff", ".bmp"]
+      task: "skin aging"
 
+    normal_skin:
+      enabled: true
+      path: "data/raw/images/normal_skin"
+      recursive: true
+      formats: [".jpg", ".jpeg", ".png", ".tif", ".tiff", ".bmp"]
+      task: "normal skin reference"
+
+    skin_lesions_dataset:
+      enabled: true
+      path: "data/raw/images/lesions/skin_lesions_dataset"
+      recursive: true
+      formats: [".jpg", ".jpeg", ".png", ".tif", ".tiff", ".bmp"]
+      task: "skin lesion analysis"
+
+    ISIC:
+      enabled: true
+      path: "data/raw/images/lesions/ISIC"
+      recursive: true
+      formats: [".jpg", ".jpeg", ".png"]
+      metadata: "data/raw/images/lesions/ISIC/metadata.csv"
+      task: "dermatology lesion analysis"
+
+    SCIN:
+      enabled: true
+      path: "data/raw/images/pathology/scin"
+      recursive: true
+      formats: [".jpg", ".jpeg", ".png", ".webp"]
+      task: "dermatology image analysis"
+
+  # ----------------------------------------------------------
+  # Actual WSI / pathology data
+  # ----------------------------------------------------------
+  wsi:
+
+    TCGA-SKCM:
+      enabled: true
+      path: "data/raw/wsi/melanoma/TCGA-SKCM"
+      recursive: true
+      formats: [".dcm", ".svs", ".ndpi", ".mrxs", ".tif", ".tiff"]
+      task: "melanoma pathology"
+
+    aging:
+      enabled: false
+      path: "data/raw/wsi/aging"
+      reason: "Directory exists but currently contains no WSI files."
+
+    bcc:
+      enabled: false
+      path: "data/raw/wsi/bcc"
+      reason: "Directory exists but currently contains no WSI files."
+
+    normal_spatial_skin_atlas:
+      enabled: false
+      path: "data/raw/wsi/normal/spatial_skin_atlas"
+      reason: "Directory currently contains metadata only, not a WSI file."
+
+  # ----------------------------------------------------------
+  # Actual RNA data
+  # ----------------------------------------------------------
+  rna:
+
+    GSE130973:
+      enabled: true
+      path: "data/raw/rna/GSE130973"
+      recursive: true
+      formats: [".gz", ".mtx", ".tsv", ".csv", ".h5", ".h5ad"]
+      source_type: "GEO"
+
+    GSE226189:
+      enabled: true
+      path: "data/raw/rna/GSE226189"
+      recursive: true
+      formats: [".gz", ".txt", ".tsv", ".csv"]
+      source_type: "GEO"
+
+    GSE281449:
+      enabled: true
+      path: "data/raw/rna/GSE281449"
+      recursive: true
+      formats: [".gz", ".tar", ".txt", ".tsv", ".csv"]
+      source_type: "GEO"
+
+    spatial_skin_atlas:
+      enabled: true
+      path: "data/raw/rna/spatial_skin_atlas"
+      recursive: true
+      formats: [".tsv", ".csv", ".h5", ".h5ad"]
+      source_type: "GDC / transcriptomics"
+
+  # ----------------------------------------------------------
+  # Hand data
+  # ----------------------------------------------------------
+  hand:
+
+    InterHand2_6M:
+      enabled: true
       root: "data/raw/hand/InterHand2_6M"
-
       images: "data/raw/hand/InterHand2_6M/images"
-
-      annotations: "data/raw/hand/InterHand2_6M/annotations"
-
-      use_for_training: true
+      annotations: "data/raw/hand/InterHand2_6M/images"
+      recursive: true
+      image_formats: [".jpg", ".jpeg", ".png"]
+      annotation_formats: [".json"]
+      task: "3D hand pose"
 
     media:
-
-      enabled: true
-
-      root: "data/raw/hand/media"
-
-      use_for_training: false
+      enabled: false
+      path: "data/raw/hand/media"
+      reason: "Current repository copies are empty placeholder video files."
 
     own_cohort:
-
       enabled: true
-
-      root: "data/raw/hand/own_cohort"
-
-      use_for_training: true
+      path: "data/raw/hand/own_cohort"
+      recursive: true
+      formats: [".jpg", ".jpeg", ".png"]
+      task: "own hand cohort"
 
   # ----------------------------------------------------------
-  # Dataset split
+  # Splitting and longitudinal processing
   # ----------------------------------------------------------
-
   split:
-
     train: 0.70
-
     validation: 0.15
-
     test: 0.15
-
     random_seed: 42
-
     stratify: true
-
     patient_level: true
 
-  # ----------------------------------------------------------
-  # Longitudinal data
-  # ----------------------------------------------------------
-
   longitudinal:
-
     enabled: true
-
-    timepoints:
-
-      - "T0"
-      - "T1"
-      - "T2"
-      - "T3"
-
+    timepoints: ["T0", "T1", "T2", "T3"]
     require_all_timepoints: false
-
     patient_level_alignment: true
-
     missing_value_strategy: "mask"
 
-  # ----------------------------------------------------------
-  # Data quality
-  # ----------------------------------------------------------
-
   quality_control:
-
     check_duplicates: true
-
     check_missing_values: true
-
     check_corrupted_files: true
-
     check_image_dimensions: true
-
     check_patient_ids: true
-
     check_longitudinal_consistency: true
 
-  # ----------------------------------------------------------
-  # Privacy
-  # ----------------------------------------------------------
-
   privacy:
-
     remove_metadata: true
-
     anonymize_patient_ids: true
-
     store_original_identifiers: false
-
     export_phi: false
