@@ -1,8 +1,7 @@
-"""Conservative multimodal fusion for normalized dataset observations.
+"""Multimodal fusion of normalized observations.
 
-Fusion here is dataset-level unless an explicit subject/sample identifier is
-present. It deliberately does not manufacture patient-level links between
-independent public datasets.
+Fusion combines the actual observations produced by dataset adapters. It keeps
+provenance at modality/dataset level and never invents subject-level links.
 """
 from __future__ import annotations
 
@@ -33,14 +32,21 @@ def fuse(normalized: Iterable[NormalizedDataset]) -> FusionResult:
     for item in sources:
         by_modality[item.modality].append(item)
 
+    # Preserve the real normalized measurements. Dataset-qualified feature names
+    # prevent unrelated datasets from silently overwriting one another.
     fused: list[Observation] = []
+    for item in sources:
+        fused.extend(item.observations)
+
     for modality, items in sorted(by_modality.items()):
         counts = [float(item.files) for item in items]
         sizes = [float(item.bytes) for item in items]
-        fused.append(Observation(f"fusion.{modality}.dataset_count", float(len(items)), 1.0, modality))
-        fused.append(Observation(f"fusion.{modality}.file_count_total", sum(counts), 1.0, modality))
-        fused.append(Observation(f"fusion.{modality}.byte_count_total", sum(sizes), 1.0, modality))
-        fused.append(Observation(f"fusion.{modality}.mean_files_per_dataset", mean(counts), 1.0, modality))
+        fused.extend([
+            Observation(f"fusion.{modality}.dataset_count", float(len(items)), 1.0, modality),
+            Observation(f"fusion.{modality}.file_count_total", sum(counts), 1.0, modality),
+            Observation(f"fusion.{modality}.byte_count_total", sum(sizes), 1.0, modality),
+            Observation(f"fusion.{modality}.mean_files_per_dataset", mean(counts), 1.0, modality),
+        ])
 
     modalities = tuple(sorted(by_modality))
     datasets = tuple(item.dataset for item in sources)
