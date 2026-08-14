@@ -6,12 +6,13 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
 from backend.pipeline import build_pipeline
+from backend.service import run_datasets
 from datasets.dataset_registry import create_default_registry
 
 ROOT = Path(__file__).resolve().parents[1]
 RAW_DIR = ROOT / "data" / "raw"
 
-app = FastAPI(title="Human Pathology Platform", version="0.2.0")
+app = FastAPI(title="Human Pathology Platform", version="0.3.0")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
@@ -86,11 +87,20 @@ def datasets() -> dict[str, Any]:
 
 @app.get("/api/pipeline")
 def pipeline() -> dict[str, Any]:
-    """Return a dry-run plan for all datasets currently available."""
     return build_pipeline()
 
 
 @app.post("/api/pipeline/validate")
 def validate_pipeline(request: PipelineRequest) -> dict[str, Any]:
-    """Validate a user-selected set without modifying or processing raw data."""
     return build_pipeline(request.datasets or None)
+
+
+@app.post("/api/run")
+def run_pipeline(request: PipelineRequest) -> dict[str, Any]:
+    """Execute the current, non-destructive ingestion smoke path.
+
+    Source-specific biological inference is intentionally not claimed here until
+    a modality adapter/model is available. The endpoint does execute the real
+    filesystem ingestion and observation -> digital-twin integration path.
+    """
+    return run_datasets(request.datasets or None)
