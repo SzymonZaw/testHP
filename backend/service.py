@@ -48,17 +48,17 @@ def _anomaly_and_longitudinal(observations: list[Any]) -> tuple[dict[str, Any], 
 def run_datasets(dataset_names: list[str] | None = None) -> dict[str, Any]:
     """Run the real data pipeline and report limitations instead of masking them.
 
-    An empty dataset selection is a valid execution/diagnostic run, but it is not
-    reported as successful analysis. No biological observations are fabricated.
+    ``None`` means "use the default registry selection". An explicit empty list
+    means "run with no datasets" and therefore produces ``insufficient_data``.
     Explicitly requested datasets remain strict and report missing/invalid sources
-    as ``blocked``.
+    as ``blocked``. No biological observations are fabricated.
     """
     registry = create_default_registry()
     available = {item.name: item for item in registry.all()}
-    explicit_selection = bool(dataset_names)
+    explicit_selection = dataset_names is not None
 
     if explicit_selection:
-        selected = list(dataset_names or [])
+        selected = list(dataset_names)
         missing = [name for name in selected if name not in available]
         invalid = [name for name in selected if name in available and not available[name].has_data()]
         datasets = [available[name] for name in selected if name in available and available[name].has_data()]
