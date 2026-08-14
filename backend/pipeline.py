@@ -20,17 +20,18 @@ def build_pipeline(dataset_names: list[str] | None = None) -> dict[str, Any]:
 
     missing = [name for name in selected if name not in available]
     invalid = [name for name in selected if name in available and not available[name].has_data()]
+    ready = not missing and not invalid
 
     steps: list[PipelineStep] = [
-        PipelineStep("ingestion", "Read datasets from data/raw", "ok" if not missing and not invalid else "blocked"),
-        PipelineStep("normalization", "Convert source-specific records into project observations", "planned"),
+        PipelineStep("ingestion", "Read datasets from data/raw", "ok" if ready else "blocked"),
+        PipelineStep("normalization", "Use the dataset adapter to convert source files into project observations", "ok" if ready else "blocked"),
         PipelineStep("multimodal_fusion", "Combine compatible observations across modalities", "planned"),
         PipelineStep("analysis", "Run the selected biological/pathology analyses", "planned"),
         PipelineStep("evaluation", "Produce quality, uncertainty and evaluation outputs", "planned"),
     ]
 
     return {
-        "valid": not missing and not invalid,
+        "valid": ready,
         "selected": selected,
         "available": sorted(available),
         "missing": missing,
