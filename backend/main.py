@@ -3,11 +3,15 @@ from typing import Any
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel, Field
+
+from backend.pipeline import build_pipeline
+from datasets.dataset_registry import create_default_registry
 
 ROOT = Path(__file__).resolve().parents[1]
 RAW_DIR = ROOT / "data" / "raw"
 
-app = FastAPI(title="Human Pathology Platform", version="0.1.0")
+app = FastAPI(title="Human Pathology Platform", version="0.2.0")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
@@ -15,6 +19,10 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+class PipelineRequest(BaseModel):
+    datasets: list[str] = Field(default_factory=list)
 
 
 def _scan_directory(path: Path) -> dict[str, Any]:
@@ -41,16 +49,48 @@ def health() -> dict[str, str]:
 
 @app.get("/api/status")
 def status() -> dict[str, Any]:
-    return {"status": "ready", "raw_data": RAW_DIR.exists(), "raw_path": str(RAW_DIR)}
+    registry = create_default_registry()
+    return {
+        "status": "ready",
+        "raw_data": RAW_DIR.exists(),
+        "raw_path": str(RAW_DIR),
+        "registered_datasets": len(registry.all()),
+    }
 
 
 @app.get("/api/datasets")
 def datasets() -> dict[str, Any]:
-    """Discover the actual contents of data/raw instead of requiring a fixed dataset list."""
+    """Return both the physical raw tree and the project's dataset registry."""
     if not RAW_DIR.exists():
-        return {"raw_exists": False, "datasets": []}
+        return {"raw_exists": False, "datasets": [], "registry": []}
+
     result = []
     for category in sorted(RAW_DIR.iterdir(), key=lambda p: p.name.lower()):
         if category.is_dir():
             result.append({"name": category.name, **_scan_directory(category)})
-    return {"raw_exists": True, "datasets": result}
+
+    registry = create_default_registry()
+    registry_data = []
+    for item in registry.all():
+        info = item.validate()
+        info.update({
+            "modality": item.modality,
+            "description": item.description,
+            "task": item.task,
+            "tags": item.tags,
+        })
+        registry_data.append(info)
+
+    return {"raw_exists": True, "datasets": result, "registry": registry_data}
+
+
+@app.get("/api/pipeline")
+def pipeline() -> dict[str, Any]:
+    """Return a dry-run plan for all datasets currently available."""
+    return build_pipeline()
+
+
+@app.post("/api/pipeline/validate")
+def validate_pipeline(request: PipelineRequest) -> dict[str, Any]:
+    """Validate a user-selected set without modifying or processing raw data."""
+    return build_pipeline(request.datasets or None)
