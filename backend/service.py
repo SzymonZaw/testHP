@@ -36,7 +36,7 @@ def _build_hierarchy(observations: list[Any]) -> dict[str, Any]:
 def _anomaly_and_longitudinal(observations: list[Any]) -> tuple[dict[str, Any], dict[str, Any]]:
     evidence = [AnomalyEvidence(item.feature, float(item.value), float(item.value), 1.0, float(item.quality_score), item.modality) for item in observations]
     anomaly_results = AdvancedAnomalyDetector(minimum_quality=0.5).assess(evidence)
-    anomaly = {"results": [result.__dict__ for result in anomaly_results], "insufficient_evidence": any(result.insufficient_evidence for result in anomaly_results), "note": "No abnormality is inferred from a single ingestion run; reference/baseline evidence is required."}
+    anomaly = {"results": [result.__dict__ for result in anomaly_results], "insufficient_evidence": any(result.insufficient_evidence for result in anomaly_results) or not observations, "note": "No abnormality is inferred from a single ingestion run; reference/baseline evidence is required."}
     grouped: dict[str, list[LongitudinalPoint]] = {}
     for item in observations:
         grouped.setdefault(item.feature, []).append(LongitudinalPoint("web-run-1", 1.0, float(item.value), float(item.quality_score)))
@@ -46,16 +46,39 @@ def _anomaly_and_longitudinal(observations: list[Any]) -> tuple[dict[str, Any], 
 
 
 def run_datasets(dataset_names: list[str] | None = None) -> dict[str, Any]:
-    """Execute stages 1-10 on the data actually available in data/raw."""
+    """Execute stages 1-10 using only data actually present and non-empty in data/raw.
+
+    Dataset sources are optional inputs. A default run therefore skips registered
+    directories that exist but contain no data instead of blocking the entire
+    engineering pipeline. Explicitly requested dataset names remain strict and
+    report missing/invalid sources as blocked.
+    """
     registry = create_default_registry()
     available = {item.name: item for item in registry.all()}
-    selected = dataset_names or sorted(available)
-    missing = [name for name in selected if name not in available]
-    datasets = [available[name] for name in selected if name in available]
-    normalized = {item.name: normalize_dataset(item) for item in datasets}
-    invalid = [name for name, item in normalized.items() if not item.valid]
+    explicit_selection = bool(dataset_names)
+
+    if explicit_selection:
+        selected = list(dataset_names or [])
+        missing = [name for name in selected if name not in available]
+        invalid = [name for name in selected if name in available and not available[name].has_data()]
+        datasets = [available[name] for name in selected if name in available and available[name].has_data()]
+    else:
+        # Default/demo execution must remain usable when raw data is absent from
+        # the repository or is mounted later by the user. Empty sources are not
+        # evidence and therefore are simply not ingested.
+        datasets = [item for item in available.values() if item.has_data()]
+        selected = sorted(item.name for item in datasets)
+        missing = []
+        invalid = []
+
     if missing or invalid:
         return {"status": "blocked", "selected": selected, "missing": missing, "invalid": invalid, "datasets": [], "stages": [], "fusion": None, "snapshot": None}
+
+    normalized = {item.name: normalize_dataset(item) for item in datasets}
+    invalid_normalized = [name for name, item in normalized.items() if not item.valid]
+    if invalid_normalized and explicit_selection:
+        return {"status": "blocked", "selected": selected, "missing": [], "invalid": invalid_normalized, "datasets": [], "stages": [], "fusion": None, "snapshot": None}
+    normalized = {name: item for name, item in normalized.items() if item.valid}
 
     fusion = fuse(normalized.values())
     observations = [observation for item in normalized.values() for observation in item.observations]
