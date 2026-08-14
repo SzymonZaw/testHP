@@ -1,0 +1,1 @@
+Pliki typu train-00000-of-00026.parquet, train-00001-of-00026.parquet
