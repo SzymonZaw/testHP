@@ -1,12 +1,51 @@
 # testHP
 
-## Biological Monitoring & Longevity Research Platform
+## Human Pathology Platform — research prototype
 
-`testHP` is a research-oriented platform for building a **multimodal, longitudinal model of human biological state**. The long-term vision is to monitor the organism at multiple biological levels, detect abnormalities and ageing-related changes, understand how they evolve, and eventually evaluate interventions that preserve or restore biological function.
+`testHP` is a research-oriented platform for building a multimodal, longitudinal model of human biological state. The long-term vision is to monitor the organism at multiple biological levels, detect abnormalities and ageing-related changes, understand how they evolve, and eventually evaluate interventions that preserve or restore biological function.
 
 > **Vision:** treat the human body as a dynamic biological system rather than reducing health to one score or one diagnosis.
 
-The long-term ambition includes research into exceptionally long healthy lifespans, potentially including a 200-year human lifespan. This is a research vision, not a current capability or medical claim.
+The software is a research prototype and is not a diagnostic or autonomous clinical decision system.
+
+---
+
+## User-facing platform
+
+The repository now includes a lightweight browser dashboard in `web/` and a FastAPI service in `backend/app.py`.
+
+The dashboard is designed for a **research user**, rather than only a developer. It presents:
+
+- what datasets entered the run,
+- which modalities are represented,
+- how many supported files were found,
+- a visual pipeline from **Input → Ingestion → Validation → Normalization → Multimodal Fusion → Research View**,
+- dataset-level warnings and unavailable inputs,
+- an evidence boundary and next research action,
+- an interactive dataset explorer.
+
+Large local datasets do not need to be committed to GitHub. The application reads the local `data/raw` tree at runtime and reports missing or unavailable datasets explicitly. This is especially important for datasets such as **SCIN**, where repository metadata can be present without the full image collection.
+
+### Start the dashboard
+
+From the repository root:
+
+```bash
+pip install -r requirements.txt
+uvicorn backend.app:app --reload
+```
+
+Then open:
+
+```text
+http://127.0.0.1:8000/
+```
+
+Developer documentation remains available at `/docs`.
+
+### Evidence boundary
+
+The dashboard deliberately does **not** turn file presence into a medical conclusion. It currently reports dataset-level evidence and pipeline readiness. Subject-level multimodal links are only counted when an explicit shared identifier exists. Biological inference should be added only when the corresponding modality adapter/model and validation evidence are available.
 
 ---
 
@@ -29,6 +68,9 @@ intervention/  efficacy/safety surveillance
 planning/      additional measurement planning
 validation/    validation metrics and prospective research
 audit/         evidence-linked decision records
+visualization/ research visualization primitives
+backend/       user-facing API and pipeline dashboard
+web/           user-facing browser dashboard
 tests/         automated tests for implemented components
 ```
 
@@ -203,7 +245,7 @@ The long-term objective is an evolving computational representation of an indivi
                        uncertainty
 ```
 
-Stage 25 now provides the observation-to-snapshot ingestion path. A complete predictive or mechanistic digital twin is **not yet implemented**.
+Stage 25 provides the observation-to-snapshot ingestion path. A complete predictive or mechanistic digital twin is **not yet implemented**.
 
 ---
 
@@ -270,7 +312,7 @@ The current decision layer is research-level decision support, not an autonomous
 
 ## Future roadmap — Stage 31+
 
-The first 30 architectural stages are now represented in the repository. The next phase should prioritize **correctness, execution, reproducibility, data governance and scientific testing** rather than simply adding more scores.
+The first 30 architectural stages are represented in the repository. The next phase should prioritize **correctness, execution, reproducibility, data governance and scientific testing** rather than simply adding more scores.
 
 ### Stage 31 — End-to-end integration tests
 
