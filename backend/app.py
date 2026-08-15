@@ -10,25 +10,55 @@ from statistics import mean, pstdev
 from typing import Any
 
 import yaml
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
+
+from .hand_longitudinal import (
+    HandObservation,
+    build_hand_snapshot,
+    compare_numeric_observations,
+    make_observation,
+    rank_zones_by_change,
+)
 
 ROOT = Path(__file__).resolve().parents[1]
 RAW_ROOT = ROOT / "data" / "raw"
 CONFIG_PATH = ROOT / "configs" / "datasets.yaml"
 WEB_ROOT = ROOT / "web"
+LONGITUDINAL_PATH = ROOT / "data" / "longitudinal" / "hand_observations.jsonl"
 
 IMAGE_FORMATS = {".jpg", ".jpeg", ".png", ".webp", ".tif", ".tiff", ".bmp"}
 WSI_FORMATS = {".dcm", ".svs", ".ndpi", ".mrxs", ".tif", ".tiff"}
 RNA_FORMATS = {".gz", ".mtx", ".tsv", ".csv", ".txt", ".h5", ".h5ad", ".tar"}
 
-app = FastAPI(title="Human Pathology Platform", version="0.6.0")
+app = FastAPI(title="Human Pathology Platform", version="0.7.0")
 
 
 class PipelineRequest(BaseModel):
     datasets: list[str] = []
+
+
+class HandObservationRequest(BaseModel):
+    subject_id: str
+    session_id: str
+    timepoint: str
+    hand_id: str
+    laterality: str = "unknown"
+    zone: str
+    observation_type: str
+    metric: str
+    value: float | int | str | None
+    unit: str | None = None
+    source_file: str | None = None
+    confidence: float | None = None
+    notes: str | None = None
+
+
+class HandComparisonRequest(BaseModel):
+    baseline: list[HandObservationRequest]
+    current: list[HandObservationRequest]
 
 
 def load_config() -> dict[str, Any]:
@@ -101,21 +131,17 @@ def image_dimensions(path: Path) -> tuple[int, int] | None:
 
 
 def image_content_stats(path: Path) -> dict[str, Any]:
-    """Compute actual raster statistics without retaining the image in memory."""
     try:
         from PIL import Image, ImageStat
         with Image.open(path) as image:
             image = image.convert("RGB")
             stat = ImageStat.Stat(image)
-            pixels = image.width * image.height
-            means = [round(float(x), 4) for x in stat.mean]
-            stds = [round(float(x), 4) for x in stat.stddev]
             return {
                 "width": image.width,
                 "height": image.height,
-                "pixels": pixels,
-                "mean_rgb": means,
-                "std_rgb": stds,
+                "pixels": image.width * image.height,
+                "mean_rgb": [round(float(x), 4) for x in stat.mean],
+                "std_rgb": [round(float(x), 4) for x in stat.stddev],
             }
     except Exception:
         return {}
@@ -135,8 +161,7 @@ def text_preview(path: Path, limit: int = 20000) -> str:
 def tabular_stats(path: Path) -> dict[str, Any]:
     if path.suffix.lower() not in {".csv", ".tsv", ".txt", ".gz"}:
         return {}
-    sample = text_preview(path)
-    lines = [line for line in sample.splitlines() if line.strip()]
+    lines = [line for line in text_preview(path).splitlines() if line.strip()]
     if not lines:
         return {}
     delimiter = "\t" if "\t" in lines[0] else "," if "," in lines[0] else None
@@ -189,7 +214,6 @@ def json_annotation_stats(path: Path) -> dict[str, Any]:
 
 
 def wsi_stats(path: Path) -> dict[str, Any]:
-    """Read metadata only when a real DICOM file is available."""
     if path.suffix.lower() != ".dcm":
         return {}
     try:
@@ -199,9 +223,7 @@ def wsi_stats(path: Path) -> dict[str, Any]:
         rows = getattr(ds, "Rows", None)
         columns = getattr(ds, "Columns", None)
         if rows and columns:
-            result["rows"] = int(rows)
-            result["columns"] = int(columns)
-            result["pixels"] = int(rows) * int(columns)
+            result.update({"rows": int(rows), "columns": int(columns), "pixels": int(rows) * int(columns)})
         spacing = getattr(ds, "PixelSpacing", None)
         if spacing and len(spacing) >= 2:
             result["pixel_spacing_mm"] = [float(spacing[0]), float(spacing[1])]
@@ -219,92 +241,51 @@ def analyze_dataset(modality: str, files: list[Path]) -> dict[str, Any]:
         if dimensions:
             widths = [d[0] for _, d in dimensions]
             heights = [d[1] for _, d in dimensions]
-            result["image_dimensions"] = {
-                "measured": len(dimensions),
-                "min_width": min(widths),
-                "max_width": max(widths),
-                "min_height": min(heights),
-                "max_height": max(heights),
-            }
-            result["observations"].append(
-                f"Measured dimensions for {len(dimensions)} image file(s); width range {min(widths)}–{max(widths)} px and height range {min(heights)}–{max(heights)} px."
-            )
+            result["image_dimensions"] = {"measured": len(dimensions), "min_width": min(widths), "max_width": max(widths), "min_height": min(heights), "max_height": max(heights)}
+            result["observations"].append(f"Measured dimensions for {len(dimensions)} image file(s); width range {min(widths)}–{max(widths)} px and height range {min(heights)}–{max(heights)} px.")
         content = [image_content_stats(p) for p in image_files]
         content = [x for x in content if x]
         if content:
             mean_rgb = [round(mean(x["mean_rgb"][i] for x in content), 4) for i in range(3)]
-            result["raster_statistics"] = {
-                "files": len(content),
-                "mean_rgb": mean_rgb,
-                "mean_brightness": round(mean(sum(x["mean_rgb"]) / 3 for x in content), 4),
-                "mean_pixels": round(mean(x["pixels"] for x in content), 2),
-            }
-            result["observations"].append(
-                f"Computed raster statistics for {len(content)} readable image file(s); mean RGB={mean_rgb} and mean brightness={result['raster_statistics']['mean_brightness']:.4f}/255."
-            )
+            brightness = round(mean(sum(x["mean_rgb"]) / 3 for x in content), 4)
+            result["raster_statistics"] = {"files": len(content), "mean_rgb": mean_rgb, "mean_brightness": brightness, "mean_pixels": round(mean(x["pixels"] for x in content), 2)}
+            result["observations"].append(f"Computed raster statistics for {len(content)} readable image file(s); mean RGB={mean_rgb} and mean brightness={brightness:.4f}/255.")
         if modality == "hand":
             json_files = [p for p in files if p.suffix.lower() == ".json"]
             stats = [json_annotation_stats(p) for p in json_files]
             valid_json = [s for s in stats if s.get("json_valid")]
-            result["annotations"] = {
-                "files": len(json_files),
-                "valid_json": len(valid_json),
-                "nodes": sum(s.get("json_nodes", 0) for s in valid_json),
-            }
+            nodes = sum(s.get("json_nodes", 0) for s in valid_json)
+            result["annotations"] = {"files": len(json_files), "valid_json": len(valid_json), "nodes": nodes}
             if valid_json:
-                result["observations"].append(
-                    f"Parsed {len(valid_json)} JSON annotation file(s) containing {sum(s.get('json_nodes', 0) for s in valid_json)} structured nodes."
-                )
+                result["observations"].append(f"Parsed {len(valid_json)} JSON annotation file(s) containing {nodes} structured nodes.")
     elif modality == "rna":
         supported = [p for p in files if p.suffix.lower() in RNA_FORMATS]
-        tabular = [tabular_stats(p) for p in supported]
-        tabular = [s for s in tabular if s]
+        tabular = [s for s in (tabular_stats(p) for p in supported) if s]
         result["tabular_files"] = len(tabular)
         result["sample_rows"] = sum(s.get("sample_rows", 0) for s in tabular)
         result["numeric_values"] = sum(s.get("numeric_values", 0) for s in tabular)
         result["max_columns"] = max((s.get("columns", 0) for s in tabular), default=0)
         result["binary_files"] = sum(1 for p in supported if p.suffix.lower() in {".h5", ".h5ad", ".mtx", ".tar"})
         if tabular:
-            result["observations"].append(
-                f"Parsed {len(tabular)} text/tabular file(s); counted {result['sample_rows']} data rows and {result['numeric_values']} finite numeric values in the inspected content."
-            )
+            result["observations"].append(f"Parsed {len(tabular)} text/tabular file(s); counted {result['sample_rows']} data rows and {result['numeric_values']} finite numeric values in the inspected content.")
             numeric_stats = [s for s in tabular if "numeric_mean" in s]
             if numeric_stats:
-                values = []
-                for s in numeric_stats:
-                    values.extend([s["numeric_min"], s["numeric_max"]])
-                result["numeric_summary"] = {
-                    "files_with_numeric_data": len(numeric_stats),
-                    "observed_min": min(values),
-                    "observed_max": max(values),
-                }
-                result["observations"].append(
-                    f"Observed numeric values range from {result['numeric_summary']['observed_min']} to {result['numeric_summary']['observed_max']} in the inspected tabular content."
-                )
+                values = [v for s in numeric_stats for v in (s["numeric_min"], s["numeric_max"])]
+                result["numeric_summary"] = {"files_with_numeric_data": len(numeric_stats), "observed_min": min(values), "observed_max": max(values)}
+                result["observations"].append(f"Observed numeric values range from {result['numeric_summary']['observed_min']} to {result['numeric_summary']['observed_max']} in the inspected tabular content.")
         if result["binary_files"] and not tabular:
-            result["observations"].append(
-                "Binary RNA files are present, but no expression values are reported because the current lightweight reader does not parse their internal matrix structure."
-            )
+            result["observations"].append("Binary RNA files are present, but no expression values are reported because the current lightweight reader does not parse their internal matrix structure.")
     elif modality == "wsi":
         supported = [p for p in files if p.suffix.lower() in WSI_FORMATS]
         sizes = [p.stat().st_size for p in supported]
         result["total_mb"] = round(sum(sizes) / 1024**2, 2)
         result["formats"] = sorted({p.suffix.lower().lstrip(".") for p in supported})
-        dicom = [wsi_stats(p) for p in supported if p.suffix.lower() == ".dcm"]
-        dicom = [x for x in dicom if x]
+        dicom = [x for x in (wsi_stats(p) for p in supported if p.suffix.lower() == ".dcm") if x]
         if supported:
-            result["observations"].append(
-                f"Found {len(supported)} pathology file(s) across {', '.join(result['formats'])} format(s), totaling {result['total_mb']} MB."
-            )
+            result["observations"].append(f"Found {len(supported)} pathology file(s) across {', '.join(result['formats'])} format(s), totaling {result['total_mb']} MB.")
         if dicom:
             result["dicom_metadata"] = dicom
-            result["observations"].append(
-                f"Read metadata from {len(dicom)} DICOM file(s) without loading pixel data."
-            )
-        elif supported and result["formats"] == ["dcm"]:
-            result["observations"].append(
-                "DICOM files are present, but no readable image dimensions were exposed by the metadata reader."
-            )
+            result["observations"].append(f"Read metadata from {len(dicom)} DICOM file(s) without loading pixel data.")
     return result
 
 
@@ -349,14 +330,8 @@ def build_findings(datasets: list[dict[str, Any]]) -> list[dict[str, Any]]:
     for dataset in datasets:
         if not dataset["available"]:
             continue
-        analysis = dataset.get("analysis", {})
-        for observation in analysis.get("observations", []):
-            findings.append({
-                "dataset": dataset["name"],
-                "modality": dataset["modality"],
-                "type": "measured",
-                "text": observation,
-            })
+        for observation in dataset.get("analysis", {}).get("observations", []):
+            findings.append({"dataset": dataset["name"], "modality": dataset["modality"], "type": "measured", "text": observation})
     return findings
 
 
@@ -379,23 +354,32 @@ def run_pipeline(selected: list[str]) -> dict[str, Any]:
         {"id": "fusion", "name": "Multimodal fusion", "purpose": "Aggregate dataset-level evidence without inventing subject links", "status": "ok" if usable_items else "warning"},
         {"id": "results", "name": "Research view", "purpose": "Present measured evidence, coverage and limitations", "status": "ok" if usable_items else "warning"},
     ]
-    findings = build_findings(usable_items)
-    return {
-        "status": "ready" if usable_items and not missing else "warning",
-        "selected": chosen,
-        "missing": missing,
-        "datasets": list(validations.values()),
-        "steps": steps,
-        "summary": {"datasets": len(usable_items), "files": total_files, "bytes": total_bytes, "modalities": modalities, "linked_subjects": 0},
-        "warnings": warnings + (["Subject-level links are not inferred without a shared identifier."] if usable_items else []),
-        "results": {
-            "evidence_level": "dataset-level measured evidence",
-            "biological_inference": "Measured input characteristics are available; biological conclusions are not inferred.",
-            "next_action": "Review the measured observations below. A biological result is shown only after a validated modality-specific analysis is implemented and executed.",
-            "findings": findings,
-            "biological_results": [],
-        },
-    }
+    return {"status": "ready" if usable_items and not missing else "warning", "selected": chosen, "missing": missing, "datasets": list(validations.values()), "steps": steps, "summary": {"datasets": len(usable_items), "files": total_files, "bytes": total_bytes, "modalities": modalities, "linked_subjects": 0}, "warnings": warnings + (["Subject-level links are not inferred without a shared identifier."] if usable_items else []), "results": {"evidence_level": "dataset-level measured evidence", "biological_inference": "Measured input characteristics are available; biological conclusions are not inferred.", "next_action": "Review the measured observations below. A biological result is shown only after a validated modality-specific analysis is implemented and executed.", "findings": build_findings(usable_items), "biological_results": []}}
+
+
+def request_to_observation(request: HandObservationRequest) -> HandObservation:
+    return make_observation(**request.model_dump())
+
+
+def read_hand_observations() -> list[HandObservation]:
+    if not LONGITUDINAL_PATH.exists():
+        return []
+    observations: list[HandObservation] = []
+    with LONGITUDINAL_PATH.open("r", encoding="utf-8") as handle:
+        for line in handle:
+            if not line.strip():
+                continue
+            try:
+                observations.append(HandObservation(**json.loads(line)))
+            except (TypeError, ValueError, json.JSONDecodeError):
+                continue
+    return observations
+
+
+def persist_hand_observation(observation: HandObservation) -> None:
+    LONGITUDINAL_PATH.parent.mkdir(parents=True, exist_ok=True)
+    with LONGITUDINAL_PATH.open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps(observation.to_dict(), ensure_ascii=False) + "\n")
 
 
 @app.get("/api/health")
@@ -406,13 +390,7 @@ def health():
 @app.get("/api/status")
 def status():
     registry = dataset_registry()
-    return {
-        "status": "ready",
-        "raw_data": RAW_ROOT.exists(),
-        "registered_datasets": len(registry),
-        "available_datasets": sum(1 for x in registry if x["available"]),
-        "modalities": sorted({x["modality"] for x in registry}),
-    }
+    return {"status": "ready", "raw_data": RAW_ROOT.exists(), "registered_datasets": len(registry), "available_datasets": sum(1 for x in registry if x["available"]), "modalities": sorted({x["modality"] for x in registry})}
 
 
 @app.get("/api/datasets")
@@ -433,6 +411,41 @@ def validate(request: PipelineRequest):
 @app.post("/api/run")
 def run(request: PipelineRequest):
     return run_pipeline(request.datasets)
+
+
+@app.post("/api/hand/observations")
+def add_hand_observation(request: HandObservationRequest):
+    observation = request_to_observation(request)
+    persist_hand_observation(observation)
+    return {"status": "recorded", "observation": observation.to_dict(), "evidence_boundary": "observation only; no diagnosis inferred"}
+
+
+@app.get("/api/hand/subjects/{subject_id}")
+def hand_subject(subject_id: str):
+    observations = [x for x in read_hand_observations() if x.subject_id == subject_id]
+    if not observations:
+        raise HTTPException(status_code=404, detail="No longitudinal hand observations for this subject")
+    grouped: dict[tuple[str, str], list[HandObservation]] = {}
+    for observation in observations:
+        grouped.setdefault((observation.session_id, observation.timepoint), []).append(observation)
+    timepoints = [
+        build_hand_snapshot(subject_id, session_id, timepoint, items)
+        for (session_id, timepoint), items in sorted(grouped.items(), key=lambda item: item[0][1])
+    ]
+    return {"subject_id": subject_id, "timepoints": timepoints, "evidence_boundary": "observations only; no diagnosis inferred"}
+
+
+@app.post("/api/hand/compare")
+def compare_hand(request: HandComparisonRequest):
+    baseline = [request_to_observation(x) for x in request.baseline]
+    current = [request_to_observation(x) for x in request.current]
+    changes = compare_numeric_observations(baseline, current)
+    return {"changes": changes, "priority_zones": rank_zones_by_change(changes), "evidence_boundary": "measured change only; interpretation and diagnosis are separate layers"}
+
+
+@app.get("/api/hand/schema")
+def hand_schema():
+    return {"subject": ["subject_id", "session_id", "timepoint"], "hand": ["hand_id", "laterality"], "zones": ["wrist", "palm", "thumb", "index", "middle", "ring", "little"], "observation_types": ["geometry", "landmark_quality", "image_quality", "appearance", "motion", "depth", "microstructure", "cellular", "molecular"], "evidence_levels": ["observed", "observed_change"], "interpretation": None}
 
 
 if WEB_ROOT.exists():
