@@ -1,0 +1,19 @@
+{
+  "version": "1.0",
+  "modality": "rna",
+  "biological_level": "molecular_transcriptomic",
+  "sources": ["GSE130973", "GSE226189", "GSE281449", "spatial_skin_atlas"],
+  "levels": [
+    {"id":"input","result_type":"observation","examples":["format","file_size","readability","metadata","file_count"]},
+    {"id":"sample","result_type":"observation","examples":["sample_id","subject_id","specimen_id","group","batch","anatomical_site"]},
+    {"id":"matrix","result_type":"measurement","examples":["features","samples","sparsity","numeric_distribution","units"]},
+    {"id":"expression","result_type":"measurement","examples":["counts","normalized_expression","log_expression"]},
+    {"id":"comparison","result_type":"derived_feature","examples":["effect_size","differential_expression","confidence_interval"]},
+    {"id":"pathway","result_type":"derived_feature","examples":["gene_set_activity","pathway_enrichment"]},
+    {"id":"ageing","result_type":"interpretation","requirements":["validated_ageing_endpoint","appropriate_reference","documented_preprocessing"]},
+    {"id":"disease","result_type":"interpretation","requirements":["validated_disease_endpoint","appropriate_reference","documented_preprocessing"]},
+    {"id":"spatial_link","result_type":"explicit_relationship","requirements":["sample_or_specimen_identifier_or_validated_spatial_mapping"]},
+    {"id":"longitudinal","result_type":"observed_change_or_derived_trend","requirements":["same_explicit_subject","comparable_assay","multiple_timepoints"]}
+  ],
+  "never_infer": ["disease_from_row_counts","ageing_from_numeric_range","cell_age_without_validated_endpoint","wsi_link_from_dataset_name","subject_link_from_filename_only"]
+}
