@@ -21,32 +21,34 @@
       <div>
         <span class="eyebrow">RUN OVERVIEW</span>
         <h2>See what entered the platform, how it was processed, and what can responsibly be reported.</h2>
-        <p>The research view distinguishes available data from processing state and biological inference. Missing or unsupported data is presented as a limitation, never silently turned into a result.</p>
+        <p>The research view separates observed data, processing state and interpretation. Every result below is tied to the evidence available in the current run.</p>
       </div>
       <button id="run-button">Run research pipeline</button>
     </section>
 
     <section class="metrics" id="metrics">
       <div class="metric card"><span>Datasets</span><strong id="metric-datasets">—</strong><small>included in the run</small></div>
-      <div class="metric card"><span>Files</span><strong id="metric-files">—</strong><small>supported input files</small></div>
+      <div class="metric card"><span>Files</span><strong id="metric-files">—</strong><small>processed input files</small></div>
       <div class="metric card"><span>Modalities</span><strong id="metric-modalities">—</strong><small>represented in the run</small></div>
       <div class="metric card"><span>Subject links</span><strong id="metric-links">0</strong><small>explicit links only</small></div>
     </section>
 
     <section class="card">
-      <div class="section-head"><div><span class="eyebrow">PIPELINE</span><h2>What happened?</h2></div><span id="run-status" class="badge neutral">Not run</span></div>
+      <div class="section-head"><div><span class="eyebrow">PIPELINE</span><h2>What happened?</h2><p class="section-note">Select a stage to see what the platform did and what evidence it produced.</p></div><span id="run-status" class="badge neutral">Not run</span></div>
       <div id="pipeline" class="pipeline"></div>
+      <div id="stage-detail" class="stage-detail empty">Run the pipeline, then select a stage above to inspect its result.</div>
     </section>
 
     <section class="card output-card">
       <div class="section-head">
-        <div><span class="eyebrow">OUTPUT</span><h2>Research output</h2><p class="section-note">A transparent summary of the evidence produced by this run.</p></div>
+        <div><span class="eyebrow">OUTPUT</span><h2>Research output</h2><p class="section-note">What this run can actually support right now.</p></div>
         <span id="output-level" class="badge neutral">Awaiting run</span>
       </div>
       <div id="output-summary" class="output-summary">
-        <div class="output-empty"><strong>No research output yet.</strong><p>Run the pipeline to generate a coverage summary, evidence boundary, modality readiness and limitations.</p></div>
+        <div class="output-empty"><strong>No research output yet.</strong><p>Run the pipeline to generate evidence coverage, processing results and explicit limitations.</p></div>
       </div>
       <div id="modality-results" class="result-grid"></div>
+      <div id="research-findings" class="findings"></div>
     </section>
 
     <section class="grid-2">
