@@ -1,0 +1,34 @@
+{
+  "version": "1.0",
+  "modality": "wsi",
+  "role": "tissue_and_microscopic_evidence_layer",
+  "current_groups": ["aging", "bcc", "melanoma", "normal"],
+  "populated_current_source": {
+    "dataset": "TCGA-SKCM",
+    "path": "data/raw/wsi/melanoma/TCGA-SKCM/tcga_skcm",
+    "dcm_files": 3,
+    "supporting_files": ["IDC manifest", "info.txt"],
+    "current_role": "DICOM discovery and metadata/tile handling test source"
+  },
+  "levels": [
+    {"id":"acquisition","examples":["DICOM validity","metadata","dimensions","matrix","resolution","provenance"]},
+    {"id":"tissue","examples":["tissue coverage","architecture","compartments","staining","morphology","candidate ROI"]},
+    {"id":"cell","examples":["cell count","nuclear morphology","cell size","spatial neighbourhoods"]},
+    {"id":"molecular","examples":["only when molecular evidence is explicitly linked to the sample"]},
+    {"id":"longitudinal","examples":["same subject/sample series across comparable timepoints"]}
+  ],
+  "engineering_ladder": [
+    "file_validation",
+    "metadata_extraction",
+    "pixel_or_tile_availability",
+    "tissue_segmentation",
+    "multiscale_tiling",
+    "tissue_compartments",
+    "cell_nuclei_segmentation",
+    "cell_morphology",
+    "validated_pathology_or_ageing_models",
+    "subject_region_linkage",
+    "multimodal_integration"
+  ],
+  "never_infer": ["folder_name_to_diagnosis","public_dataset_to_personal_subject","morphology_without_validation_to_disease","missing_slide_to_normal_state"]
+}
