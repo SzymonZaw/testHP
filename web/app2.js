@@ -7,7 +7,7 @@ const stageInfo = {
   validation: ['Validation', 'Check formats, empty files and whether each dataset has usable local input.'],
   normalization: ['Normalization', 'Represent supported sources in a common observation-oriented form.'],
   fusion: ['Multimodal fusion', 'Combine dataset-level evidence while keeping subject-level links explicit.'],
-  results: ['Research view', 'Present coverage, evidence boundaries and limitations for this run.']
+  results: ['Research view', 'Present measured evidence, coverage and limitations for this run.']
 };
 
 function esc(value) { return String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
@@ -47,7 +47,7 @@ function stageResult(stage) {
     case 'validation': return { title: 'What was checked', stats: [['Datasets checked', datasets.length], ['Validation warnings', warnings], ['Datasets without usable input', unavailable]], note: warnings ? 'Warnings are retained as limitations; they are not converted into positive findings.' : 'No validation warnings were produced for the selected datasets.' };
     case 'normalization': return { title: 'What was normalized', stats: [['Supported files entering normalization', supported], ['Datasets represented', usable]], note: supported ? 'Supported inputs are represented as common observations for downstream research processing.' : 'Normalization has no usable local input to process.' };
     case 'fusion': return { title: 'What was combined', stats: [['Modalities available', modalityCount], ['Subject links', 0], ['Datasets contributing usable input', usable]], note: 'Evidence is aggregated at dataset level. Subject relationships are not invented when a shared identifier is unavailable.' };
-    case 'results': return { title: 'What can be reported', stats: [['Usable datasets', usable], ['Datasets with warnings', datasets.filter(d => (d.warnings || []).length).length], ['Datasets without usable input', unavailable]], note: 'This run reports data coverage and processing evidence. It does not claim a biological or clinical conclusion.' };
+    case 'results': return { title: 'What can be reported', stats: [['Usable datasets', usable], ['Datasets with warnings', datasets.filter(d => (d.warnings || []).length).length], ['Datasets without usable input', unavailable]], note: 'The run reports measured input characteristics and processing evidence. It does not claim a biological or clinical conclusion.' };
     default: return { title: 'Stage result', stats: [], note: 'No additional user-facing summary is available for this stage.' };
   }
 }
@@ -70,11 +70,12 @@ function renderPipeline(stages) {
 
 function renderStageDetail(stage) {
   const detail = $('stage-detail');
-  if (!stage) { detail.className = 'stage-detail empty'; detail.textContent = 'Run the pipeline, then select a stage above to inspect its result.'; return; }
+  if (!stage) { detail.className = 'stage-detail empty'; detail.textContent = 'Select a stage above to inspect the measured result produced at that point.'; return; }
   const info = stageInfo[stage.name] || [pretty(stage.name), stage.purpose || 'Research pipeline stage.'];
   const result = stageResult(stage);
   detail.className = 'stage-detail';
   detail.innerHTML = `<div class="detail-heading"><div><span class="eyebrow">STAGE ${stage.stage}</span><h3>${esc(result.title)}</h3><p>${esc(info[1])}</p></div><span class="status ${statusClass(stage.status)}">${esc(statusLabel(stage.status))}</span></div><div class="detail-stats">${result.stats.map(([label,value]) => `<div><span>${esc(label)}</span><strong>${esc(value)}</strong></div>`).join('')}</div><div class="detail-note"><strong>What this means</strong><p>${esc(result.note)}</p></div>`;
+  document.querySelectorAll('.stage').forEach(b => b.classList.toggle('selected', Number(b.dataset.stage) === stage.stage));
 }
 
 function renderOutput(run) {
@@ -83,13 +84,24 @@ function renderOutput(run) {
   const warningDatasets = datasets.filter(d => (d.warnings || []).length > 0);
   const unavailable = datasets.filter(d => !d.available);
   const completed = run.status === 'ready' || run.status === 'completed';
-  $('output-level').textContent = completed ? (warningDatasets.length || unavailable.length ? 'Evidence assembled with limitations' : 'Evidence assembled') : pretty(run.status || 'Review');
+  $('output-level').textContent = completed ? (warningDatasets.length || unavailable.length ? 'Measured evidence with limitations' : 'Measured evidence assembled') : pretty(run.status || 'Review');
   $('output-level').className = `badge ${completed && !unavailable.length ? 'ok' : 'warning'}`;
   const result = run.results || {};
-  $('output-summary').innerHTML = `<div class="output-hero"><div class="output-check">✓</div><div><strong>${esc(result.biological_inference || 'Dataset-level research evidence only.')}</strong><p>The platform reports what was observed and processed in this run rather than silently converting missing data into a conclusion.</p></div></div><div class="output-kpis"><div><strong>${usable.length}</strong><span>usable datasets</span></div><div><strong>${warningDatasets.length}</strong><span>with warnings</span></div><div><strong>${unavailable.length}</strong><span>without usable input</span></div><div><strong>${run.summary?.linked_subjects ?? 0}</strong><span>subject links</span></div></div><div class="next-step"><span>Recommended next step</span><strong>${esc(result.next_action || 'Review modality coverage and validation warnings before enabling downstream models.')}</strong></div>`;
-  $('research-findings').innerHTML = `<div class="finding"><div><span>Evidence boundary</span><strong>${esc(pretty(result.evidence_level || 'Dataset-level evidence'))}</strong></div><p>Biological conclusions are not inferred by the ingestion dashboard.</p></div><div class="finding"><div><span>Subject-level inference</span><strong>Not established</strong></div><p>No subject relationships are inferred without an explicit shared identifier.</p></div>`;
+  $('output-summary').innerHTML = `<div class="output-hero"><div class="output-check">✓</div><div><strong>${esc(result.biological_inference || 'Measured input characteristics are available.')}</strong><p>The platform now reports measurements derived from the files actually present in the run. These measurements are deliberately separated from biological interpretation.</p></div></div><div class="output-kpis"><div><strong>${usable.length}</strong><span>usable datasets</span></div><div><strong>${warningDatasets.length}</strong><span>with warnings</span></div><div><strong>${unavailable.length}</strong><span>without usable input</span></div><div><strong>${run.summary?.linked_subjects ?? 0}</strong><span>subject links</span></div></div><div class="next-step"><span>Recommended next step</span><strong>${esc(result.next_action || 'Inspect the measured findings, then review validation warnings before enabling downstream models.')}</strong></div>`;
+  renderMeasuredFindings(result.findings || []);
+  $('research-findings').innerHTML = `<div class="finding"><div><span>Evidence boundary</span><strong>${esc(pretty(result.evidence_level || 'Dataset-level measured evidence'))}</strong></div><p>Measurements describe the available input and processing state; they are not biological conclusions.</p></div><div class="finding"><div><span>Subject-level inference</span><strong>Not established</strong></div><p>No subject relationships are inferred without an explicit shared identifier.</p></div>`;
   renderModalityCards(datasets);
   renderLimitations(run);
+}
+
+function renderMeasuredFindings(findings) {
+  const el = $('measurement-results');
+  if (!el) return;
+  if (!findings.length) {
+    el.innerHTML = '<div class="output-empty"><strong>No measured findings were produced from the available files.</strong><p>The input may be present but not yet supported by a modality-specific measurement routine.</p></div>';
+    return;
+  }
+  el.innerHTML = `<div class="measurement-head"><div><span class="eyebrow">MEASURED RESULTS</span><h3>What was actually measured</h3><p>These are computed observations from the current files, not inferred diagnoses or biological claims.</p></div><span class="badge ok">${findings.length} observations</span></div><div class="measurement-list">${findings.map(f => `<article class="measurement"><div class="measurement-meta"><span class="modality-icon">${esc((f.modality || '').slice(0,3).toUpperCase())}</span><div><strong>${esc(f.dataset)}</strong><span>${esc(f.type || 'measured')}</span></div></div><p>${esc(f.text)}</p></article>`).join('')}</div>`;
 }
 
 function renderModalityCards(datasets) {
