@@ -19,8 +19,7 @@ function runRecord(run){
 function saveHistory(run){
   const key='hpp.research.runs';
   const history=JSON.parse(localStorage.getItem(key)||'[]');
-  const record=runRecord(run);
-  history.unshift(record);
+  history.unshift(runRecord(run));
   localStorage.setItem(key,JSON.stringify(history.slice(0,10)));
 }
 function csvCell(v){ const s=String(v??''); return `"${s.replaceAll('"','""')}"`; }
@@ -34,7 +33,6 @@ function exportCSV(){
 }
 function renderMetrics(s={}){ $('metric-datasets').textContent=s.datasets??0; $('metric-files').textContent=s.files??0; $('metric-modalities').textContent=(s.modalities||[]).length; $('metric-links').textContent=s.linked_subjects??0; }
 function renderRunStatus(run){ const s=run?.status||'warning'; $('run-status').textContent=s==='ready'||s==='completed'?'Run complete':s==='warning'?'Run complete with warnings':pretty(s); $('run-status').className=`badge ${statusClass(s)}`; }
-
 function renderPipeline(run){
   const steps=run.steps||[];
   $('pipeline').innerHTML=steps.map((x,i)=>`<button class="stage ${statusClass(x.status)}" data-stage="${i}"><span class="num">${i+1}</span><span class="stage-copy"><strong>${esc(x.name||x.id)}</strong><span>${esc(statusLabel(x.status))}</span><p>${esc(x.purpose||'Pipeline stage.')}</p></span></button>`).join('');
@@ -54,7 +52,6 @@ function renderStageDetail(stage){
   note=id==='validation'&&warnings?'Warnings remain explicit limitations and are never converted into findings.':id==='fusion'?'No subject-level relationship is created without an explicit shared identifier.':'This panel reports processing evidence only; it does not create biological conclusions.';
   d.className='stage-detail'; d.innerHTML=`<div class="detail-heading"><div><span class="eyebrow">PIPELINE STAGE</span><h3>${esc(stage.name||stage.id)}</h3><p>${esc(stage.purpose||'Pipeline stage.')}</p></div><span class="status ${statusClass(stage.status)}">${esc(statusLabel(stage.status))}</span></div><div class="detail-stats">${stats.map(x=>`<div><span>${esc(x[0])}</span><strong>${esc(x[1])}</strong></div>`).join('')}</div><div class="detail-note"><strong>What this means</strong><p>${esc(note)}</p></div>`;
 }
-
 function measurementCards(a){
   const out=[],r=a?.raster_statistics,d=a?.image_dimensions,n=a?.numeric_summary,j=a?.annotations,w=a?.dicom_metadata;
   if(d) out.push(`<div class="measurement-metrics"><div><span>Files measured</span><strong>${esc(d.measured)}</strong></div><div><span>Width</span><strong>${esc(d.min_width)}–${esc(d.max_width)}</strong><small>px</small></div><div><span>Height</span><strong>${esc(d.min_height)}–${esc(d.max_height)}</strong><small>px</small></div></div>`);
@@ -84,13 +81,15 @@ function renderLimitations(run){const w=[...(run.warnings||[]),'Biological concl
 function renderInput(ds){const totals={};ds.filter(d=>d.available).forEach(d=>totals[d.modality]=(totals[d.modality]||0)+(d.supported_files||0));const max=Math.max(1,...Object.values(totals));$('modality-chart').innerHTML=Object.entries(totals).map(([m,v])=>`<div class="bar-row"><strong>${esc(m)}</strong><div class="bar"><i style="width:${Math.round(v/max*100)}%"></i></div><span>${v}</span></div>`).join('')||'<p class="muted">No usable inputs.</p>';$('dataset-list').innerHTML=ds.filter(d=>d.available).map(d=>`<span class="tag">${esc(d.name)}</span>`).join('')||'<span class="muted">No datasets contributed usable local input.</span>';}
 function renderTable(ds){const vis=state.filter==='all'?ds:ds.filter(d=>d.modality===state.filter);$('dataset-table').innerHTML=vis.map(d=>{const t=d.files||0,s=d.supported_files||0,p=t?Math.round(s/t*100):0,st=d.available?(d.warnings?.length?'warning':'ok'):'unavailable';return `<tr><td><strong>${esc(d.name)}</strong></td><td>${esc(d.modality)}</td><td>${esc(d.task)}</td><td>${s} / ${t}</td><td class="coverage"><div class="coverage-bar"><i style="width:${p}%"></i></div></td><td><span class="status ${st}">${d.available?(d.warnings?.length?'Review':'Available'):'Unavailable'}</span></td></tr>`}).join('');}
 function renderFilters(ds){const mods=['all',...new Set(ds.map(d=>d.modality))];$('filter-buttons').innerHTML=mods.map(m=>`<button class="${state.filter===m?'active':''}" data-filter="${esc(m)}">${m==='all'?'All':esc(m)}</button>`).join('');document.querySelectorAll('[data-filter]').forEach(b=>b.onclick=()=>{state.filter=b.dataset.filter;renderFilters(ds);renderTable(ds);});}
-
 function renderVisuals(run){
-  const findings=run.results?.findings||[], groups=groupedFindings(findings,run.datasets||[]);
+  const findings=run.results?.findings||[],groups=groupedFindings(findings,run.datasets||[]);
   const brightness=groups.map(g=>({name:g.dataset,value:g.analysis?.raster_statistics?.mean_brightness})).filter(x=>x.value!=null);
   const numeric=groups.map(g=>({name:g.dataset,value:g.analysis?.numeric_summary?.observed_max})).filter(x=>x.value!=null);
   const data=brightness.length?brightness:numeric;
-  $('visuals').innerHTML=data.length?`<div class="visual-head"><div><span class="eyebrow">REAL-DATA VISUALIZATION</span><h3>${brightness.length?'Mean image brightness by dataset':'Observed numeric maximum by dataset'}</h3><p>Only values returned by the current descriptive analysis are plotted.</p></div><span class="badge ok">${data.length} measured datasets</span></div><div class="chart">${data.map(x=>{const max=Math.max(...data.map(y=>Number(y.value)||0),1);const pct=Math.max(2,Math.round(Number(x.value)/max*100));return `<div class="chart-row"><span title="${esc(x.name)}">${esc(x.name)}</span><div><i style="width:${pct}%"></i></div><strong>${esc(x.value)}</strong></div>`}).join('')}</div>`:'<div class="output-empty"><strong>No plottable measured values are available.</strong><p>The chart is intentionally empty rather than using placeholder data.</p></div>`;
+  const title=brightness.length?'Mean image brightness by dataset':'Observed numeric maximum by dataset';
+  if(!data.length){$('visuals').innerHTML='<div class="output-empty"><strong>No plottable measured values are available.</strong><p>The chart is intentionally empty rather than using placeholder data.</p></div>';return;}
+  const rows=data.map(x=>{const max=Math.max(...data.map(y=>Number(y.value)||0),1);const pct=Math.max(2,Math.round(Number(x.value)/max*100));return '<div class="chart-row"><span title="'+esc(x.name)+'">'+esc(x.name)+'</span><div><i style="width:'+pct+'%"></i></div><strong>'+esc(x.value)+'</strong></div>';}).join('');
+  $('visuals').innerHTML='<div class="visual-head"><div><span class="eyebrow">REAL-DATA VISUALIZATION</span><h3>'+esc(title)+'</h3><p>Only values returned by the current descriptive analysis are plotted.</p></div><span class="badge ok">'+data.length+' measured datasets</span></div><div class="chart">'+rows+'</div>';
 }
 function renderProvenance(run){
   $('provenance').innerHTML=`<div class="provenance-grid"><div><span>Run ID</span><strong>${esc(run.run_id)}</strong></div><div><span>Executed</span><strong>${esc(new Date(run.executed_at).toLocaleString())}</strong></div><div><span>Status</span><strong>${esc(pretty(run.status))}</strong></div><div><span>Datasets selected</span><strong>${esc((run.selected||[]).length)}</strong></div></div><p class="provenance-note">Every displayed measurement is traceable to a dataset and to the analysis object returned by this run. Large raw files are not copied into the repository.</p><div class="export-actions"><button id="export-json">Export run JSON</button><button id="export-csv">Export measured observations CSV</button></div>`;
