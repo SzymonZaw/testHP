@@ -1,0 +1,98 @@
+{
+  "version": "1.0",
+  "modality": "hand",
+  "target_response": "spatially organized evidence map with explicit uncertainty and missing evidence",
+  "source_roles": {
+    "own_cohort": {
+      "role": "personal",
+      "purpose": "personal macroscopic observations and future longitudinal monitoring",
+      "current_evidence": ["RGB hand photographs"],
+      "future_evidence": ["RGB", "depth", "RGB-D", "video", "3D", "microscopy", "WSI", "cellular", "molecular", "numerical", "textual"]
+    },
+    "media": {
+      "role": "personal_dynamic",
+      "purpose": "temporal and functional hand observations",
+      "current_evidence": ["placeholder video files may be empty"],
+      "future_evidence": ["video", "depth video", "temporal sensor streams"]
+    },
+    "InterHand2_6M": {
+      "role": "benchmark",
+      "purpose": "hand pose, landmark, geometry and 3D algorithm development/validation",
+      "personal_subject_link": false
+    }
+  },
+  "levels": [
+    {
+      "id": "acquisition",
+      "name": "Acquisition/input",
+      "examples": ["file integrity", "format", "dimensions", "frame count", "timestamp", "device metadata"],
+      "output_class": "observation"
+    },
+    {
+      "id": "macro",
+      "name": "Macroscopic hand",
+      "examples": ["hand detection", "landmarks", "orientation", "contour", "proportions", "surface colour", "surface texture"],
+      "output_class": "observation_or_feature"
+    },
+    {
+      "id": "region",
+      "name": "Anatomical region",
+      "examples": ["wrist", "palm", "thumb", "index", "middle", "ring", "little", "ROI"],
+      "output_class": "spatial_observation"
+    },
+    {
+      "id": "tissue",
+      "name": "Tissue",
+      "examples": ["architecture", "compartments", "cell density", "tissue morphology"],
+      "required_evidence": ["WSI_or_microscopy_or_equivalent"],
+      "output_class": "measurement_or_validated_interpretation"
+    },
+    {
+      "id": "cell",
+      "name": "Cellular",
+      "examples": ["cell morphology", "cell count", "nuclear features", "damage markers", "senescence markers"],
+      "required_evidence": ["cell_resolution_data_or_validated_cellular_assay"],
+      "output_class": "measurement_or_validated_interpretation"
+    },
+    {
+      "id": "molecular",
+      "name": "Molecular/non-image",
+      "examples": ["RNA expression", "molecular signatures", "biochemical values", "laboratory measurements"],
+      "required_evidence": ["molecular_or_non_image_measurement"],
+      "output_class": "measurement_or_validated_interpretation"
+    },
+    {
+      "id": "longitudinal",
+      "name": "Longitudinal",
+      "examples": ["baseline", "absolute change", "relative change", "rate", "change point", "repeatability"],
+      "required_evidence": ["explicit_subject", "comparable_acquisition", "at_least_two_relevant_timepoints"],
+      "output_class": "observed_change_or_validated_trend"
+    }
+  ],
+  "initial_zones": ["wrist", "palm", "thumb", "index", "middle", "ring", "little"],
+  "evidence_boundary": {
+    "observed": ["measurements directly supported by available input and executed analysis"],
+    "derived_feature": ["validated or deterministic transformation of observations"],
+    "interpretation": ["biological statement requiring validated model/reference/assay"],
+    "never_infer": [
+      "public_dataset_to_personal_subject",
+      "visual_difference_to_disease",
+      "ordinary_rgb_to_cell_age",
+      "technical_detection_confidence_to_disease_risk",
+      "missing_data_to_normal_state"
+    ]
+  },
+  "state_dimensions": [
+    "macroscopic",
+    "functional",
+    "surface",
+    "tissue",
+    "cellular",
+    "molecular",
+    "disease_related",
+    "ageing_related",
+    "longitudinal",
+    "uncertainty",
+    "missing_evidence"
+  ]
+}
