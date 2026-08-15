@@ -178,4 +178,9 @@ async function init() {
   $('run-button').onclick = runPipeline;
 }
 
-init();
+// Start the dashboard after the DOM is ready.
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', init);
+} else {
+  init();
+}
