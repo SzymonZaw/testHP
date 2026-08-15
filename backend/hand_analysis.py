@@ -34,12 +34,7 @@ def _distance(a: Any, b: Any) -> float:
 
 
 def _landmark_dict(lm: Any) -> dict[str, float]:
-    return {
-        "x": round(float(lm.x), 6),
-        "y": round(float(lm.y), 6),
-        "z": round(float(lm.z), 6),
-        "visibility": round(float(getattr(lm, "visibility", 1.0)), 6),
-    }
+    return {"x": round(float(lm.x), 6), "y": round(float(lm.y), 6), "z": round(float(lm.z), 6), "visibility": round(float(getattr(lm, "visibility", 1.0)), 6)}
 
 
 def _zone_confidence(landmarks: list[Any], indices: list[int]) -> float:
@@ -61,13 +56,7 @@ def _image_quality(path: Path) -> dict[str, Any]:
         with Image.open(path) as image:
             rgb = image.convert("RGB")
             stat = ImageStat.Stat(rgb)
-            brightness = sum(stat.mean) / 3.0
-            return {
-                "width": int(rgb.width),
-                "height": int(rgb.height),
-                "mean_brightness": round(float(brightness), 4),
-                "mean_rgb": [round(float(x), 4) for x in stat.mean],
-            }
+            return {"width": int(rgb.width), "height": int(rgb.height), "mean_brightness": round(float(sum(stat.mean) / 3.0), 4), "mean_rgb": [round(float(x), 4) for x in stat.mean]}
     except Exception as exc:
         return {"error": str(exc)}
 
@@ -87,13 +76,7 @@ def _analyze_image(path: Path, hands: Any) -> dict[str, Any]:
         return {"file": path.name, "status": "error", "error": f"Hand model failed: {exc}", "quality": quality}
 
     detected = len(result.multi_hand_landmarks or [])
-    output: dict[str, Any] = {
-        "file": path.name,
-        "status": "ok" if detected else "no_hand_detected",
-        "quality": quality,
-        "hands_detected": detected,
-        "hands": [],
-    }
+    output: dict[str, Any] = {"file": path.name, "status": "ok" if detected else "no_hand_detected", "quality": quality, "hands_detected": detected, "hands": []}
     handedness = result.multi_handedness or []
     world = result.multi_hand_world_landmarks or []
 
@@ -108,8 +91,7 @@ def _analyze_image(path: Path, hands: Any) -> dict[str, Any]:
 
         fingers = {}
         for name, indices in FINGER_PATHS.items():
-            length = sum(_distance(landmarks[a], landmarks[b]) for a, b in zip(indices, indices[1:]))
-            fingers[name] = round(length, 6)
+            fingers[name] = round(sum(_distance(landmarks[a], landmarks[b]) for a, b in zip(indices, indices[1:])), 6)
 
         palm_length = _distance(landmarks[0], landmarks[9])
         palm_width = _distance(landmarks[5], landmarks[17])
@@ -119,13 +101,7 @@ def _analyze_image(path: Path, hands: Any) -> dict[str, Any]:
         zones = []
         for zone, indices in ZONE_LANDMARKS.items():
             confidence = _zone_confidence(landmarks, indices)
-            zones.append({
-                "id": zone,
-                "landmark_count": len(indices),
-                "confidence": confidence,
-                "review_priority": _priority(confidence),
-                "interpretation": "technical visibility/landmark quality only",
-            })
+            zones.append({"id": zone, "landmark_count": len(indices), "confidence": confidence, "review_priority": _priority(confidence), "interpretation": "technical visibility/landmark quality only"})
 
         hand_record: dict[str, Any] = {
             "index": hand_index,
@@ -133,18 +109,9 @@ def _analyze_image(path: Path, hands: Any) -> dict[str, Any]:
             "handedness_confidence": handedness_score,
             "landmark_count": len(landmarks),
             "landmarks_2d": [_landmark_dict(x) for x in landmarks],
-            "geometry_normalized": {
-                "palm_length": round(palm_length, 6),
-                "palm_width": round(palm_width, 6),
-                "hand_span": round(hand_span, 6),
-                "finger_lengths": fingers,
-                "palm_aspect_ratio": round(palm_length / palm_width, 6) if palm_width else None,
-            },
+            "geometry_normalized": {"palm_length": round(palm_length, 6), "palm_width": round(palm_width, 6), "hand_span": round(hand_span, 6), "finger_lengths": fingers, "palm_aspect_ratio": round(palm_length / palm_width, 6) if palm_width else None},
             "zones": zones,
-            "technical_quality": {
-                "mean_landmark_visibility": landmark_visibility,
-                "review_priority": _priority(landmark_visibility),
-            },
+            "technical_quality": {"mean_landmark_visibility": landmark_visibility, "review_priority": _priority(landmark_visibility)},
         }
         if hand_index < len(world):
             hand_record["landmarks_3d_world"] = [_landmark_dict(x) for x in world[hand_index].landmark]
@@ -164,24 +131,23 @@ def _stages(all_hands: bool, detected_images: int, total_images: int) -> list[di
         {"id": "H5", "name": "Digital Twin v0", "purpose": "Create a normalized spatial representation for later evidence.", "status": "completed" if detected else "blocked"},
         {"id": "H6", "name": "Observation mapping", "purpose": "Attach measured geometry and quality to hand regions.", "status": "completed" if detected else "blocked"},
         {"id": "H7", "name": "ROI / attention", "purpose": "Identify regions needing technical review before deeper analysis.", "status": "completed" if detected else "blocked"},
+        {"id": "H8", "name": "Evidence boundary", "purpose": "Separate measured observations from future biological interpretation.", "status": "completed" if detected else "blocked"},
     ]
 
 
+def _zone_summary(zones: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    grouped: dict[str, list[float]] = {}
+    for zone in zones:
+        grouped.setdefault(str(zone.get("id")), []).append(float(zone.get("confidence", 0.0)))
+    summary = []
+    for zone_id, values in grouped.items():
+        confidence = round(sum(values) / len(values), 4)
+        summary.append({"id": zone_id, "observations": len(values), "mean_confidence": confidence, "review_priority": _priority(confidence), "purpose": "technical ROI prioritization only"})
+    return sorted(summary, key=lambda x: (x["review_priority"] != "high", x["mean_confidence"]))
+
+
 def _empty_response(reason: str) -> dict[str, Any]:
-    return {
-        "status": "insufficient_data",
-        "stage": "H0",
-        "source": "own_cohort",
-        "files": 0,
-        "images_with_hands": 0,
-        "hand_instances": 0,
-        "stages": _stages(False, 0, 0),
-        "digital_twin": None,
-        "observations": [],
-        "zones": [],
-        "images": [],
-        "limitations": [reason],
-    }
+    return {"status": "insufficient_data", "stage": "H0", "source": "own_cohort", "files": 0, "images_with_hands": 0, "hand_instances": 0, "stages": _stages(False, 0, 0), "digital_twin": None, "observations": [], "zones": [], "zone_summary": [], "evidence_contract": {"observations": [], "interpretations": [], "medical_conclusions": []}, "limitations": [reason], "next_action": "Add at least one supported own-cohort hand image."}
 
 
 def run_hand_analysis() -> dict[str, Any]:
@@ -199,33 +165,18 @@ def run_hand_analysis() -> dict[str, Any]:
         return result
 
     image_results = []
-    with hands_api.Hands(
-        static_image_mode=True,
-        max_num_hands=2,
-        model_complexity=1,
-        min_detection_confidence=0.5,
-        min_tracking_confidence=0.5,
-    ) as hands:
+    with hands_api.Hands(static_image_mode=True, max_num_hands=2, model_complexity=1, min_detection_confidence=0.5, min_tracking_confidence=0.5) as hands:
         for path in files:
             image_results.append(_analyze_image(path, hands))
 
     detected_images = [x for x in image_results if x.get("hands_detected", 0) > 0]
     all_hands = [h for image in image_results for h in image.get("hands", [])]
-    zones = []
-    for hand in all_hands:
-        for zone in hand.get("zones", []):
-            zones.append({**zone, "hand_index": hand.get("index"), "handedness": hand.get("handedness")})
+    zones = [{**zone, "hand_index": hand.get("index"), "handedness": hand.get("handedness")} for hand in all_hands for zone in hand.get("zones", [])]
+    zone_summary = _zone_summary(zones)
 
     twin = None
     if all_hands:
-        twin = {
-            "version": "v0",
-            "representation": "MediaPipe 21-landmark normalized hand geometry",
-            "hands": len(all_hands),
-            "zones": ["wrist", "palm", "thumb", "index", "middle", "ring", "little"],
-            "purpose": "spatial index for later observations and ROI selection",
-            "not_a_diagnosis": True,
-        }
+        twin = {"version": "v0", "representation": "MediaPipe 21-landmark normalized hand geometry", "hands": len(all_hands), "zones": list(ZONE_LANDMARKS), "purpose": "spatial index for later observations and ROI selection", "not_a_diagnosis": True}
 
     observations = [
         {"type": "input_coverage", "level": "macro", "text": f"Analyzed {len(files)} own-cohort image file(s); {len(detected_images)} image(s) contained at least one detected hand."},
@@ -234,7 +185,7 @@ def run_hand_analysis() -> dict[str, Any]:
     if all_hands:
         observations.extend([
             {"type": "geometry", "level": "hand", "text": "Computed normalized palm, span and finger geometry for detected hands. These are measured geometric observations, not health conclusions."},
-            {"type": "spatial_zones", "level": "region", "text": "Mapped detected landmarks to wrist, palm and five finger zones for later ROI selection."},
+            {"type": "spatial_zones", "level": "region", "text": "Mapped detected landmarks to stable wrist, palm and finger zones for later ROI selection."},
             {"type": "technical_attention", "level": "region", "text": "Assigned technical review priority from landmark visibility; this is an acquisition/model-quality signal, not a disease signal."},
         ])
 
@@ -249,7 +200,7 @@ def run_hand_analysis() -> dict[str, Any]:
 
     return {
         "status": "ready" if all_hands else "review",
-        "stage": "H7" if all_hands else "H1",
+        "stage": "H8" if all_hands else "H1",
         "source": "own_cohort",
         "files": len(files),
         "images_with_hands": len(detected_images),
@@ -258,11 +209,24 @@ def run_hand_analysis() -> dict[str, Any]:
         "observations": observations,
         "digital_twin": twin,
         "zones": zones,
-        "images": image_results,
+        "zone_summary": zone_summary,
+        "evidence_contract": {
+            "observations": ["image availability", "hand detection", "landmark coordinates", "normalized geometry", "zone mapping", "technical visibility"],
+            "interpretations": ["ROI review priority based on technical visibility"],
+            "medical_conclusions": [],
+        },
         "limitations": limitations,
+        "next_action": "Use the prioritized ROI as the input to the next hand-analysis layer; do not interpret it biologically yet.",
+        "images": image_results,
     }
 
 
 @app.get("/api/hand/analysis")
 def hand_analysis():
     return run_hand_analysis()
+
+
+@app.get("/api/hand/roi")
+def hand_roi():
+    result = run_hand_analysis()
+    return {"status": result["status"], "stage": result["stage"], "source": result["source"], "zone_summary": result.get("zone_summary", []), "next_action": result.get("next_action", ""), "limitations": result.get("limitations", [])}
