@@ -10,7 +10,6 @@ from PIL import Image, ImageStat
 
 IMAGE_FORMATS = {".jpg", ".jpeg", ".png", ".webp", ".bmp", ".tif", ".tiff"}
 
-# Landmark indices from MediaPipe Hands.
 ZONE_LANDMARKS = {
     "wrist": (0,),
     "thumb": (1, 2, 3, 4),
@@ -57,12 +56,28 @@ def _image_quality(image: Image.Image) -> ImageQuality:
 
 
 def _mediapipe_hands():
+    """Load Hands across MediaPipe package layouts.
+
+    MediaPipe 0.10.35 no longer exposes ``mp.solutions`` at the top level,
+    while older releases do. The internal solutions module is kept as a
+    compatibility path when available.
+    """
     try:
         import mediapipe as mp
-        return mp.solutions.hands
-    except Exception as exc:  # pragma: no cover - depends on optional runtime installation
+        if hasattr(mp, "solutions"):
+            return mp.solutions.hands
+    except Exception as exc:
+        raise HandVisionError("MediaPipe could not be imported.") from exc
+
+    try:
+        from mediapipe.python.solutions import hands
+        return hands
+    except Exception as exc:
         raise HandVisionError(
-            "MediaPipe Hands could not be loaded. Install the project requirements and verify the mediapipe version."
+            "MediaPipe Hands is unavailable in this installation. "
+            "The installed package exposes the Tasks API but not the legacy Hands solution. "
+            "Use a MediaPipe build that provides mediapipe.python.solutions.hands, "
+            "or add a Tasks HandLandmarker adapter with its .task model asset."
         ) from exc
 
 
@@ -184,7 +199,6 @@ def observations_from_analysis(
     timepoint: str,
     hand_id_prefix: str = "capture",
 ) -> list[dict[str, Any]]:
-    """Convert vision measurements into the project's longitudinal observation shape."""
     observations: list[dict[str, Any]] = []
     for capture_index, result in enumerate(analysis.get("results", [])):
         image = result["image"]
