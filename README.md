@@ -1,275 +1,516 @@
-# testHP
+# Human Pathology Platform
 
-## Human Pathology Platform — research prototype
+## Multimodal monitoring of biological state
 
-`testHP` is a research-oriented platform for building a multimodal, longitudinal model of human biological state. The long-term vision is to monitor the organism at multiple biological levels, detect abnormalities and ageing-related changes, understand how they evolve, and eventually evaluate interventions that preserve or restore biological function.
+This project aims to build a research platform capable of monitoring the state of a human organism — or a selected fragment of it — across multiple biological scales and over time.
 
-> **Vision:** treat the human body as a dynamic biological system rather than reducing health to one score or one diagnosis.
+The central idea is not to build a single classifier that answers only whether something is “healthy” or “diseased”. The system should progressively combine observations from different sources and resolutions, identify regions that deserve closer inspection, and allow analysis to move from the macroscopic level toward tissue, cellular, molecular and non-image evidence.
 
-The software is a research prototype and is not a diagnostic or autonomous clinical decision system.
+The long-term research goal is to investigate whether such a multimodal system can support the detection and monitoring of:
+
+- disease-related abnormalities,
+- biological ageing and age-associated changes,
+- changes that precede an obvious clinical manifestation,
+- spatially localized abnormalities,
+- and changes in biological state over time.
+
+The platform is intended as a **research system**, not as an autonomous diagnostic or clinical decision-making system.
 
 ---
 
-## User-facing platform
+## 1. The central research idea
 
-The repository now includes a lightweight browser dashboard in `web/` and a FastAPI service in `backend/app.py`.
-
-The dashboard is designed for a **research user**, rather than only a developer. It presents:
-
-- what datasets entered the run,
-- which modalities are represented,
-- how many supported files were found,
-- a visual pipeline from **Input → Ingestion → Validation → Normalization → Multimodal Fusion → Research View**,
-- dataset-level warnings and unavailable inputs,
-- an evidence boundary and next research action,
-- an interactive dataset explorer.
-
-Large local datasets do not need to be committed to GitHub. The application reads the local `data/raw` tree at runtime and reports missing or unavailable datasets explicitly. This is especially important for datasets such as **SCIN**, where repository metadata can be present without the full image collection.
-
-### Start the dashboard
-
-From the repository root:
-
-```bash
-pip install -r requirements.txt
-uvicorn backend.app:app --reload
-```
-
-Then open:
+The intended workflow is:
 
 ```text
-http://127.0.0.1:8000/
+Raw observations
+      ↓
+Data discovery and validation
+      ↓
+Modality-specific measurements
+      ↓
+Feature extraction
+      ↓
+Spatial and temporal organization
+      ↓
+Multimodal integration
+      ↓
+Detection of deviations / areas of interest
+      ↓
+Progressive deeper analysis
+      ↓
+Research evidence and biological interpretation
 ```
 
-Developer documentation remains available at `/docs`.
-
-### Evidence boundary
-
-The dashboard deliberately does **not** turn file presence into a medical conclusion. It currently reports dataset-level evidence and pipeline readiness. Subject-level multimodal links are only counted when an explicit shared identifier exists. Biological inference should be added only when the corresponding modality adapter/model and validation evidence are available.
-
----
-
-## Current architecture
-
-Stages 1–30 establish the biological monitoring foundation, multimodal analysis, longitudinal modelling, digital-twin history, intervention surveillance, validation, integration, measurement planning and audit primitives.
+A key design principle is **progressive resolution**:
 
 ```text
-core/          biological data, measurements, anatomy, quality
-analysis/      anomalies, trends, change points
-segmentation/  cell segmentation baseline
-pipelines/     cell analysis
-integration/   observation -> digital twin
-organs/        organ models and signal propagation
-organism/      organism state and digital biological twin
-longitudinal/  trajectory components
-aging/         ageing trajectories and ageing/pathology framework
-monitoring/    longitudinal monitoring cycles
-intervention/  efficacy/safety surveillance
-planning/      additional measurement planning
-validation/    validation metrics and prospective research
-audit/         evidence-linked decision records
-visualization/ research visualization primitives
-backend/       user-facing API and pipeline dashboard
-web/           user-facing browser dashboard
-tests/         automated tests for implemented components
+Organism
+   ↓
+Body region / fragment
+   ↓
+Spatial zone
+   ↓
+Tissue
+   ↓
+Cell
+   ↓
+Cell properties / molecular state
 ```
 
-The architecture deliberately separates **observation, inference, intervention surveillance and decision/audit**.
+The system should not be required to perform the deepest analysis everywhere. Broad observations should identify areas that deserve closer inspection, after which higher-resolution data can be analyzed for the selected region.
+
+This leads to the long-term concept of a **digital biological twin**: a spatially and temporally organized computational representation to which observations from different modalities can be attached.
 
 ---
 
-## Integrated flow
+## 2. Digital twin and progressive “zoom”
+
+The digital twin is intended to become the **spatial organization layer for multimodal evidence**, not merely a 3D visualization.
+
+For an investigated organism fragment, the future system should be able to:
+
+1. reconstruct a spatial representation,
+2. divide it into meaningful zones,
+3. attach measurements and observations to those zones,
+4. compare the current state with previous observations,
+5. identify zones requiring closer inspection,
+6. let the researcher select a zone for deeper analysis,
+7. connect macroscopic observations with tissue, cellular, molecular and other measurements when an explicit relationship exists.
+
+Conceptually:
 
 ```text
-MULTIMODAL OBSERVATIONS
-          ↓
-QUALITY / UNCERTAINTY
-          ↓
-MODALITY ANALYSIS
-          ↓
-MULTIMODAL FUSION
-          ↓
-HIERARCHICAL BIOLOGICAL STATE
-          ↓
-DIGITAL BIOLOGICAL TWIN
-          ↓
- ┌────────┴────────┐
- ↓                 ↓
-ANOMALY       LONGITUDINAL
-DETECTION       ANALYSIS
- └────────┬────────┘
-          ↓
-   CHANGE-POINT ANALYSIS
-          ↓
- MULTIMODAL DISAGREEMENT
-          ↓
- MEASUREMENT PLANNING
-          ↓
-INTERVENTION SURVEILLANCE
-      ↙          ↘
- efficacy       safety
-      \          /
-       ↓        ↓
-        VALIDATION
-             ↓
-       DECISION + AUDIT
-             ↓
-        UPDATED TWIN
-             ↓
-      NEXT MEASUREMENT
+                 ORGANISM / FRAGMENT
+                         │
+                   DIGITAL TWIN
+                         │
+                ┌────────┴────────┐
+                │                 │
+             spatial           temporal
+              model             history
+                │                 │
+                └────────┬────────┘
+                         │
+                  multimodal data
+                         │
+        ┌────────────────┼────────────────┐
+        │                │                │
+      macro            tissue          molecular
+        │                │                │
+      images            WSI             RNA
+        │                │                │
+        └────────────────┼────────────────┘
+                         │
+                     cellular
+                       state
+                         │
+                  disease / ageing
 ```
 
-The system should be able to return **insufficient evidence** rather than forcing an unjustified conclusion.
+The first practical fragment used to test this idea is the **hand**. It is sufficiently constrained to develop the architecture while still allowing future measurements at very different scales.
 
 ---
 
-## Development stages completed
+## 3. Disease and ageing are independent dimensions
 
-### Stages 1–15 — Biological monitoring foundation
+Disease and ageing should not be collapsed into one universal “health score”.
 
-Established the common biological data model, cell-analysis baseline, organ representation and dependency graph, anomaly/risk foundations, ageing concepts, intervention analysis, whole-body organism state and continuous longitudinal monitoring.
+The final system should conceptually maintain at least two independent dimensions:
 
-### Stage 16 — Unified multimodal observation layer
+### Disease-related state
 
-Introduced common representations for observations from different modalities with measurement provenance and quality metadata.
+Examples include validated evidence of:
 
-### Stage 17 — Measurement quality and uncertainty
+- tissue damage,
+- pathological morphology,
+- abnormal cellular behaviour,
+- tumour-related changes,
+- inflammation,
+- or other disease-associated patterns.
 
-Added quality-aware handling so unreliable observations can be excluded or represented as insufficient evidence.
+### Ageing-related state
 
-### Stage 18 — Multimodal fusion
+Examples include validated evidence associated with:
 
-Added quality-weighted fusion primitives while retaining modality provenance.
+- cellular senescence or other ageing-related cellular states,
+- age-associated molecular programs,
+- tissue-level ageing,
+- structural degradation,
+- or other ageing-associated patterns.
 
-### Stage 19 — Hierarchical biological state
+This creates a useful conceptual state space:
 
-Added `core/hierarchy.py` connecting organism, system, organ, tissue, cell-population, cell and site levels.
+| Disease-related evidence | Ageing-related evidence | Conceptual state |
+|---|---|---|
+| Low | Low | No detected abnormality within the analyzed evidence |
+| Low | High | Ageing-related change without detected disease-related abnormality |
+| High | Low | Disease-related abnormality without strong ageing evidence |
+| High | High | Disease-related and ageing-related evidence both present |
 
-### Stage 20 — Digital Biological Twin foundation
+These are **future research categories**, not current diagnostic outputs.
 
-Added `organism/digital_twin.py` with longitudinal `TwinSnapshot` objects and persistent twin history. This is a data-model foundation, not a complete predictive twin.
+At the cellular level, one long-term research question is:
 
-### Stage 21 — Advanced anomaly detection
+> Is this cell showing evidence of pathological damage, ageing-related change, both, or neither?
 
-Added `analysis/advanced_anomaly.py` with transparent anomaly scoring, quality thresholds and explicit insufficient-evidence handling.
-
-### Stage 22 — Longitudinal biological change analysis
-
-Added `analysis/longitudinal.py` for repeated measurements, trend direction, slope, baseline-to-latest change and quality filtering.
-
-### Stage 23 — Intervention surveillance
-
-Added `intervention/surveillance.py` and tests for separate efficacy and safety trajectories. This is a research monitoring primitive, not a treatment recommendation system.
-
-### Stage 24 — Validation framework
-
-Added `validation/framework.py` and tests for MAE, RMSE, bias, quality filtering and subgroup evaluation. This is not clinical validation.
-
-### Stage 25 — Unified observation-to-twin pipeline
-
-Added `integration/observation_to_twin.py` and tests. Quality-filtered observations can now become `TwinSnapshot` objects and enter `DigitalBiologicalTwin` history while retaining modality provenance.
-
-### Stage 26 — Temporal change-point detection
-
-Added `analysis/change_points.py` to identify possible changes in longitudinal trajectory rather than treating every observation independently.
-
-### Stage 27 — Multimodal disagreement and measurement planning
-
-Added `planning/measurement_planner.py` for transparent suggestions of additional modalities when evidence is incomplete or conflicting. It is not autonomous clinical ordering.
-
-### Stage 28 — Ageing versus pathology framework
-
-Added `aging/pathology_framework.py` to represent normal variation, age-associated change, pathology signal, intervention response and insufficient evidence.
-
-### Stage 29 — Prospective validation infrastructure
-
-Added `validation/prospective.py` with cohort, experiment, dataset/model-version and audit primitives for reproducible prospective research.
-
-### Stage 30 — Research decision and audit layer
-
-Added `audit/decision.py` with evidence references, auditable decision records and explicit research-level outcomes such as `measure_again`, `request_modality`, `expert_review`, `insufficient_evidence` and `continue_monitoring`.
+The answer must be based on validated evidence appropriate to the available modality. “Cell age” must not be inferred from an image unless a validated method supports that inference.
 
 ---
 
-## Biological ageing
+## 4. Data architecture
 
-Ageing should be represented by multiple dimensions rather than one universal clock:
+The repository contains several modalities. They should not be understood as four isolated products. They represent different levels of observation that may eventually contribute to the same biological-state model.
+
+### `data/raw/hand/` — multimodal fragment entry point
+
+`hand/` is the first practical user-data entry point and should be understood as a **future multimodal observation space**, not as a permanently fixed “hand image” dataset.
+
+It currently contains:
+
+- `InterHand2_6M/` — external reference data for hand pose / hand understanding,
+- `media/` — simple video/media test data,
+- `own_cohort/` — the intended location for the researcher’s own hand images and future personal observations.
+
+The current files are deliberately simple and mainly test whether the platform can discover, validate and process inputs.
+
+In the future, `hand/` may contain:
+
+- high-quality RGB images,
+- depth information,
+- video and temporal observations,
+- 3D observations,
+- microscopy or other tissue-level images,
+- cellular images,
+- whole-slide or larger-scale tissue data,
+- numerical measurements,
+- molecular measurements,
+- laboratory-style values,
+- structured metadata,
+- and textual or other non-image evidence.
+
+Therefore the conceptual definition is:
+
+> **`hand/` contains multimodal observations associated with an investigated hand or other selected organism fragment, including data that may extend far beyond ordinary photographs and video.**
+
+`InterHand2_6M` is external reference/test material, not the researcher’s own cohort.
+
+### `data/raw/images/` — macroscopic skin
+
+`images/` contains skin imagery primarily obtained using ordinary cameras rather than microscopy.
+
+The current conceptual groups are:
+
+- `aging_skin/` — visible changes associated with ageing,
+- `lesions/` — skin abnormalities or lesions not primarily defined as ageing,
+- `normal_skin/` — ordinary healthy/reference skin,
+- `pathology/` — a historical category whose exact intended scientific scope still needs to be confirmed.
+
+This layer represents **macroscopic skin observation**.
+
+Potential future analyses may include validated measurements of colour, texture, geometry, visible surface characteristics, lesion morphology, spatial distribution and temporal change.
+
+Descriptive image measurements must remain distinct from biological conclusions.
+
+### `data/raw/wsi/` — tissue / histology
+
+`wsi/` represents the **tissue-level** view.
+
+Whole Slide Images and related pathology data may eventually support analysis of:
+
+- tissue architecture,
+- cellular organization,
+- cell density,
+- morphology,
+- spatial relationships,
+- pathological structures,
+- and other histological features.
+
+This level allows the system to move beyond “what does the surface look like?” toward “what is happening inside the tissue?”.
+
+Metadata-only files or missing/unsupported slides must not be presented as successful tissue analysis.
+
+### `data/raw/rna/` — molecular / transcriptomic level
+
+`rna/` represents the **molecular level**.
+
+Depending on the actual datasets, future analyses may include:
+
+- gene expression measurements,
+- differential expression,
+- molecular signatures,
+- pathway activity,
+- ageing-associated programs,
+- disease-associated programs,
+- and other validated transcriptomic characteristics.
+
+RNA and WSI therefore answer different questions:
+
+> **RNA:** what is happening at the molecular level?
+
+> **WSI:** what is happening in the tissue and its spatial organization?
+
+Their integration may become scientifically important — for example, investigating whether a molecular program is associated with a particular tissue phenotype. Such integration requires an explicit relationship between observations, such as a shared subject, sample, specimen or other validated identifier. It must never be inferred from filenames or dataset names alone.
+
+---
+
+## 5. Evidence hierarchy
+
+The platform follows an **evidence-first** principle.
+
+A result should only be reported when the required evidence exists and the corresponding analysis was actually executed.
+
+For example:
 
 ```text
-Cellular | Tissue | Immune | Vascular | Skeletal
-Neural   | Metabolic | Molecular | Functional
+RGB image available
+    → image measurements possible
+    → tissue biology not automatically established
+
+WSI available
+    → tissue-level analysis possible
+    → molecular state not automatically established
+
+RNA available
+    → molecular analysis possible
+    → spatial tissue relationship not automatically established
+
+Explicit cross-modal identifier available
+    → multimodal relationship may be analyzed
 ```
 
-The project focuses on trajectories and rates of change rather than treating a single biological-age number as ground truth. It does **not** currently contain a clinically validated biological-age clock.
+The platform must never turn filenames, dataset names, placeholders, missing files, metadata-only input or unsupported assumptions into biological findings.
 
-The ageing/pathology layer is intended to distinguish:
+Current descriptive measurements such as image dimensions, RGB statistics, row counts or structured-node counts are **measurements of available input**, not diagnoses or biological conclusions.
+
+---
+
+## 6. Development roadmap
+
+The project should be developed in the following order. The sequence is intentional: scientific definition comes before large-scale implementation.
+
+### Phase 1 — Scientific definition and data audit
+
+**Goal:** understand what each real dataset can actually contribute.
+
+For every dataset we will document:
+
+1. what files exist,
+2. what the files actually contain,
+3. what metadata exists,
+4. what is missing or malformed,
+5. what can be measured,
+6. what biological questions can reasonably be asked,
+7. what output would constitute a useful research result,
+8. what cannot be concluded.
+
+The first target is:
 
 ```text
-normal variation
-      vs
-measurement artefact
-      vs
-age-associated change
-      vs
-pathological change
-      vs
-intervention response
-      vs
-insufficient evidence
+raw/hand/
+├── InterHand2_6M/
+├── media/
+└── own_cohort/
 ```
 
----
+Then we will inspect `images/`, `wsi/` and `rna/` systematically.
 
-## Digital Biological Twin
+### Phase 2 — Data-to-result specifications
 
-The long-term objective is an evolving computational representation of an individual's biological state:
+For every dataset create a research specification:
 
 ```text
-                 DIGITAL BIOLOGICAL TWIN
-                           |
-        +------------------+------------------+
-        |                  |                  |
-      organs             tissues            cells
-        |                  |                  |
-     function           morphology          state
-        +------------------+------------------+
-                           |
-                    molecular state
-                           |
-                    ageing trajectories
-                           |
-                    disease/risk signals
-                           |
-                     interventions
-                           |
-                       uncertainty
+Dataset
+  ↓
+Available evidence
+  ↓
+Measurable variables
+  ↓
+Derived features
+  ↓
+Biological question
+  ↓
+Potential research result
+  ↓
+Validation method
+  ↓
+Possible multimodal connections
 ```
 
-Stage 25 provides the observation-to-snapshot ingestion path. A complete predictive or mechanistic digital twin is **not yet implemented**.
+This becomes the scientific specification for implementation.
 
----
+### Phase 3 — Stable data contracts
 
-## Intervention and rejuvenation research
+Formalize:
 
-A long-term research direction is monitoring interventions intended to preserve or restore biological function. Partial cellular reprogramming involving **Yamanaka factors** is an example that illustrates why efficacy and safety must be monitored separately.
+- subject identifiers,
+- sample/specimen identifiers,
+- anatomical locations,
+- spatial coordinates,
+- timestamps and visits,
+- units,
+- acquisition metadata,
+- dataset versions,
+- model/analysis versions,
+- provenance,
+- uncertainty and quality flags.
 
-Potential rejuvenation effects would need to be evaluated alongside risks such as loss of cell identity, abnormal proliferation and tumour formation. The current software only provides research monitoring primitives; it does not implement, select or recommend a rejuvenation therapy.
+This phase is essential before cross-modal integration.
 
----
+### Phase 4 — Modality-specific analysis pipelines
 
-## Measurement planning and uncertainty
+Implement validated routines independently for:
 
-A central design principle is:
+- hand / macroscopic observations,
+- skin images,
+- WSI / histology,
+- RNA / transcriptomics,
+- future cellular data,
+- future non-image measurements.
 
-> **When evidence is inadequate, the system should seek better evidence rather than invent certainty.**
+Each analysis should have an explicit input contract, output contract, validation strategy and evidence boundary.
 
-If modalities disagree or uncertainty is high, the planning layer can represent a request for another measurement. This remains a research planning capability and is deliberately separated from autonomous clinical ordering.
+### Phase 5 — Real user-data workflow for `hand/own_cohort/`
 
----
+Transform the current simple test directory into a structured representation of repeated observations of a real subject or cohort.
 
-## Validation
+The future structure should support multiple visits, acquisition methods, resolutions, spatial zones, temporal comparison and links to deeper data.
 
-Stages 24 and 29 establish validation infrastructure, but scientific validation remains a future task:
+### Phase 6 — Digital twin foundation
+
+Create a spatial representation of the investigated fragment and a stable coordinate/zone system.
+
+The twin should store observations and state history rather than simply render geometry.
+
+### Phase 7 — Progressive macro-to-micro analysis
+
+Implement the ability to move from:
+
+```text
+macroscopic observation
+        ↓
+region of interest
+        ↓
+tissue
+        ↓
+cell
+        ↓
+molecular / numerical state
+```
+
+Broad analysis should help prioritize where deeper analysis is useful.
+
+### Phase 8 — Cellular state analysis
+
+Once appropriate cellular data exist, develop validated methods for cellular morphology and state.
+
+The long-term objective is to characterize separate dimensions such as:
+
+- normal/reference state,
+- disease-related abnormality,
+- ageing-related state,
+- molecular state,
+- spatial context,
+- uncertainty.
+
+This phase must explicitly avoid claiming “cell age” or “cancer” without validated evidence.
+
+### Phase 9 — Longitudinal monitoring
+
+Introduce repeated observations of the same subject/fragment.
+
+The system should eventually distinguish, where validated measurements support it:
+
+- stable state,
+- improvement,
+- deterioration,
+- newly emerging abnormality,
+- change requiring deeper investigation.
+
+A single run characterizes a state; monitoring requires time and repeated observations.
+
+### Phase 10 — Multimodal integration
+
+Only after the individual modalities are reliable should they be combined.
+
+Potential integrations include:
+
+- macroscopic image ↔ WSI,
+- WSI ↔ RNA,
+- macroscopic region ↔ tissue region,
+- cellular morphology ↔ molecular state,
+- spatial state ↔ temporal change.
+
+Every connection must have explicit provenance and an evidence path.
+
+### Phase 11 — Unified biological-state model
+
+Develop a unified representation that separates at least:
+
+- disease-related evidence,
+- ageing-related evidence,
+- normal/reference evidence,
+- uncertainty,
+- missing evidence,
+- and evidence requiring deeper analysis.
+
+The goal is not to hide uncertainty behind a single “health score”.
+
+### Phase 12 — Validation and benchmarking
+
+Evaluate analyses against appropriate reference data and known measurements/labels where available.
+
+Validation should cover:
+
+- accuracy,
+- sensitivity/specificity where appropriate,
+- robustness,
+- reproducibility,
+- calibration and uncertainty,
+- cross-dataset generalization,
+- subgroup performance,
+- and failure modes.
+
+A retrospective metric is not proof of clinical utility.
+
+### Phase 13 — Provenance, reproducibility and audit
+
+Every research result should be traceable through:
+
+```text
+Run
+ ↓
+Dataset
+ ↓
+File / sample
+ ↓
+Analysis version
+ ↓
+Measured variables
+ ↓
+Derived result
+ ↓
+Interpretation
+```
+
+Large raw datasets should remain outside source control when appropriate, while the run record preserves the evidence trail needed to audit and reproduce a result.
+
+### Phase 14 — Research interface
+
+The final interface should allow a researcher to:
+
+1. provide new data,
+2. see what was recognized,
+3. see which analyses were possible,
+4. inspect detected regions of interest,
+5. move to deeper resolution,
+6. compare observations over time,
+7. inspect evidence behind every result,
+8. and export the research record.
+
+### Phase 15 — Scientific and prospective validation
+
+Only after the analytical system is reliable should the project progress toward:
 
 ```text
 unit tests
@@ -284,98 +525,149 @@ longitudinal cohorts
    ↓
 prospective studies
    ↓
-clinical validation
+clinical validation, where applicable
    ↓
-regulatory / safety assessment
+regulatory / safety assessment, where applicable
 ```
 
-Performance must eventually be assessed across populations, modalities, anatomical regions, diseases and measurement conditions. Reproducibility, calibration, provenance and subgroup performance are essential.
+---
 
-A retrospective numerical metric is not proof of clinical utility.
+## 7. Current implementation status
+
+The current repository is a **research prototype / foundation**, not the final biological monitoring system.
+
+The existing platform already provides an evidence-oriented pipeline and research dashboard with:
+
+- raw dataset discovery,
+- validation and coverage reporting,
+- descriptive measurements for supported local files,
+- pipeline stage reporting,
+- run identifiers and timestamps,
+- provenance information,
+- real-data visualizations,
+- JSON/CSV export,
+- explicit limitations,
+- and protection against unsupported biological inference.
+
+The current descriptive analyses deliberately remain below the level of biological interpretation. This is intentional. The immediate next task is to determine scientifically meaningful outputs for the real datasets before implementing modality-specific biological analyses.
+
+The repository also contains earlier architectural foundations for observations, quality/uncertainty, multimodal fusion, hierarchical state, digital-twin snapshots, longitudinal analysis, anomaly/change detection, measurement planning, intervention surveillance, validation and audit. These components should be integrated with the real-data workflow only after their contracts are checked against the actual datasets.
 
 ---
 
-## Safety and decision philosophy
+## 8. Immediate working plan
 
-1. **Observation is not diagnosis.**
-2. **A risk score is not a medical decision.**
-3. **Uncertainty must be represented rather than hidden.**
-4. **Conflicting measurements should trigger investigation, not arbitrary averaging.**
-5. **Intervention benefit must be monitored separately from safety.**
-6. **Automated outputs require appropriate human and clinical oversight before clinical use.**
-7. **Insufficient evidence is a valid outcome.**
-8. **Important decisions should retain evidence, model/version information and an audit trail.**
+The next work should **not** be driven by adding arbitrary features to the dashboard.
 
-The current decision layer is research-level decision support, not an autonomous medical decision system.
+We will inspect the actual data in a fixed order and decide what each dataset should contribute to the final system.
 
----
+### First: `raw/hand/`
 
-## Future roadmap — Stage 31+
+For `InterHand2_6M`, `media` and `own_cohort` we will establish:
 
-The first 30 architectural stages are represented in the repository. The next phase should prioritize **correctness, execution, reproducibility, data governance and scientific testing** rather than simply adding more scores.
+- what the data are,
+- what they are useful for,
+- what can be measured now,
+- what richer future data should look like,
+- what the desired research output should be,
+- how the data can contribute to the digital twin,
+- and how they can connect to deeper tissue/cellular/molecular observations.
 
-### Stage 31 — End-to-end integration tests
+### Then: `raw/images/`
 
-Exercise the complete observation → quality → analysis → twin → validation → audit path with deterministic fixtures.
+We will define what should be extracted from:
 
-### Stage 32 — Data schemas and provenance contracts
+- normal skin,
+- ageing-related skin changes,
+- non-ageing lesions,
+- and the currently ambiguous `pathology` category.
 
-Formalize identifiers, units, timestamps, anatomical locations, dataset versions, model versions and provenance requirements.
+### Then: `raw/wsi/`
 
-### Stage 33 — Reproducible research runner
+We will determine which tissue-level measurements are scientifically useful and which WSI datasets can realistically support them.
 
-Create versioned experiment configurations, deterministic runs, result manifests and machine-readable reports.
+### Then: `raw/rna/`
 
-### Stage 34 — Governed multimodal datasets
+We will determine which molecular variables and biological programs can be extracted and which datasets can eventually be connected to tissue-level observations.
 
-Introduce public/research datasets and modality adapters while keeping sensitive human data out of source control.
+### Finally: cross-modal design
 
-### Stage 35 — Calibration and uncertainty evaluation
-
-Evaluate calibration, uncertainty behaviour and failure modes rather than relying only on aggregate accuracy metrics.
-
-### Stage 36 — Mechanistic and predictive modelling
-
-Only after reliable data and validation foundations are established, add predictive biological models and mechanistic hypotheses.
-
-### Stage 37+ — Scientific validation and translation
-
-Progress through external replication, prospective research and, where appropriate, clinical/regulatory evaluation.
+Only after the individual datasets have been understood will we decide which cross-modal relationships are scientifically justified.
 
 ---
 
-## Important limitations
+## 9. Non-negotiable design principles
 
-`testHP` is currently a **research prototype**. It should not be used to diagnose disease, prescribe treatment, determine biological age for medical purposes, or make autonomous clinical decisions.
+### Evidence before interpretation
 
-A complete predictive digital biological twin, clinically validated ageing models, clinically validated multimodal fusion, validated intervention monitoring and clinical decision support are **not yet implemented**.
+The system must distinguish what was measured from what was inferred.
 
-The 200-year lifespan objective is a long-term research vision, not a demonstrated outcome of the software.
+### No invented links
+
+A relationship between datasets, subjects, samples, regions or cells must be supported by an explicit identifier or a validated spatial/experimental relationship.
+
+### Disease and ageing are separate dimensions
+
+A biological system may show ageing-related change without disease, disease without strong ageing evidence, both, or neither.
+
+### Resolution must be explicit
+
+Every result should indicate the level at which it was obtained: macroscopic, tissue, cellular, molecular or non-image.
+
+### Missing data must remain visible
+
+Unavailable input is a research limitation, not a negative biological finding.
+
+### Uncertainty must remain visible
+
+The system should report uncertainty and evidence boundaries instead of converting incomplete evidence into false certainty.
+
+### Monitoring requires time
+
+A monitoring system needs repeated observations and longitudinal comparison. A single run can characterize a state, but cannot by itself establish a trajectory.
+
+### Research first
+
+The platform is being developed as a research system. It must not be presented as an autonomous clinical diagnostic or treatment decision system without appropriate scientific, clinical and regulatory validation.
 
 ---
 
-## Project status
+## 10. Long-term vision
 
-**Current stage: Stage 30 — research decision and audit layer implemented; early research prototype.**
-
-Stages 1–30 establish a path from multimodal observations through quality assessment, fusion, hierarchical state, longitudinal modelling, anomaly/change detection, measurement planning, intervention surveillance, validation and auditable research decisions.
-
-Immediate priorities are **integration, correctness, testing, reproducibility, data governance and scientific validation**.
+The long-term vision is a system in which a researcher can provide new observations of a selected part of an organism and receive a transparent representation of its current state:
 
 ```text
-measure
-  -> validate quality
-  -> analyse
-  -> integrate
-  -> update biological state
-  -> detect abnormalities and change
-  -> quantify uncertainty/conflicts
-  -> choose additional measurement when justified
-  -> monitor interventions separately
-  -> validate outputs
-  -> record evidence and provenance
-  -> update the twin
-  -> repeat
+New observation
+      ↓
+Identify and register the observed fragment
+      ↓
+Update digital twin
+      ↓
+Compare with previous state
+      ↓
+Analyze available modalities
+      ↓
+Identify unusual / changing regions
+      ↓
+Prioritize deeper analysis
+      ↓
+Tissue → cell → molecular evidence
+      ↓
+Disease / ageing / normal-state evidence
+      ↓
+Research report with provenance and uncertainty
 ```
 
-The ultimate goal is a platform that can continuously construct and update a **computational representation of human biological state**, enabling research into long-term health, ageing, disease prevention and biological rejuvenation.
+The ultimate objective is therefore not simply **image classification**, **RNA analysis** or **pathology analysis** in isolation.
+
+It is the development of a **transparent multimodal framework for understanding and monitoring biological state across scales and over time**.
+
+The system should be able to say not only:
+
+> “something looks different,”
+
+but eventually, when sufficient validated evidence exists:
+
+> **where the change is, at what biological level it is observed, whether it is more consistent with disease-related or ageing-related change, what additional evidence is needed, how the observation changed over time, and exactly which measurements support that conclusion.**
+
+That final capability is the long-term research target.
