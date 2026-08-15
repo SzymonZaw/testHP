@@ -1,0 +1,4 @@
+sample_id	subject_id	timepoint	tissue	condition
+sample_T0	subject-TEST	T0	synthetic_hand_region	fixture
+sample_T1	subject-TEST	T1	synthetic_hand_region	fixture
+sample_ref	subject-REFERENCE	REF	synthetic_reference	fixture
