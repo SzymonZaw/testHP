@@ -1,0 +1,55 @@
+{
+  "version": "1.0",
+  "entity": "hand_observation",
+  "required_fields": [
+    "subject_id",
+    "source_id",
+    "modality",
+    "biological_level",
+    "region_id",
+    "result_type",
+    "metric",
+    "value",
+    "unit",
+    "status",
+    "uncertainty",
+    "provenance"
+  ],
+  "result_types": [
+    "observation",
+    "derived_feature",
+    "quality",
+    "observed_change",
+    "interpretation"
+  ],
+  "statuses": ["available", "partial", "unavailable", "not_applicable"],
+  "biological_levels": [
+    "acquisition",
+    "macroscopic",
+    "functional",
+    "surface",
+    "anatomical_region",
+    "tissue",
+    "microscopic",
+    "cellular",
+    "molecular",
+    "longitudinal"
+  ],
+  "initial_regions": [
+    "hand.wrist",
+    "hand.palm",
+    "hand.thumb",
+    "hand.index",
+    "hand.middle",
+    "hand.ring",
+    "hand.little"
+  ],
+  "interpretation_dimensions": ["disease_related", "ageing_related", "normal_reference"],
+  "rules": [
+    "Missing evidence is not evidence of normality.",
+    "Public datasets never become personal evidence without explicit subject/sample linkage.",
+    "A macroscopic observation cannot be silently promoted to a cellular conclusion.",
+    "A technical quality score is not a biological risk score.",
+    "Disease and ageing are independent interpretation dimensions."
+  ]
+}
