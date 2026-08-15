@@ -143,6 +143,21 @@ molecular / non-image measurement
 
 The digital twin should eventually provide the spatial identity used to connect these observations. A deeper measurement should be attached to a region only when the relationship between the measurements is explicitly established.
 
+## Scientific-definition checklist
+
+The previously agreed first eight steps are now completed for `hand/`:
+
+- [x] 1. Define the target system response — a spatially organized evidence map, not a single health score.
+- [x] 2. Audit `raw/hand` — `own_cohort`, empty `media` placeholders and external `InterHand2_6M` reference data are documented.
+- [x] 3. Define the role of each source — personal evidence, future media entry point, and external algorithm-development reference are separated.
+- [x] 4. Build the hand information map — input, image, hand, region, tissue, cell and molecular/non-image levels are defined.
+- [x] 5. Define biological level for each information type — macroscopic, regional, tissue, cellular and molecular levels are explicit.
+- [x] 6. Separate observation from interpretation — measurements/features/ROIs are kept separate from disease/ageing interpretation.
+- [x] 7. Define the analysis ladder — H0–H11 progressive analysis is specified in `HAND_RESEARCH_SPEC.md`.
+- [x] 8. Define the hand outputs — the result contract and success criteria are specified in `HAND_RESEARCH_SPEC.md`.
+
+This checklist means the **scientific definition phase** is complete. It does not mean that every H-level analysis has already been implemented.
+
 ## What to implement next
 
 ### Phase H1 — Complete data inventory
