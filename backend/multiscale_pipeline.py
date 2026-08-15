@@ -192,9 +192,12 @@ def analyze_rna(root: str | Path, subject_id: str | None = None) -> list[Evidenc
     """Stage 33: audit transcriptomic/tabular evidence without inventing biology."""
     root = Path(root)
     records: list[EvidenceRecord] = []
-    for path in sorted(p for p in root.rglob("*") if p.is_file() and any(path_suffix(path, ext) for ext in TABULAR_EXTENSIONS)):
+    for path in sorted(
+        p for p in root.rglob("*")
+        if p.is_file() and any(path_suffix(p, ext) for ext in TABULAR_EXTENSIONS)
+    ):
         try:
-            delimiter = "\t" if path.suffix.lower() == ".tsv" else ","
+            delimiter = "\t" if path.name.lower().endswith((".tsv", ".tsv.gz")) else ","
             rows = 0
             finite = 0
             minimum: float | None = None
