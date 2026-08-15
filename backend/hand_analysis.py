@@ -5,14 +5,11 @@ from pathlib import Path
 from typing import Any
 
 import numpy as np
-from fastapi import HTTPException
 
 from .app import IMAGE_FORMATS, RAW_ROOT, app
 
 OWN_HAND_ROOT = RAW_ROOT / "hand" / "own_cohort"
 
-# MediaPipe landmark indices. The grouping is intentionally anatomical/technical,
-# not a disease classifier.
 ZONE_LANDMARKS = {
     "wrist": [0],
     "palm": [0, 1, 5, 9, 13, 17],
@@ -156,13 +153,33 @@ def _analyze_image(path: Path, hands: Any) -> dict[str, Any]:
     return output
 
 
+def _stages(all_hands: bool, detected_images: int, total_images: int) -> list[dict[str, str]]:
+    detected = bool(all_hands)
+    return [
+        {"id": "H0", "name": "Input validation", "purpose": "Check own-cohort image availability and readability.", "status": "completed" if total_images else "blocked"},
+        {"id": "H1", "name": "Hand detection", "purpose": "Locate one or more hands in each image.", "status": "completed" if detected_images else "review"},
+        {"id": "H2", "name": "Landmarks", "purpose": "Estimate 21 anatomical hand landmarks.", "status": "completed" if detected else "blocked"},
+        {"id": "H3", "name": "Geometry", "purpose": "Measure normalized palm, span and finger geometry.", "status": "completed" if detected else "blocked"},
+        {"id": "H4", "name": "Zones", "purpose": "Map landmarks to stable anatomical regions.", "status": "completed" if detected else "blocked"},
+        {"id": "H5", "name": "Digital Twin v0", "purpose": "Create a normalized spatial representation for later evidence.", "status": "completed" if detected else "blocked"},
+        {"id": "H6", "name": "Observation mapping", "purpose": "Attach measured geometry and quality to hand regions.", "status": "completed" if detected else "blocked"},
+        {"id": "H7", "name": "ROI / attention", "purpose": "Identify regions needing technical review before deeper analysis.", "status": "completed" if detected else "blocked"},
+    ]
+
+
 def _empty_response(reason: str) -> dict[str, Any]:
     return {
         "status": "insufficient_data",
         "stage": "H0",
         "source": "own_cohort",
+        "files": 0,
+        "images_with_hands": 0,
+        "hand_instances": 0,
+        "stages": _stages(False, 0, 0),
         "digital_twin": None,
         "observations": [],
+        "zones": [],
+        "images": [],
         "limitations": [reason],
     }
 
@@ -176,7 +193,10 @@ def run_hand_analysis() -> dict[str, Any]:
         import mediapipe as mp
         hands_api = mp.solutions.hands
     except Exception as exc:
-        return _empty_response(f"MediaPipe is not available: {exc}")
+        result = _empty_response(f"MediaPipe is not available: {exc}")
+        result["files"] = len(files)
+        result["stages"] = _stages(False, 0, len(files))
+        return result
 
     image_results = []
     with hands_api.Hands(
@@ -196,8 +216,6 @@ def run_hand_analysis() -> dict[str, Any]:
         for zone in hand.get("zones", []):
             zones.append({**zone, "hand_index": hand.get("index"), "handedness": hand.get("handedness")})
 
-    # v0 digital twin: a normalized landmark representation plus stable anatomical
-    # zones. It is a geometry/observation layer, not a medical model.
     twin = None
     if all_hands:
         twin = {
@@ -210,28 +228,15 @@ def run_hand_analysis() -> dict[str, Any]:
         }
 
     observations = [
-        {
-            "type": "input_coverage",
-            "level": "macro",
-            "text": f"Analyzed {len(files)} own-cohort image file(s); {len(detected_images)} image(s) contained at least one detected hand.",
-        },
-        {
-            "type": "hand_detection",
-            "level": "hand",
-            "text": f"Detected {len(all_hands)} hand instance(s) with 21 landmark points each in the current v0 routine.",
-        },
+        {"type": "input_coverage", "level": "macro", "text": f"Analyzed {len(files)} own-cohort image file(s); {len(detected_images)} image(s) contained at least one detected hand."},
+        {"type": "hand_detection", "level": "hand", "text": f"Detected {len(all_hands)} hand instance(s) with 21 landmark points each in the current v0 routine."},
     ]
     if all_hands:
-        observations.append({
-            "type": "geometry",
-            "level": "hand",
-            "text": "Computed normalized palm, span and finger geometry for detected hands. These are measured geometric observations, not health conclusions.",
-        })
-        observations.append({
-            "type": "spatial_zones",
-            "level": "region",
-            "text": "Mapped detected landmarks to wrist, palm and five finger zones for later ROI selection.",
-        })
+        observations.extend([
+            {"type": "geometry", "level": "hand", "text": "Computed normalized palm, span and finger geometry for detected hands. These are measured geometric observations, not health conclusions."},
+            {"type": "spatial_zones", "level": "region", "text": "Mapped detected landmarks to wrist, palm and five finger zones for later ROI selection."},
+            {"type": "technical_attention", "level": "region", "text": "Assigned technical review priority from landmark visibility; this is an acquisition/model-quality signal, not a disease signal."},
+        ])
 
     limitations = [
         "Current v0 uses RGB images only; it does not infer tissue, cell or molecular state.",
@@ -244,11 +249,12 @@ def run_hand_analysis() -> dict[str, Any]:
 
     return {
         "status": "ready" if all_hands else "review",
-        "stage": "H7",
+        "stage": "H7" if all_hands else "H1",
         "source": "own_cohort",
         "files": len(files),
         "images_with_hands": len(detected_images),
         "hand_instances": len(all_hands),
+        "stages": _stages(bool(all_hands), len(detected_images), len(files)),
         "observations": observations,
         "digital_twin": twin,
         "zones": zones,
