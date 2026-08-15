@@ -131,6 +131,10 @@ datasets:
 
   # ----------------------------------------------------------
   # Hand data
+  #
+  # Hand is the prototype anatomical-region pipeline. Sources
+  # have explicit roles so benchmark data, personal data and
+  # placeholders cannot be confused during analysis.
   # ----------------------------------------------------------
   hand:
 
@@ -143,11 +147,17 @@ datasets:
       image_formats: [".jpg", ".jpeg", ".png"]
       annotation_formats: [".json"]
       task: "3D hand pose"
+      source_role: "benchmark"
+      analysis_scope: ["hand_detection", "landmarks", "3d_pose", "geometry", "model_validation"]
+      personal_subject_data: false
 
     media:
       enabled: false
       path: "data/raw/hand/media"
       reason: "Current repository copies are empty placeholder video files."
+      source_role: "personal"
+      analysis_scope: ["video_quality", "hand_tracking", "motion", "range_of_motion", "temporal_change"]
+      personal_subject_data: true
 
     own_cohort:
       enabled: true
@@ -155,6 +165,9 @@ datasets:
       recursive: true
       formats: [".jpg", ".jpeg", ".png"]
       task: "own hand cohort"
+      source_role: "personal"
+      analysis_scope: ["image_quality", "hand_detection", "localization", "macro_morphology", "region_segmentation"]
+      personal_subject_data: true
 
   # ----------------------------------------------------------
   # Splitting and longitudinal processing
