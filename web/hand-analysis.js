@@ -17,6 +17,8 @@
       </div>
       <div id="hand-status" class="badge neutral">Not analyzed</div>
       <div id="hand-summary" style="margin-top:18px"></div>
+      <div id="hand-twin" style="margin-top:18px"></div>
+      <div id="hand-stages" style="margin-top:18px"></div>
       <div id="hand-observations" style="margin-top:18px"></div>
       <div id="hand-zones" style="margin-top:18px"></div>
       <div id="hand-images" style="margin-top:18px"></div>
@@ -34,6 +36,17 @@
     el.className = `badge ${kind || 'neutral'}`;
   }
 
+  function twinSvg(hand) {
+    if (!hand || !hand.landmarks_2d || !hand.landmarks_2d.length) return '<div class="output-empty"><strong>No digital twin geometry.</strong></div>';
+    const points = hand.landmarks_2d;
+    const scale = 320;
+    const xy = points.map((p) => ({ x: 20 + p.x * 280, y: 20 + p.y * 280 }));
+    const edges = [[0,1],[1,2],[2,3],[3,4],[0,5],[5,6],[6,7],[7,8],[0,9],[9,10],[10,11],[11,12],[0,13],[13,14],[14,15],[15,16],[0,17],[17,18],[18,19],[19,20],[5,9],[9,13],[13,17]];
+    const lines = edges.map(([a,b]) => `<line x1="${xy[a].x}" y1="${xy[a].y}" x2="${xy[b].x}" y2="${xy[b].y}" stroke="currentColor" stroke-width="3" opacity="0.7"/>`).join('');
+    const dots = xy.map((p,i) => `<circle cx="${p.x}" cy="${p.y}" r="4" fill="currentColor"><title>landmark ${i}</title></circle>`).join('');
+    return `<div class="result-card"><div class="result-card-head"><div><strong>Digital Twin v0 · ${esc(hand.handedness)}</strong><span>21 normalized landmarks</span></div><span class="status ok">geometry</span></div><svg viewBox="0 0 ${scale} ${scale}" width="100%" height="360" role="img" aria-label="Normalized hand landmark digital twin" style="max-width:420px;display:block;margin:12px auto">${lines}${dots}</svg><p>Spatial representation for later observations and ROI selection. It is not a biological or diagnostic model.</p></div>`;
+  }
+
   function render(run) {
     const summary = document.getElementById('hand-summary');
     const twin = run.digital_twin;
@@ -43,6 +56,17 @@
         <div class="metric card"><span>Hands detected</span><strong>${esc(run.hand_instances)}</strong><small>instances</small></div>
         <div class="metric card"><span>Images with hand</span><strong>${esc(run.images_with_hands)}</strong><small>successful detection</small></div>
         <div class="metric card"><span>Digital twin</span><strong>${twin ? 'v0' : '—'}</strong><small>${twin ? 'landmark geometry' : 'not created'}</small></div>
+      </div>
+    `;
+
+    const firstHand = (run.images || []).flatMap((x) => x.hands || [])[0];
+    document.getElementById('hand-twin').innerHTML = `<span class="eyebrow">DIGITAL TWIN</span><h3>Normalized hand geometry</h3>${twinSvg(firstHand)}`;
+
+    document.getElementById('hand-stages').innerHTML = `
+      <span class="eyebrow">HAND LADDER</span>
+      <h3>H0–H7 implementation state</h3>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px;margin-top:10px">
+        ${(run.stages || []).map((s) => `<div class="result-card"><strong>${esc(s.id)} · ${esc(s.name)}</strong><p>${esc(s.purpose)}</p><span class="status ${s.status === 'completed' ? 'ok' : 'warning'}">${esc(s.status)}</span></div>`).join('')}
       </div>
     `;
 
