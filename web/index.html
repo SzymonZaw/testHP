@@ -20,14 +20,14 @@
     <section class="hero card">
       <div>
         <span class="eyebrow">RUN OVERVIEW</span>
-        <h2>Understand what entered the platform and what happened to it.</h2>
-        <p>The dashboard separates data availability, processing state and biological inference. Missing or unsupported data is shown as a limitation rather than silently converted into a result.</p>
+        <h2>See what entered the platform, how it was processed, and what can responsibly be reported.</h2>
+        <p>The research view distinguishes available data from processing state and biological inference. Missing or unsupported data is presented as a limitation, never silently turned into a result.</p>
       </div>
       <button id="run-button">Run research pipeline</button>
     </section>
 
     <section class="metrics" id="metrics">
-      <div class="metric card"><span>Datasets</span><strong id="metric-datasets">—</strong><small>available for this run</small></div>
+      <div class="metric card"><span>Datasets</span><strong id="metric-datasets">—</strong><small>included in the run</small></div>
       <div class="metric card"><span>Files</span><strong id="metric-files">—</strong><small>supported input files</small></div>
       <div class="metric card"><span>Modalities</span><strong id="metric-modalities">—</strong><small>represented in the run</small></div>
       <div class="metric card"><span>Subject links</span><strong id="metric-links">0</strong><small>explicit links only</small></div>
@@ -38,6 +38,17 @@
       <div id="pipeline" class="pipeline"></div>
     </section>
 
+    <section class="card output-card">
+      <div class="section-head">
+        <div><span class="eyebrow">OUTPUT</span><h2>Research output</h2><p class="section-note">A transparent summary of the evidence produced by this run.</p></div>
+        <span id="output-level" class="badge neutral">Awaiting run</span>
+      </div>
+      <div id="output-summary" class="output-summary">
+        <div class="output-empty"><strong>No research output yet.</strong><p>Run the pipeline to generate a coverage summary, evidence boundary, modality readiness and limitations.</p></div>
+      </div>
+      <div id="modality-results" class="result-grid"></div>
+    </section>
+
     <section class="grid-2">
       <div class="card">
         <div class="section-head"><div><span class="eyebrow">INPUT</span><h2>Data coverage</h2></div></div>
@@ -45,12 +56,8 @@
         <div id="dataset-list" class="dataset-list"></div>
       </div>
       <div class="card">
-        <div class="section-head"><div><span class="eyebrow">EVIDENCE</span><h2>Research result</h2></div></div>
-        <div id="result-panel" class="result-panel">
-          <div class="result-icon">i</div>
-          <div><strong>No biological conclusion has been made.</strong><p>Run the pipeline to see the current evidence boundary and recommended next step.</p></div>
-        </div>
-        <div id="warnings" class="warnings"></div>
+        <div class="section-head"><div><span class="eyebrow">LIMITATIONS</span><h2>What should not be inferred?</h2></div></div>
+        <div id="limitations" class="limitations"></div>
       </div>
     </section>
 
