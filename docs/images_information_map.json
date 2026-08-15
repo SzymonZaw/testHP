@@ -1,0 +1,37 @@
+{
+  "version": "1.0",
+  "modality": "images",
+  "role": "macroscopic_skin_observation_and_reference_layer",
+  "current_groups": {
+    "aging_skin": {
+      "role": "personal_reference",
+      "current_files": {"jpeg": 3, "metadata": 1},
+      "note": "info.txt identifies the images as own photographs"
+    },
+    "normal_skin": {
+      "role": "reference_pending_verification",
+      "current_files": {"jpeg": 3, "metadata": 1},
+      "critical_audit": "the three JPEGs currently have the same Git object SHAs as aging_skin"
+    },
+    "lesions": {
+      "role": "external_reference",
+      "sources": ["ISIC", "skin_lesions_dataset"]
+    },
+    "pathology_scin": {
+      "role": "external_skin_condition_reference_pending_verification",
+      "critical_audit": "folder name pathology does not establish histopathology"
+    }
+  },
+  "levels": [
+    {"id":"acquisition","output":"observation","examples":["readability","format","dimensions","channels","metadata","duplicates","provenance"]},
+    {"id":"macro","output":"observation_or_feature","examples":["skin detection","colour","brightness","texture","visible morphology","area","shape"]},
+    {"id":"region","output":"spatial_observation","examples":["ROI","lesion location","explicit anatomical correspondence"]},
+    {"id":"longitudinal","output":"observed_change_or_validated_trend","requirements":["same explicit subject","comparable acquisition","multiple timepoints"]}
+  ],
+  "interpretation_requirements": {
+    "disease": ["validated task","validated model_or_assay","appropriate reference data"],
+    "ageing": ["validated ageing endpoint","appropriate reference data"],
+    "cellular_age": ["cell_resolution_or_molecular_evidence","validated method"]
+  },
+  "never_infer": ["ordinary_rgb_to_cell_age","visual_difference_to_disease","dataset_label_to_new_subject_diagnosis","missing_input_to_normal_state"]
+}
