@@ -1,0 +1,67 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Human Pathology Platform Hand Observation Run",
+  "type": "object",
+  "required": ["status", "stage", "source", "files", "images_with_hands", "hand_instances", "stages", "observations", "zone_summary", "evidence_contract", "limitations", "next_action"],
+  "properties": {
+    "status": {"type": "string", "enum": ["ready", "review", "insufficient_data"]},
+    "stage": {"type": "string"},
+    "source": {"const": "own_cohort"},
+    "files": {"type": "integer", "minimum": 0},
+    "images_with_hands": {"type": "integer", "minimum": 0},
+    "hand_instances": {"type": "integer", "minimum": 0},
+    "stages": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "name", "purpose", "status"],
+        "properties": {
+          "id": {"type": "string"},
+          "name": {"type": "string"},
+          "purpose": {"type": "string"},
+          "status": {"type": "string"}
+        }
+      }
+    },
+    "observations": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["type", "level", "text"],
+        "properties": {
+          "type": {"type": "string"},
+          "level": {"type": "string"},
+          "text": {"type": "string"}
+        }
+      }
+    },
+    "digital_twin": {"type": ["object", "null"]},
+    "zones": {"type": "array"},
+    "zone_summary": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "observations", "mean_confidence", "review_priority", "purpose"],
+        "properties": {
+          "id": {"type": "string"},
+          "observations": {"type": "integer", "minimum": 0},
+          "mean_confidence": {"type": "number", "minimum": 0, "maximum": 1},
+          "review_priority": {"type": "string", "enum": ["normal", "review", "high"]},
+          "purpose": {"type": "string"}
+        }
+      }
+    },
+    "evidence_contract": {
+      "type": "object",
+      "required": ["observations", "interpretations", "medical_conclusions"],
+      "properties": {
+        "observations": {"type": "array", "items": {"type": "string"}},
+        "interpretations": {"type": "array", "items": {"type": "string"}},
+        "medical_conclusions": {"type": "array", "maxItems": 0}
+      }
+    },
+    "limitations": {"type": "array", "items": {"type": "string"}},
+    "next_action": {"type": "string"},
+    "images": {"type": "array"}
+  }
+}
