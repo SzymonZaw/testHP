@@ -1,0 +1,19 @@
+{
+  "version": "1.0",
+  "subject_fragment": "hand",
+  "dimensions": {
+    "macroscopic": {"status": "implemented", "evidence": ["landmarks", "geometry", "surface_descriptors"]},
+    "functional": {"status": "partial", "evidence": ["video_temporal_features"]},
+    "surface": {"status": "implemented_for_image_descriptors", "evidence": ["brightness", "RGB", "dynamic_range"]},
+    "tissue": {"status": "evidence_adapter", "evidence": ["DICOM_metadata", "matrix"]},
+    "cellular": {"status": "not_available_without_cell_resolution_evidence", "evidence": []},
+    "molecular": {"status": "evidence_adapter", "evidence": ["RNA/tabular_numeric_observations"]},
+    "disease_related": {"status": "not_available", "evidence": []},
+    "ageing_related": {"status": "not_available", "evidence": []},
+    "longitudinal": {"status": "implemented_for_observed_change", "evidence": ["T0_T1_explicit_match"]},
+    "uncertainty": {"status": "implemented", "evidence": ["quality_flags", "confidence"]},
+    "missing_evidence": {"status": "implemented", "evidence": ["unavailable_status"]}
+  },
+  "initial_zones": ["wrist", "palm", "thumb", "index", "middle", "ring", "little"],
+  "final_output": "spatially organized evidence map, not a single unexplained health score"
+}
