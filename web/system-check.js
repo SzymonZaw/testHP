@@ -12,8 +12,11 @@
 
   window.addEventListener('error', event => {
     const message = event?.error?.message || event?.message || 'Unknown frontend error';
-    setStatus(`Checking system · frontend error: ${message}`);
+    const file = event?.filename ? event.filename.split('/').pop() : 'unknown file';
+    const line = event?.lineno ? `:${event.lineno}:${event.colno || 0}` : '';
+    setStatus(`Checking system · frontend error in ${file}${line}: ${message}`);
   });
+
   window.addEventListener('unhandledrejection', event => {
     const reason = event?.reason?.message || String(event?.reason || 'Unknown promise rejection');
     setStatus(`Checking system · frontend error: ${reason}`);
