@@ -23,6 +23,7 @@ def main() -> None:
         session_id=args.session,
         timepoint=args.timepoint,
     )
+
     payload = {
         **analysis,
         "observation_count": len(observations),
@@ -33,17 +34,26 @@ def main() -> None:
             "note": "The CLI subject identifier is an explicit research label; it is not inferred from image similarity.",
         },
     }
+
     output = Path(args.output)
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
-    print(json.dumps({
+
+    summary = {
         "status": "ok" if analysis["files_analyzed"] else "warning",
         "files_found": analysis["files_found"],
         "files_analyzed": analysis["files_analyzed"],
         "files_failed": analysis["files_failed"],
         "observations": len(observations),
         "output": str(output),
-    }, indent=2))
+    }
+
+    print(json.dumps(summary, indent=2))
+
+    if analysis.get("errors"):
+        print("\nDetailed errors:")
+        for err in analysis["errors"]:
+            print(f" - {err.get('source_file')} -> {err.get('error')}")
 
 
 if __name__ == "__main__":
