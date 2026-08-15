@@ -15,6 +15,14 @@ function pretty(value) { return String(value ?? '').replaceAll('_', ' ').replace
 function statusClass(status) { return ['ok','ready','completed'].includes(status) ? 'ok' : ['warning','review','limited'].includes(status) ? 'warning' : 'neutral'; }
 function statusLabel(status) { return status === 'ok' ? 'Completed' : pretty(status || 'Pending'); }
 
+function renderRunStatus(run) {
+  const status = run?.status || 'warning';
+  const label = status === 'ready' || status === 'completed' ? 'Run complete' : status === 'warning' ? 'Run complete with warnings' : pretty(status);
+  const badge = $('run-status');
+  badge.textContent = label;
+  badge.className = `badge ${statusClass(status)}`;
+}
+
 async function getJSON(url, options) {
   const response = await fetch(url, options);
   if (!response.ok) throw new Error(`${response.status} ${response.statusText}`);
