@@ -5,6 +5,9 @@ from datetime import datetime, timezone
 from typing import Any
 
 
+# Stable top-level spatial regions used by the hand digital twin.
+# The additional nails/skin_regions zones are structural anchors for future
+# observations; they do not imply that a biological condition is present.
 HAND_ZONES = (
     "wrist",
     "palm",
@@ -13,6 +16,8 @@ HAND_ZONES = (
     "middle",
     "ring",
     "little",
+    "nails",
+    "skin_regions",
 )
 
 OBSERVATION_TYPES = (
