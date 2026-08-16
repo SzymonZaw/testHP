@@ -16,6 +16,15 @@ from PIL import Image, ImageStat
 IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".bmp", ".tif", ".tiff"}
 VIDEO_EXTENSIONS = {".mp4", ".mov", ".avi", ".mkv", ".webm"}
 TABULAR_EXTENSIONS = {".csv", ".tsv", ".txt", ".tsv.gz", ".csv.gz"}
+HAND_VIEW_ZONES = {
+    "front": "hand.skin_regions",
+    "back": "hand.skin_regions",
+    "thumb": "hand.thumb",
+    "side_left": "hand.skin_regions",
+    "side_right": "hand.skin_regions",
+}
+HAND_ZONES = ("wrist", "palm", "thumb", "index", "middle", "ring", "little", "nails", "skin_regions")
+
 
 @dataclass(frozen=True)
 class EvidenceRecord:
@@ -32,6 +41,7 @@ class EvidenceRecord:
     uncertainty: dict[str, Any] = field(default_factory=dict)
     provenance: dict[str, Any] = field(default_factory=dict)
 
+
 @dataclass
 class DigitalTwinState:
     subject_id: str
@@ -42,15 +52,138 @@ class DigitalTwinState:
 
     def add_timepoint(self, timepoint: str, records: Iterable[EvidenceRecord]) -> None:
         records = list(records)
-        self.history.append({"timepoint": timepoint, "record_ids": [f"{r.source_id}:{r.metric}:{r.region_id or 'global'}" for r in records]})
+        self.history.append({
+            "timepoint": timepoint,
+            "record_ids": [f"{r.source_id}:{r.metric}:{r.region_id or 'global'}" for r in records],
+        })
         self.evidence.extend(asdict(r) for r in records)
 
     def ensure_hand_zones(self) -> None:
-        for zone in ("wrist", "palm", "thumb", "index", "middle", "ring", "little", "nails", "skin_regions"):
-            self.zones.setdefault(zone, {"id": f"hand.{zone}", "level": "anatomical_region", "parent": "hand", "priority": "not_established"})
+        for zone in HAND_ZONES:
+            self.zones.setdefault(
+                zone,
+                {
+                    "id": f"hand.{zone}",
+                    "level": "anatomical_region",
+                    "parent": "hand",
+                    "priority": "not_established",
+                },
+            )
 
-def _record(source: Path, modality: str, level: str, metric: str, value: Any, subject_id: str | None = None, region_id: str | None = None, unit: str | None = None, result_type: str = "observation", status: str = "available", **provenance: Any) -> EvidenceRecord:
-    return EvidenceRecord(subject_id, source.as_posix(), modality, level, region_id, result_type, metric, value, unit, status, provenance=provenance)
+
+def _record(
+    source: Path,
+    modality: str,
+    level: str,
+    metric: str,
+    value: Any,
+    subject_id: str | None = None,
+    region_id: str | None = None,
+    unit: str | None = None,
+    result_type: str = "observation",
+    status: str = "available",
+    **provenance: Any,
+) -> EvidenceRecord:
+    return EvidenceRecord(
+        subject_id,
+        source.as_posix(),
+        modality,
+        level,
+        region_id,
+        result_type,
+        metric,
+        value,
+        unit,
+        status,
+        provenance=provenance,
+    )
+
+
+def _hand_view_name(path: Path) -> str:
+    """Return the standardized hand view name from a filename."""
+    return path.stem.lower().strip()
+
+
+def analyze_hand(root: str | Path, subject_id: str | None = None, timepoint: str = "T0") -> list[EvidenceRecord]:
+    """Ingest standardized own-cohort hand images for one timepoint.
+
+    This is deliberately an acquisition/observation layer. It records which
+    view was supplied and basic image properties, then links each observation
+    to a conservative hand zone. It does not infer disease, ageing, or
+    anatomical abnormalities from the image.
+    """
+    root = Path(root)
+    timepoint_root = root / timepoint
+    if timepoint_root.is_dir():
+        image_root = timepoint_root
+    else:
+        image_root = root
+
+    records: list[EvidenceRecord] = []
+    image_files = sorted(
+        p for p in image_root.rglob("*") if p.is_file() and p.suffix.lower() in IMAGE_EXTENSIONS
+    )
+
+    for path in image_files:
+        view = _hand_view_name(path)
+        region_id = HAND_VIEW_ZONES.get(view, "hand.skin_regions")
+        base_provenance = {
+            "timepoint": timepoint,
+            "view": view,
+            "source_role": "own_cohort_hand_image",
+            "interpretation_boundary": "observation_only",
+        }
+        try:
+            with Image.open(path) as image:
+                rgb = image.convert("RGB")
+                stat = ImageStat.Stat(rgb)
+                mean = stat.mean
+                extrema = stat.extrema
+                records.extend(
+                    [
+                        _record(path, "hand", "macroscopic", "view", view, subject_id, region_id, result_type="acquisition", **base_provenance),
+                        _record(path, "hand", "macroscopic", "image_width", rgb.width, subject_id, region_id, "px", **base_provenance),
+                        _record(path, "hand", "macroscopic", "image_height", rgb.height, subject_id, region_id, "px", **base_provenance),
+                        _record(path, "hand", "macroscopic", "pixel_count", rgb.width * rgb.height, subject_id, region_id, "count", **base_provenance),
+                        _record(path, "hand", "surface", "mean_brightness", round(sum(mean) / (3 * 255), 8), subject_id, region_id, "0-1", **base_provenance),
+                        _record(path, "hand", "surface", "dynamic_range_mean", round(sum(hi - lo for lo, hi in extrema) / 3, 6), subject_id, region_id, "0-255", **base_provenance),
+                    ]
+                )
+        except Exception as exc:
+            records.append(
+                _record(
+                    path,
+                    "hand",
+                    "macroscopic",
+                    "read_error",
+                    str(exc),
+                    subject_id,
+                    region_id,
+                    status="partial",
+                    result_type="quality",
+                    **base_provenance,
+                )
+            )
+
+    if not image_files:
+        records.append(
+            _record(
+                image_root / ".no-hand-evidence",
+                "hand",
+                "macroscopic",
+                "hand_image_evidence_available",
+                False,
+                subject_id,
+                "hand.skin_regions",
+                status="unavailable",
+                result_type="quality",
+                timepoint=timepoint,
+                source_role="own_cohort_hand_image",
+                interpretation_boundary="observation_only",
+            )
+        )
+    return records
+
 
 def analyze_media(root: str | Path, subject_id: str | None = None) -> dict[str, Any]:
     root = Path(root)
@@ -60,23 +193,29 @@ def analyze_media(root: str | Path, subject_id: str | None = None) -> dict[str, 
         try:
             import cv2
             capture = cv2.VideoCapture(str(path))
-            if not capture.isOpened(): raise RuntimeError("video could not be opened")
+            if not capture.isOpened():
+                raise RuntimeError("video could not be opened")
             fps = float(capture.get(cv2.CAP_PROP_FPS) or 0.0)
             frames = int(capture.get(cv2.CAP_PROP_FRAME_COUNT) or 0)
             duration = frames / fps if fps > 0 else None
             mean_motion, previous, sampled = 0.0, None, 0
             while sampled < 60:
                 ok, frame = capture.read()
-                if not ok: break
+                if not ok:
+                    break
                 gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-                if previous is not None: mean_motion += float(cv2.absdiff(gray, previous).mean())
-                previous = gray; sampled += 1
+                if previous is not None:
+                    mean_motion += float(cv2.absdiff(gray, previous).mean())
+                previous = gray
+                sampled += 1
             capture.release()
-            if sampled > 1: mean_motion /= sampled - 1
+            if sampled > 1:
+                mean_motion /= sampled - 1
             results.append({"source_file": path.as_posix(), "fps": fps, "frames": frames, "duration_seconds": duration, "sampled_frames": sampled, "mean_frame_change": round(mean_motion, 6), "status": "available"})
         except Exception as exc:
             errors.append({"source_file": path.as_posix(), "error": str(exc)})
     return {"modality": "hand_media", "files_found": len(files), "files_analyzed": len(results), "files_failed": len(errors), "results": results, "errors": errors, "boundary": "temporal observations only; no functional or disease interpretation"}
+
 
 def analyze_images(root: str | Path, subject_id: str | None = None) -> list[EvidenceRecord]:
     root = Path(root); records = []
@@ -98,6 +237,7 @@ def analyze_images(root: str | Path, subject_id: str | None = None) -> list[Evid
             records.append(_record(path, "images", "acquisition", "read_error", str(exc), subject_id, status="partial", result_type="quality"))
     return records
 
+
 def analyze_wsi(root: str | Path, subject_id: str | None = None) -> list[EvidenceRecord]:
     root = Path(root); records = []
     for path in sorted(p for p in root.rglob("*") if p.is_file() and p.suffix.lower() == ".dcm"):
@@ -114,13 +254,16 @@ def analyze_wsi(root: str | Path, subject_id: str | None = None) -> list[Evidenc
     if not records: records.append(_record(root / ".no-wsi-evidence", "wsi", "tissue", "tissue_evidence_available", False, subject_id, status="unavailable"))
     return records
 
+
 def _numeric(value: str) -> float | None:
     try:
         number = float(value.strip()); return number if math.isfinite(number) else None
     except (ValueError, TypeError): return None
 
+
 def path_suffix(path: Path, suffix: str) -> bool:
     return path.name.lower().endswith(suffix)
+
 
 def analyze_rna(root: str | Path, subject_id: str | None = None) -> list[EvidenceRecord]:
     root = Path(root); records = []
@@ -143,19 +286,43 @@ def analyze_rna(root: str | Path, subject_id: str | None = None) -> list[Evidenc
             records.append(_record(path, "rna", "molecular", "parse_error", str(exc), subject_id, status="partial", result_type="quality"))
     return records
 
+
 def fuse_explicit(records: Iterable[EvidenceRecord]) -> dict[str, Any]:
     groups, rejected = {}, []
     for record in records:
-        if not record.subject_id: rejected.append({"source_id": record.source_id, "reason": "missing_subject_id"}); continue
+        if not record.subject_id:
+            rejected.append({"source_id": record.source_id, "reason": "missing_subject_id"}); continue
         groups.setdefault((record.subject_id, record.region_id), []).append(asdict(record))
     return {"status": "available" if groups else "no_explicit_links", "linked_groups": [{"subject_id": s, "region_id": r, "evidence": e} for (s, r), e in groups.items()], "rejected_unlinked_records": rejected, "interpretation": "not established", "boundary": "only explicit subject and optional region identifiers are fused"}
 
+
 def build_multiscale_run(root: str | Path, subject_id: str | None = None, timepoint: str = "T0") -> dict[str, Any]:
     root = Path(root)
+    hand_records = analyze_hand(root / "hand" / "own_cohort", subject_id, timepoint)
     media = analyze_media(root / "hand" / "media", subject_id)
     image_records = analyze_images(root / "images", subject_id)
     wsi_records = analyze_wsi(root / "wsi", subject_id)
     rna_records = analyze_rna(root / "rna", subject_id)
-    twin = DigitalTwinState(subject_id=subject_id or "unregistered"); twin.ensure_hand_zones(); twin.add_timepoint(timepoint, [])
-    all_records = image_records + wsi_records + rna_records
-    return {"pipeline_version": "multiscale-stages-26-34-v1", "subject_id": subject_id, "timepoint": timepoint, "stages": {"26_hand_state_contract": "completed", "27_observation_ontology": "completed", "28_digital_twin_contract": "completed", "29_t0_t1_change_contract": "completed_by_hand_pipeline", "30_media_temporal_features": "completed", "31_images_macroscopic_skin": "completed", "32_wsi_tissue_to_cell_ladder": "completed", "33_rna_molecular_layer": "completed", "34_multimodal_fusion": "completed_explicit_links_only"}, "media": media, "evidence": [asdict(r) for r in all_records], "digital_twin": asdict(twin), "fusion": fuse_explicit(all_records), "interpretation": {"disease": "not_available", "ageing": "not_available", "cellular_age": "not_available", "reason": "No validated modality-specific interpretation model is invoked."}}
+    all_records = hand_records + image_records + wsi_records + rna_records
+
+    twin = DigitalTwinState(subject_id=subject_id or "unregistered")
+    twin.ensure_hand_zones()
+    twin.add_timepoint(timepoint, hand_records)
+
+    return {
+        "pipeline_version": "multiscale-stages-26-34-v1",
+        "subject_id": subject_id,
+        "timepoint": timepoint,
+        "stages": {"26_hand_state_contract": "completed", "27_observation_ontology": "completed", "28_digital_twin_contract": "completed", "29_t0_t1_change_contract": "completed_by_hand_pipeline", "30_media_temporal_features": "completed", "31_images_macroscopic_skin": "completed", "32_wsi_tissue_to_cell_ladder": "completed", "33_rna_molecular_layer": "completed", "34_multimodal_fusion": "completed_explicit_links_only"},
+        "hand": {
+            "files_found": len({r.source_id for r in hand_records if not r.source_id.endswith(".no-hand-evidence")}),
+            "files_analyzed": len({r.source_id for r in hand_records if r.metric != "read_error" and not r.source_id.endswith(".no-hand-evidence")}),
+            "records": [asdict(r) for r in hand_records],
+            "boundary": "macroscopic hand observations only; no disease or ageing interpretation",
+        },
+        "media": media,
+        "evidence": [asdict(r) for r in all_records],
+        "digital_twin": asdict(twin),
+        "fusion": fuse_explicit(all_records),
+        "interpretation": {"disease": "not_available", "ageing": "not_available", "cellular_age": "not_available", "reason": "No validated modality-specific interpretation model is invoked."},
+    }
