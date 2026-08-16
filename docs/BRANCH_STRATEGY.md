@@ -2,45 +2,26 @@
 
 `main` is the source of truth for the current project, current own-cohort data, documentation, and reproducible pipeline state.
 
-## Keep
+## Current branches
 
 - `main` — current integrated project and personal test data.
-- `agent/stages-26-34-multimodal` — retained as a development/history line until its useful changes are fully integrated into `main`.
-- `agent/hand-own-cohort-structure-v1` — retained as historical reference for the Hand ontology/Digital Twin implementation; no new work should start here.
-- `agent/framework`
-- `agent/web-framework`
-- `agent/research-dashboard`
-- `agent/research-output`
-
-The last four are separate historical UI/framework experiments.
-
-## Deprecated
-
-Do not develop further on these branches:
-
-- `agent/hand-own-cohort`
-- `agent/hand-own-cohort-v2`
-- `agent/hand-own-cohort-v3`
-- `agent/hand-own-cohort-v4`
-- `agent/hand-own-cohort-v5`
-- `agent/hand-own-cohort-v6`
-- `agent/hand-own-cohort-v7`
-- `agent/hand-analysis-images-v1`
-- `agent/stages-21-25`
-- `complete-stage-4`
-- `integration/hand-own-cohort-main`
-- `agent/test-fixtures-v1`
-- `agent/real-analyses`
-
-The redundant `v2`–`v6` refs represent the same historical state and can be deleted once local clones no longer depend on them.
+- `agent/stages-26-34-multimodal` — historical/development line containing the stages 26–34 multimodal implementation. Its useful changes should be reviewed and integrated into `main`; no new work should start here.
+- `agent/framework` — historical UI/framework experiment.
+- `agent/web-framework` — historical web-framework experiment.
+- `agent/research-dashboard` — historical dashboard experiment.
+- `agent/research-output` — historical research-output experiment.
 
 ## Data rule
 
-Personal input data belongs on `main` under `data/raw/hand/own_cohort/` and `data/raw/hand/media/`. Development branches should not become alternative sources of truth for personal data.
+Personal input data belongs on `main` under `data/raw/hand/own_cohort/` and `data/raw/hand/media/`. Development branches are not alternative sources of truth for personal data.
+
+## Integration policy
+
+The `agent/stages-26-34-multimodal` branch diverged substantially from `main` (119 commits ahead and 32 behind at the time of this audit). It must therefore **not** be force-merged or used to replace `main` wholesale. The correct approach is a reviewed integration of its useful files/commits while preserving the current `main` data and newer project state.
 
 ## New work
 
-Use short-lived feature branches from current `main`, for example:
+After integration, use short-lived feature branches from current `main`, for example:
 
 - `feature/hand-observations`
 - `feature/hand-video`
