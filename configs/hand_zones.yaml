@@ -1,0 +1,68 @@
+# Hand anatomical zone ontology
+#
+# This is a structural ontology for the digital hand twin. It defines where
+# observations may be attached; it does not imply that a biological condition
+# is present. Measurements remain observations until a validated analysis layer
+# provides an interpretation.
+
+hand:
+  - id: palm
+    name: Palm
+    level: anatomical_region
+    children:
+      - thenar
+      - hypothenar
+      - central_palm
+      - creases
+
+  - id: thumb
+    name: Thumb
+    level: anatomical_region
+    children: [distal, middle, proximal, nail]
+
+  - id: index
+    name: Index
+    level: anatomical_region
+    children: [distal, middle, proximal, nail]
+
+  - id: middle
+    name: Middle
+    level: anatomical_region
+    children: [distal, middle, proximal, nail]
+
+  - id: ring
+    name: Ring
+    level: anatomical_region
+    children: [distal, middle, proximal, nail]
+
+  - id: little
+    name: Little
+    level: anatomical_region
+    children: [distal, middle, proximal, nail]
+
+  - id: wrist
+    name: Wrist
+    level: anatomical_region
+    children: []
+
+  - id: nails
+    name: Nails
+    level: anatomical_region
+    children: [thumb_nail, index_nail, middle_nail, ring_nail, little_nail]
+
+  - id: skin_regions
+    name: Skin regions
+    level: observation_region
+    children:
+      - pigmentation
+      - texture
+      - vascular
+      - lesions
+      - aging
+      - inflammation
+
+observation_policy:
+  evidence_level: observed
+  allow_diagnosis: false
+  allow_biological_interpretation: false
+  purpose: "Stable spatial attachment for longitudinal hand observations."
