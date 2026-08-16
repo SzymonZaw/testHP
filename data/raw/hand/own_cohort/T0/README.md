@@ -9,8 +9,10 @@ Expected semantic views:
 - `side_left.jpg`
 - `side_right.jpg`
 
-The current repository upload contains three images. They are preserved as
-`image_01.jpg`, `image_02.jpg`, and `image_03.jpg` until their view semantics
-are confirmed, rather than guessing which image is front/back/thumb.
+The current upload contains three images. They were placed as `front.jpg`,
+`back.jpg`, and `thumb.jpg` using the existing 1/2/3 upload order. This
+mapping is **provisional** and should be corrected if the actual view labels
+differ.
 
-Add the missing views when available. These files are input evidence only.
+Add `side_left.jpg` and `side_right.jpg` when available. These files are
+input evidence only.
