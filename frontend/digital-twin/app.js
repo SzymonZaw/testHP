@@ -1,71 +1,7 @@
-const dialog = document.getElementById('observation-dialog');
-const addObservation = document.getElementById('add-observation');
-const zoneLabel = document.getElementById('zone-label');
-const form = document.querySelector('#observation-dialog form');
-const fileInput = form.querySelector('input[type="file"]');
-const selects = form.querySelectorAll('select');
-const subjectId = 'own_cohort';
-let selectedZone = '05';
-
-async function refreshTwin() {
-  try {
-    const response = await fetch('/api/hand/analysis?subject_id=' + encodeURIComponent(subjectId) + '&timepoint=T0');
-    if (!response.ok) return;
-    const result = await response.json();
-    const coverage = result.coverage || {};
-    document.querySelector('.coverage b:nth-of-type(1)').textContent = `Macro ${coverage.macro ?? 0}%`;
-    document.querySelector('.coverage b:nth-of-type(2)').textContent = `Micro ${coverage.micro ?? 0}%`;
-    document.querySelector('.coverage b:nth-of-type(3)').textContent = `Molecular ${coverage.molecular ?? 0}%`;
-  } catch (_) {
-    // Keep the research view usable when the API is unavailable.
-  }
-}
-
-addObservation.addEventListener('click', () => dialog.showModal());
-
-document.querySelectorAll('.zone').forEach((zone) => {
-  zone.addEventListener('click', () => {
-    document.querySelectorAll('.zone').forEach((item) => item.classList.remove('selected'));
-    zone.classList.add('selected');
-    selectedZone = zone.textContent.trim();
-    zoneLabel.textContent = `Zone ${selectedZone}`;
-    selects[1].value = selectedZone;
-  });
-});
-
-form.addEventListener('submit', async (event) => {
-  event.preventDefault();
-  const file = fileInput.files[0];
-  if (!file) {
-    alert('Select at least one file.');
-    return;
-  }
-  const modality = selects[2].value;
-  const endpoint = modality === 'Photo' ? 'hand' : modality === 'Video' ? 'video' : modality === 'Microscopy' ? 'wsi' : modality === 'Molecular data' ? 'rna' : 'metadata';
-  const body = new FormData();
-  body.append('file', file);
-  body.append('subject_id', subjectId);
-  body.append('timepoint', 'T0');
-  body.append('view', `zone-${selectedZone}`);
-  const button = form.querySelector('.primary');
-  button.disabled = true;
-  button.textContent = 'Analyzing…';
-  try {
-    const response = await fetch(`/api/upload/${endpoint}`, { method: 'POST', body });
-    const result = await response.json();
-    if (!response.ok) throw new Error(result.detail || 'Upload failed');
-    dialog.close();
-    button.textContent = 'Register observation';
-    const level = result.analysis?.analysis_level || 'ingestion_quality';
-    alert(`Observation registered: ${result.asset.asset_id}\nAnalysis: ${level}\nBiological inference: not established`);
-    await refreshTwin();
-  } catch (error) {
-    alert(error.message);
-  } finally {
-    button.disabled = false;
-    button.textContent = 'Register observation';
-  }
-});
-
-document.querySelector('.close').addEventListener('click', () => dialog.close());
-refreshTwin();
+const dialog=document.getElementById('observation-dialog');const addObservation=document.getElementById('add-observation');const zoneLabel=document.getElementById('zone-label');const form=document.querySelector('#observation-dialog form');const fileInput=form.querySelector('input[type="file"]');const selects=form.querySelectorAll('select');const subjectId='own_cohort';let selectedRegion='palm';let rotationY=0;let rotationX=-10;let zoom=1;let dragging=false;let startX=0;let startY=0;let startRX=0;let startRY=0;const viewport=document.getElementById('twin-viewport');const model=document.getElementById('hand-model');const zoomLabel=document.getElementById('zoom-label');
+function renderView(){model.style.transform=`scale(${zoom}) rotateX(${rotationX}deg) rotateY(${rotationY}deg)`;zoomLabel.textContent=`${Math.round(zoom*100)}%`}
+function selectRegion(region){selectedRegion=region;document.querySelectorAll('.anatomical-zone').forEach(z=>z.classList.toggle('selected',z.dataset.region===region));zoneLabel.textContent=region;document.getElementById('form-region').value=region;document.getElementById('macro-state').textContent='Review available';document.getElementById('macro-detail').textContent=`Macro evidence assigned to ${region}; inspect registered artifacts and measurements.`;document.getElementById('micro-state').textContent='Not available';document.getElementById('molecular-state').textContent='Not available';}
+async function refreshTwin(){try{const response=await fetch('/api/hand/analysis?subject_id='+encodeURIComponent(subjectId)+'&timepoint=T0');if(!response.ok)return;const result=await response.json();const coverage=result.coverage||{};document.querySelector('.coverage b:nth-of-type(1)').textContent=`Macro ${coverage.macro??0}%`;document.querySelector('.coverage b:nth-of-type(2)').textContent=`Micro ${coverage.micro??0}%`;document.querySelector('.coverage b:nth-of-type(3)').textContent=`Molecular ${coverage.molecular??0}%`;if(result.assets?.length){document.getElementById('evidence-level').textContent='Macro / observed data';}}catch(_){}}
+viewport.addEventListener('pointerdown',e=>{dragging=true;viewport.classList.add('dragging');startX=e.clientX;startY=e.clientY;startRX=rotationX;startRY=rotationY;viewport.setPointerCapture(e.pointerId)});viewport.addEventListener('pointermove',e=>{if(!dragging)return;rotationY=startRY+(e.clientX-startX)*.55;rotationX=Math.max(-70,Math.min(70,startRX-(e.clientY-startY)*.35));renderView()});viewport.addEventListener('pointerup',()=>{dragging=false;viewport.classList.remove('dragging')});viewport.addEventListener('pointercancel',()=>{dragging=false;viewport.classList.remove('dragging')});viewport.addEventListener('wheel',e=>{e.preventDefault();zoom=Math.max(.65,Math.min(2.2,zoom-(e.deltaY*.001)));renderView()},{passive:false});
+document.querySelectorAll('.anatomical-zone').forEach(z=>z.addEventListener('click',e=>{e.stopPropagation();selectRegion(z.dataset.region)}));document.getElementById('reset-view').addEventListener('click',()=>{rotationY=0;rotationX=-10;zoom=1;renderView()});document.getElementById('rotate-left').addEventListener('click',()=>{rotationY-=20;renderView()});document.getElementById('rotate-right').addEventListener('click',()=>{rotationY+=20;renderView()});document.getElementById('zoom-region').addEventListener('click',()=>{zoom=Math.min(2.2,zoom*1.35);renderView()});addObservation.addEventListener('click',()=>dialog.showModal());selects[1].addEventListener('change',e=>selectRegion(e.target.value));
+form.addEventListener('submit',async event=>{event.preventDefault();const file=fileInput.files[0];if(!file){alert('Select at least one file.');return}const modality=selects[2].value;const endpoint=modality==='Photo'?'hand':modality==='Video'?'video':modality==='Microscopy'?'wsi':modality==='Molecular data'?'rna':'metadata';const body=new FormData();body.append('file',file);body.append('subject_id',subjectId);body.append('timepoint','T0');body.append('view',selectedRegion);const button=form.querySelector('.primary');button.disabled=true;button.textContent='Analyzing…';try{const response=await fetch(`/api/upload/${endpoint}`,{method:'POST',body});const result=await response.json();if(!response.ok)throw new Error(result.detail||'Upload failed');dialog.close();alert(`Observation registered: ${result.asset.asset_id}\nRegion: ${selectedRegion}\nBiological inference: not established`);await refreshTwin()}catch(error){alert(error.message)}finally{button.disabled=false;button.textContent='Register observation'}});document.querySelector('.close').addEventListener('click',()=>dialog.close());selectRegion('palm');renderView();refreshTwin();
