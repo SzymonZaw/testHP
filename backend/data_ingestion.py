@@ -18,7 +18,6 @@ IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".tif", ".tiff", ".bmp"}
 VIDEO_EXTENSIONS = {".mp4", ".mov", ".m4v", ".avi", ".mkv"}
 WSI_EXTENSIONS = {".dcm", ".svs", ".ndpi", ".mrxs", ".tif", ".tiff", ".ome.tif", ".ome.tiff"}
 RNA_EXTENSIONS = {".csv", ".tsv", ".txt", ".mtx", ".gz", ".h5", ".h5ad", ".tar"}
-
 SAFE_COMPONENT = re.compile(r"[^A-Za-z0-9._-]+")
 
 
@@ -86,9 +85,9 @@ def destination_for(modality: str, subject_id: str, timepoint: str, subtype: str
     tp = safe_component(timepoint, "T0")
     name = safe_component(filename, "upload.bin")
     if modality == "hand":
-        return RAW_ROOT / "hand" / "own_cohort" / tp / name
+        return RAW_ROOT / "hand" / subject / tp / name
     if modality == "video":
-        return RAW_ROOT / "hand" / "media" / tp / name
+        return RAW_ROOT / "hand" / "media" / subject / tp / name
     if modality == "images":
         category = safe_component(subtype or "unclassified", "unclassified")
         return RAW_ROOT / "images" / category / subject / tp / name
@@ -103,14 +102,7 @@ def destination_for(modality: str, subject_id: str, timepoint: str, subtype: str
     raise ValueError(f"unsupported modality: {modality}")
 
 
-async def ingest_upload(
-    upload: UploadFile,
-    subject_id: str,
-    timepoint: str,
-    modality: str,
-    subtype: str | None = None,
-    view: str | None = None,
-) -> DataAsset:
+async def ingest_upload(upload: UploadFile, subject_id: str, timepoint: str, modality: str, subtype: str | None = None, view: str | None = None) -> DataAsset:
     ext = extension_for(upload.filename or "")
     if ext not in allowed_extensions(modality):
         raise ValueError(f"unsupported file extension {ext or '<none>'} for modality {modality}")
@@ -139,9 +131,4 @@ async def ingest_upload(
 
 def registry_status() -> dict[str, Any]:
     assets = load_registry()
-    return {
-        "assets": assets,
-        "count": len(assets),
-        "available": sum(1 for asset in assets if asset.get("status") == "available"),
-        "unavailable": sum(1 for asset in assets if asset.get("status") != "available"),
-    }
+    return {"assets": assets, "count": len(assets), "available": sum(1 for asset in assets if asset.get("status") == "available"), "unavailable": sum(1 for asset in assets if asset.get("status") != "available")}
