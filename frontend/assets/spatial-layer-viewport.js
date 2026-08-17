@@ -48,4 +48,39 @@ function render(){const l=level(),t=title(),p=path(),k=`${l}:${t}:${p.join('/')}
 function resize(){const r=viewport.getBoundingClientRect(),w=Math.max(1,r.width),h=Math.max(1,r.height);camera.aspect=w/h;camera.updateProjectionMatrix();renderer.setSize(w,h,false)}
 function animate(){requestAnimationFrame(animate);if(layerCanvas.style.display!=='none'){root.rotation.y+=.0025;renderer.render(scene,camera)}}
 layerCanvas.addEventListener('pointerdown',e=>{const r=layerCanvas.getBoundingClientRect();pointer.x=((e.clientX-r.left)/r.width)*2-1;pointer.y=-((e.clientY-r.top)/r.height)*2+1;raycaster.setFromCamera(pointer,camera);const hit=raycaster.intersectObjects(clickable,false)[0];if(hit?.object?.userData?.target)hit.object.userData.target.click()});
-new MutationObserver(render).observe(badge,{childList:true,characterData:true,subtree:true});new MutationObserver(render).observe(node,{childList:true,characterData:true,subtree:true});new MutationObserver(render).observe(children,{childList:true,characterData:true,subtree:true});new MutationObserver(render).observe(document.getElementById('spatial-breadcrumb'),{childList:true,subtree:true});window.addEventListener('resize',resize);render();animate();
+
+// The server actually serves this file at /assets/spatial-layer-viewport.js.
+// Keep the layer selector here, not only in frontend/digital-twin/assets, so
+// the selector is present in the browser-visible implementation.
+const layerSwitcher=document.createElement('div');
+layerSwitcher.id='spatial-layer-switcher';
+Object.assign(layerSwitcher.style,{display:'flex',flexWrap:'wrap',gap:'6px',alignItems:'center',margin:'10px 0 12px'});
+const layerNames={macro:'Macro anatomy',tissue:'Tissue field',cellular:'Cellular field',cell:'Single cell'};
+const layerOrder=['macro','tissue','cellular','cell'];
+function renderLayerSwitcher(){
+  layerSwitcher.replaceChildren();
+  const label=document.createElement('span');label.textContent='VISUALIZATION LAYER';
+  Object.assign(label.style,{font:'700 10px system-ui,sans-serif',letterSpacing:'.12em',opacity:'.65',marginRight:'4px'});layerSwitcher.appendChild(label);
+  const buttons=[...document.querySelectorAll('#spatial-breadcrumb button')];
+  const current=level();
+  const currentIndex=layerOrder.indexOf(current);
+  layerOrder.forEach((layer)=>{
+    const b=document.createElement('button');b.type='button';b.textContent=layerNames[layer];
+    Object.assign(b.style,{padding:'7px 10px',borderRadius:'9px',border:'1px solid #36544e',background:layer===current?'#23463e':'#101b1a',color:'#dcece6',font:'600 11px system-ui,sans-serif',cursor:'pointer'});
+    const idx=layerOrder.indexOf(layer);
+    const available=idx<=currentIndex && buttons.length>idx;
+    b.disabled=!available;b.style.opacity=available?'1':'.35';
+    if(available){
+      let breadcrumbIndex=idx;
+      if(layer==='macro'&&buttons.length>1)breadcrumbIndex=1;
+      b.onclick=()=>buttons[breadcrumbIndex]?.click();
+    }
+    layerSwitcher.appendChild(b);
+  });
+}
+const navigator=document.querySelector('.spatial-navigator');
+const breadcrumb=document.getElementById('spatial-breadcrumb');
+if(navigator&&breadcrumb)navigator.insertBefore(layerSwitcher,breadcrumb);
+
+new MutationObserver(render).observe(badge,{childList:true,characterData:true,subtree:true});new MutationObserver(render).observe(node,{childList:true,characterData:true,subtree:true});new MutationObserver(render).observe(children,{childList:true,characterData:true,subtree:true});new MutationObserver(document.getElementById('spatial-breadcrumb'),{childList:true,subtree:true});
+new MutationObserver(renderLayerSwitcher).observe(document.getElementById('spatial-breadcrumb'),{childList:true,subtree:true,characterData:true});new MutationObserver(renderLayerSwitcher).observe(badge,{childList:true,characterData:true,subtree:true});window.addEventListener('resize',resize);render();renderLayerSwitcher();animate();
