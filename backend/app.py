@@ -1,29 +1,38 @@
 from __future__ import annotations
 
-import os
 from pathlib import Path
 from typing import Any
 
 import yaml
-from fastapi import FastAPI
+from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
+from .data_ingestion import ingest_upload, registry_status
+from .hand_twin_v2 import build_twin
+
 ROOT = Path(__file__).resolve().parents[1]
 RAW_ROOT = ROOT / "data" / "raw"
 CONFIG_PATH = ROOT / "configs" / "datasets.yaml"
+HAND_ONTOLOGY_PATH = ROOT / "configs" / "hand_zones.yaml"
 WEB_ROOT = ROOT / "web"
 
 IMAGE_FORMATS = {".jpg", ".jpeg", ".png", ".webp", ".tif", ".tiff", ".bmp"}
 WSI_FORMATS = {".dcm", ".svs", ".ndpi", ".mrxs", ".tif", ".tiff"}
 RNA_FORMATS = {".gz", ".mtx", ".tsv", ".csv", ".txt", ".h5", ".h5ad", ".tar"}
 
-app = FastAPI(title="Human Pathology Platform", version="0.4.0")
+app = FastAPI(title="Human Pathology Platform", version="0.5.0")
 
 
 class PipelineRequest(BaseModel):
     datasets: list[str] = []
+
+
+class HandValidationRequest(BaseModel):
+    subject_id: str
+    timepoint: str
+    session_id: str = "session-001"
 
 
 def load_config() -> dict[str, Any]:
@@ -31,6 +40,13 @@ def load_config() -> dict[str, Any]:
         return {}
     with CONFIG_PATH.open("r", encoding="utf-8") as handle:
         return yaml.safe_load(handle) or {}
+
+
+def load_hand_ontology() -> dict[str, Any]:
+    if not HAND_ONTOLOGY_PATH.exists():
+        return {"hand": []}
+    with HAND_ONTOLOGY_PATH.open("r", encoding="utf-8") as handle:
+        return yaml.safe_load(handle) or {"hand": []}
 
 
 def iter_files(path: Path):
@@ -101,7 +117,6 @@ def run_pipeline(selected: list[str]) -> dict[str, Any]:
     modalities = sorted({x["modality"] for x in valid_items})
     total_files = sum(x["supported_files"] for x in valid_items)
     total_bytes = sum(x["bytes"] for x in valid_items)
-
     steps = [
         {"id": "input", "name": "Input", "purpose": "Identify selected research datasets", "status": "ok" if not missing else "warning"},
         {"id": "ingestion", "name": "Ingestion", "purpose": "Read available files from data/raw", "status": "ok" if valid_items else "warning"},
@@ -135,12 +150,14 @@ def health():
 @app.get("/api/status")
 def status():
     registry = dataset_registry()
+    assets = registry_status()
     return {
         "status": "ready",
         "raw_data": RAW_ROOT.exists(),
         "registered_datasets": len(registry),
         "available_datasets": sum(1 for x in registry if x["available"]),
         "modalities": sorted({x["modality"] for x in registry}),
+        "uploaded_assets": assets["count"],
     }
 
 
@@ -148,6 +165,57 @@ def status():
 def datasets():
     registry = [validate_dataset(x) for x in dataset_registry()]
     return {"raw_exists": RAW_ROOT.exists(), "datasets": registry}
+
+
+@app.get("/api/ingestion/assets")
+def ingestion_assets():
+    return registry_status()
+
+
+@app.get("/api/hand/ontology")
+def hand_ontology():
+    return load_hand_ontology()
+
+
+@app.get("/api/hand/twin")
+def hand_twin(subject_id: str = "own_cohort"):
+    twin = build_twin(subject_id, load_hand_ontology())
+    return twin.snapshot()
+
+
+@app.post("/api/hand/validate")
+def validate_hand(request: HandValidationRequest):
+    root = RAW_ROOT / "hand" / "own_cohort" / request.timepoint
+    required = ["front", "back", "thumb", "side_left", "side_right"]
+    found = {name: next((p for p in root.glob(f"{name}.*") if p.is_file() and p.suffix.lower() in IMAGE_FORMATS and p.stat().st_size > 0), None) for name in required}
+    missing = [name for name, path in found.items() if path is None]
+    return {
+        "subject_id": request.subject_id,
+        "session_id": request.session_id,
+        "timepoint": request.timepoint,
+        "status": "available" if not missing else ("partial" if any(found.values()) else "unavailable"),
+        "required_views": required,
+        "available_views": [name for name, path in found.items() if path is not None],
+        "missing_views": missing,
+    }
+
+
+@app.post("/api/upload/{modality}")
+async def upload(
+    modality: str,
+    file: UploadFile = File(...),
+    subject_id: str = Form("own_cohort"),
+    timepoint: str = Form("T0"),
+    subtype: str | None = Form(None),
+    view: str | None = Form(None),
+):
+    if modality not in {"hand", "video", "images", "wsi", "rna", "metadata"}:
+        raise HTTPException(status_code=400, detail="unsupported modality")
+    try:
+        asset = await ingest_upload(file, subject_id, timepoint, modality, subtype, view)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"status": asset.status, "asset": asset.to_dict()}
 
 
 @app.get("/api/pipeline")
