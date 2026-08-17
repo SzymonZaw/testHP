@@ -15,7 +15,9 @@ def test_pathology_module_import():
 
 def _model():
     from models.pathology_model import PathologyModel
-    return PathologyModel(embedding_dim=768)
+    # Exercise the underlying classifier directly on CPU. Production inference
+    # methods still select CUDA automatically when available.
+    return PathologyModel(embedding_dim=768, device="cpu")
 
 
 def test_pathology_model_creation():
