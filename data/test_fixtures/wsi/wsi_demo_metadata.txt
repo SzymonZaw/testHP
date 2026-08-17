@@ -1,0 +1,17 @@
+# Synthetic WSI/DICOM metadata fixture
+# This is not a real pathology slide and must not be interpreted as one.
+
+subject_id=subject-TEST
+sample_id=sample-WSI-TEST
+specimen_id=specimen-WSI-TEST
+modality=WSI_TEST
+matrix_rows=2048
+matrix_columns=3072
+pixel_spacing_um=0.25
+magnification=40x
+region_id=hand.palm.demo
+provenance=synthetic_fixture
+interpretation=not_established
+
+# Intended ladder:
+# macro region -> tissue region -> microscopic tile -> cellular observations
