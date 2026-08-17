@@ -26,6 +26,20 @@
       <button id="run-button">Run research pipeline</button>
     </section>
 
+    <section class="card upload-card">
+      <div class="section-head"><div><span class="eyebrow">DATA INGESTION</span><h2>Upload research data</h2></div><span id="upload-status" class="badge neutral">Ready</span></div>
+      <form id="upload-form" class="upload-form">
+        <label>Modality<select id="upload-modality"><option value="hand">Hand image</option><option value="video">Hand video</option><option value="images">Skin image</option><option value="wsi">WSI / DICOM</option><option value="rna">RNA</option><option value="metadata">Metadata</option></select></label>
+        <label>Subject<input id="upload-subject" value="own_cohort" required></label>
+        <label>Timepoint<input id="upload-timepoint" value="T0" required></label>
+        <label>Subtype<input id="upload-subtype" placeholder="e.g. normal_skin, aging_skin, skin"></label>
+        <label>View<input id="upload-view" placeholder="e.g. front, back, thumb"></label>
+        <label class="file-field">File<input id="upload-file" type="file" required></label>
+        <button type="submit">Upload</button>
+      </form>
+      <div id="upload-result" class="warnings"></div>
+    </section>
+
     <section class="metrics" id="metrics">
       <div class="metric card"><span>Datasets</span><strong id="metric-datasets">—</strong><small>available for this run</small></div>
       <div class="metric card"><span>Files</span><strong id="metric-files">—</strong><small>supported input files</small></div>
