@@ -1,1 +1,61 @@
-<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Biological Digital Twin</title><link rel="stylesheet" href="./styles.css"></head><body><main class="app-shell"><header class="topbar"><div><span class="eyebrow">BIOLOGICAL MONITORING</span><h1>Digital Twin</h1></div><div class="status"><span class="dot"></span> Monitoring</div></header><section class="subject-card"><div><span class="label">SUBJECT</span><h2>SUBJECT-001</h2><p>Hand · latest observation <strong>T0</strong></p></div><div class="coverage"><span>Data coverage</span><b>Macro 0%</b><b>Micro 0%</b><b>Molecular 0%</b></div></section><section class="workspace"><div class="panel twin-panel"><div class="panel-title"><span>3D DIGITAL TWIN</span><span class="muted">drag · wheel · click</span></div><div class="viewer-toolbar"><button id="reset-view" type="button">Reset</button><button id="rotate-left" type="button">↶</button><button id="rotate-right" type="button">↷</button><span id="zoom-label">100%</span></div><div class="twin-viewport" id="twin-viewport"><div class="twin-scene" id="twin-scene"><div class="hand-model" id="hand-model"><div class="palm"></div><div class="finger thumb"></div><div class="finger index"></div><div class="finger middle"></div><div class="finger ring"></div><div class="finger little"></div><div class="wrist"></div><button class="anatomical-zone ok" data-region="thumb">TH</button><button class="anatomical-zone ok" data-region="index">IN</button><button class="anatomical-zone warn" data-region="middle">MI</button><button class="anatomical-zone ok" data-region="ring">RI</button><button class="anatomical-zone ok" data-region="little">LI</button><button class="anatomical-zone alert palm-zone" data-region="palm">PA</button><button class="anatomical-zone ok wrist-zone" data-region="wrist">WR</button></div></div><div class="viewer-hint">Drag to rotate · wheel/pinch to zoom · click a region</div></div><div class="viewer-legend"><span><i class="legend-dot ok"></i>Normal data coverage</span><span><i class="legend-dot warn"></i>Review</span><span><i class="legend-dot alert"></i>Needs investigation</span></div></div><aside class="panel state-panel"><div class="panel-title"><span>BIOLOGICAL STATE</span><span class="muted">research</span></div><div class="metric"><span>Aging</span><b class="warn-text">Not established</b></div><div class="metric"><span>Pathology</span><b class="warn-text">Not established</b></div><div class="metric"><span>Cellular damage</span><b class="warn-text">Not established</b></div><div class="metric"><span>Inflammation</span><b class="warn-text">Not established</b></div><div class="metric"><span>Evidence</span><b id="evidence-level">Macro / ingestion</b></div><hr><p class="disclaimer">The twin displays research evidence and data availability. It does not diagnose disease.</p></aside></section><section class="panel zone-panel"><div class="panel-title"><span>SELECTED REGION</span><span id="zone-label">palm</span></div><div class="zone-grid"><div><span class="label">MACRO</span><strong id="macro-state">No observation</strong><p id="macro-detail">Select a region to inspect image evidence.</p></div><div><span class="label">MICRO</span><strong id="micro-state">Not available</strong><p id="micro-detail">No microscopy artifact registered.</p></div><div><span class="label">MOLECULAR</span><strong id="molecular-state">Not available</strong><p id="molecular-detail">No non-image measurements registered.</p></div><div class="region-actions"><button id="zoom-region" class="primary" type="button">Zoom region</button><button id="add-observation" class="secondary" type="button">＋ Add observation</button></div></div></section><section class="panel timeline"><div class="panel-title"><span>LONGITUDINAL TIMELINE</span><span class="muted">T0</span></div><div class="timeline-line"><span class="point active"><i></i><b>T0</b><small>17 Aug 2026</small></span><span class="future"><i></i><b>Next</b><small>awaiting data</small></span></div></section><dialog id="observation-dialog"><form method="dialog" class="dialog-card"><button class="close" value="cancel">×</button><span class="eyebrow">NEW OBSERVATION</span><h2>Add data to SUBJECT-001</h2><label>Body region<select><option>Hand</option></select></label><label>Region<select id="form-region"><option>palm</option><option>thumb</option><option>index</option><option>middle</option><option>ring</option><option>little</option><option>wrist</option></select></label><label>Modality<select><option>Photo</option><option>Video</option><option>Microscopy</option><option>Measurements</option><option>Molecular data</option></select></label><label>Files<input type="file" multiple></label><button class="primary" value="default">Register observation</button></form></dialog></main><script src="./app.js"></script></body></html>
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Biological Digital Twin</title>
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+<main class="app-shell">
+  <header class="topbar">
+    <div><span class="eyebrow">BIOLOGICAL MONITORING</span><h1>Hand Digital Twin</h1><p>Interactive spatial view of multimodal research evidence.</p></div>
+    <div class="status"><span class="dot"></span><span id="twin-status">Loading evidence</span></div>
+  </header>
+
+  <section class="subject-card">
+    <div><span class="label">SUBJECT</span><h2 id="subject-title">own_cohort</h2><p>Hand · latest observation <strong>T0</strong></p></div>
+    <div class="coverage"><span>Data coverage</span><b id="coverage-macro">Macro 0%</b><b id="coverage-micro">Tissue 0%</b><b id="coverage-cellular">Cellular 0%</b><b id="coverage-molecular">Molecular 0%</b></div>
+  </section>
+
+  <section class="workspace">
+    <div class="panel twin-panel">
+      <div class="panel-title"><span>3D DIGITAL TWIN</span><span class="muted">drag · wheel · click</span></div>
+      <div class="viewer-toolbar">
+        <button id="reset-view" type="button">Reset</button><button id="rotate-left" type="button">↶</button><button id="rotate-right" type="button">↷</button>
+        <button id="zoom-in" type="button">＋</button><button id="zoom-out" type="button">−</button><span id="zoom-label">100%</span>
+      </div>
+      <div class="twin-viewport" id="twin-viewport"><canvas id="twin-canvas"></canvas><div class="viewer-hint">Drag to rotate · wheel to zoom · click a region</div><div id="viewer-loading" class="viewer-loading">Building 3D twin…</div></div>
+      <div class="viewer-legend"><span><i class="legend-dot ok"></i>Evidence available</span><span><i class="legend-dot warn"></i>Review / partial</span><span><i class="legend-dot alert"></i>No evidence</span></div>
+    </div>
+
+    <aside class="panel state-panel">
+      <div class="panel-title"><span>BIOLOGICAL STATE</span><span class="muted">research</span></div>
+      <div class="metric"><span>Biological age</span><b class="warn-text" id="age-state">Not established</b></div>
+      <div class="metric"><span>Structural / functional</span><b class="warn-text" id="structure-state">Evidence pending</b></div>
+      <div class="metric"><span>Damage</span><b class="warn-text" id="damage-state">Not established</b></div>
+      <div class="metric"><span>Pathology</span><b class="warn-text" id="pathology-state">Not established</b></div>
+      <div class="metric"><span>Confidence</span><b id="confidence-state">—</b></div>
+      <div class="metric"><span>Evidence availability</span><b id="evidence-level">Ingestion only</b></div>
+      <hr><p class="disclaimer">The twin displays research evidence and data availability. It does not diagnose disease or invent cellular findings.</p>
+    </aside>
+  </section>
+
+  <section class="panel zone-panel">
+    <div class="panel-title"><span>SELECTED REGION</span><span id="zone-label">palm</span></div>
+    <div class="zone-grid">
+      <div><span class="label">MACRO</span><strong id="macro-state">No observation</strong><p id="macro-detail">Select a region to inspect image evidence.</p></div>
+      <div><span class="label">TISSUE</span><strong id="tissue-state">Unavailable</strong><p id="tissue-detail">No tissue / WSI evidence registered for this region.</p></div>
+      <div><span class="label">CELLULAR</span><strong id="cellular-state">Unavailable</strong><p id="cellular-detail">No cellular evidence registered for this region.</p></div>
+      <div><span class="label">MOLECULAR</span><strong id="molecular-state">Unavailable</strong><p id="molecular-detail">No molecular measurements are linked to this region.</p></div>
+      <div class="region-actions"><button id="zoom-region" class="primary" type="button">Zoom region</button><button id="deep-analysis" class="secondary" type="button">Deep analysis</button><button id="add-observation" class="secondary" type="button">＋ Add observation</button></div>
+    </div>
+  </section>
+
+  <section class="panel timeline"><div class="panel-title"><span>LONGITUDINAL TIMELINE</span><span class="muted">T0</span></div><div class="timeline-line"><span class="point active"><i></i><b>T0</b><small>latest available observation</small></span><span class="future"><i></i><b>Next</b><small>awaiting future observation</small></span></div></section>
+
+  <dialog id="observation-dialog"><form method="dialog" class="dialog-card"><button class="close" value="cancel">×</button><span class="eyebrow">NEW OBSERVATION</span><h2>Add data to the twin</h2><label>Body region<select><option>Hand</option></select></label><label>Region<select id="form-region"><option>palm</option><option>thumb</option><option>index</option><option>middle</option><option>ring</option><option>little</option><option>wrist</option></select></label><label>Modality<select id="form-modality"><option>Photo</option><option>Video</option><option>Microscopy</option><option>Measurements</option><option>Molecular data</option></select></label><label>File<input id="observation-file" type="file" required></label><button id="register-observation" class="primary" value="default">Register observation</button></form></dialog>
+</main>
+<script type="module" src="./app.js"></script>
+</body>
+</html>
