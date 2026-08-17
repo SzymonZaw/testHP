@@ -13,8 +13,9 @@
   </header>
   <main class="container">
     <section class="hero card"><div><span class="eyebrow">RUN OVERVIEW</span><h2>Understand what entered the platform and what happened to it.</h2><p>The dashboard separates data availability, processing state and biological inference. Missing or unsupported data is shown as a limitation rather than silently converted into a result.</p></div><button id="run-button">Run research pipeline</button></section>
+
     <section class="card upload-card">
-      <div class="section-head"><div><span class="eyebrow">DATA INGESTION</span><h2>Upload research data</h2></div><span id="upload-status" class="badge neutral">Ready</span></div>
+      <div class="section-head"><div><span class="eyebrow">DATA INGESTION</span><h2>Upload research data</h2><p class="section-note">Uploaded files are stored in <code>data/raw/</code> and registered without overwriting earlier uploads.</p></div><span id="upload-status" class="badge neutral">Ready</span></div>
       <form id="upload-form" class="upload-form">
         <label>Modality<select id="upload-modality"><option value="hand">Hand image</option><option value="video">Hand video</option><option value="images">Skin image</option><option value="wsi">WSI / DICOM</option><option value="rna">RNA</option><option value="metadata">Metadata</option></select></label>
         <label>Subject<input id="upload-subject" value="own_cohort" required></label>
@@ -26,6 +27,14 @@
       </form>
       <div id="upload-result" class="warnings"></div>
     </section>
+
+    <section class="card assets-card">
+      <div class="section-head"><div><span class="eyebrow">RAW INPUT INVENTORY</span><h2>Data already uploaded</h2><p class="section-note">This is the registry of files uploaded through the frontend. It is separate from the dataset explorer below, which also sees manually placed files.</p></div><button id="refresh-assets" type="button">Refresh</button></div>
+      <div class="asset-summary" id="asset-summary"></div>
+      <div class="asset-table-wrap"><table><thead><tr><th>Subject</th><th>Timepoint</th><th>Modality</th><th>Subtype</th><th>View</th><th>File</th><th>Size</th><th>Status</th></tr></thead><tbody id="asset-table"></tbody></table></div>
+      <div id="asset-empty" class="asset-empty">No files have been uploaded through this frontend yet.</div>
+    </section>
+
     <section class="metrics" id="metrics">
       <div class="metric card"><span>Datasets</span><strong id="metric-datasets">—</strong><small>available for this run</small></div>
       <div class="metric card"><span>Files</span><strong id="metric-files">—</strong><small>supported input files</small></div>
