@@ -1,49 +1,41 @@
-# Hand anatomical zone ontology
-#
-# Structural ontology for the digital hand twin. It defines where
-# observations may be attached; it does not imply a biological condition.
-# Measurements remain observations until a validated analysis layer provides
-# an interpretation.
+# Hand anatomical zone ontology v2
+# Spatial structure only. It never implies a diagnosis or biological conclusion.
 
 hand:
   - id: palm
     name: Palm
     level: anatomical_region
-    children:
-      - thenar
-      - hypothenar
-      - central_palm
-      - creases
+    children: [thenar, hypothenar, central_palm, creases]
 
   - id: thumb
     name: Thumb
     level: anatomical_region
-    children: [distal, middle, proximal, nail]
+    children: [proximal, middle, distal, nail]
 
   - id: index
     name: Index
     level: anatomical_region
-    children: [distal, middle, proximal, nail]
+    children: [proximal, middle, distal, nail]
 
   - id: middle
     name: Middle
     level: anatomical_region
-    children: [distal, middle, proximal, nail]
+    children: [proximal, middle, distal, nail]
 
   - id: ring
     name: Ring
     level: anatomical_region
-    children: [distal, middle, proximal, nail]
+    children: [proximal, middle, distal, nail]
 
   - id: little
     name: Little
     level: anatomical_region
-    children: [distal, middle, proximal, nail]
+    children: [proximal, middle, distal, nail]
 
   - id: wrist
     name: Wrist
     level: anatomical_region
-    children: []
+    children: [dorsal, ventral]
 
   - id: nails
     name: Nails
@@ -53,13 +45,7 @@ hand:
   - id: skin_regions
     name: Skin regions
     level: observation_region
-    children:
-      - pigmentation
-      - texture
-      - vascular
-      - lesions
-      - aging
-      - inflammation
+    children: [dorsal, palmar, pigmentation, texture, vascular, lesions, aging, inflammation]
 
 observation_policy:
   evidence_level: observed
