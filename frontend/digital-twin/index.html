@@ -64,53 +64,6 @@
 
   <dialog id="observation-dialog"><form method="dialog" class="dialog-card"><button class="close" value="cancel">×</button><span class="eyebrow">NEW OBSERVATION</span><h2>Add data to the twin</h2><label>Body region<select><option>Hand</option></select></label><label>Region<select id="form-region"><option>palm</option><option>thumb</option><option>index</option><option>middle</option><option>ring</option><option>little</option><option>wrist</option></select></label><label>Modality<select id="form-modality"><option>Photo</option><option>Video</option><option>Microscopy</option><option>Measurements</option><option>Molecular data</option></select></label><label>File<input id="observation-file" type="file" required></label><button id="register-observation" class="primary" value="default">Register observation</button></form></dialog>
 </main>
-<script type="module" src="/digital-twin/assets/app.js?v=progressive-inspector-4"></script>
-<script>
-(() => {
-  const text = (id, value) => { const el = document.getElementById(id); if (el) el.textContent = value; };
-  const sync = () => {
-    const badge = document.getElementById('spatial-level-badge');
-    const breadcrumb = document.getElementById('spatial-breadcrumb');
-    const macroRow = document.querySelector('.macro-row');
-    if (!badge || !breadcrumb || !macroRow) return;
-    const level = (badge.textContent || '').trim().toLowerCase();
-    const buttons = [...breadcrumb.querySelectorAll('button')];
-    const current = buttons.at(-1)?.textContent?.trim() || 'Hand';
-    const isMacro = level === 'macro anatomy' || level === 'macro';
-    text('zone-label', current.toLowerCase());
-    text('region-title', current);
-    text('region-context', `Hand · T0 · ${badge.textContent || 'Macro anatomy'}`);
-    macroRow.hidden = !isMacro;
-    if (!isMacro) {
-      const image = document.getElementById('macro-image');
-      if (image) { image.removeAttribute('src'); image.removeAttribute('srcset'); image.hidden = true; }
-      const preview = document.getElementById('macro-preview');
-      if (preview) preview.hidden = true;
-      text('macro-state', 'Not shown at this resolution');
-      text('macro-status', 'PARENT');
-      text('macro-detail', 'Macro evidence remains attached to the parent spatial region and is not presented for this target.');
-      text('tissue-state', level === 'tissue field' ? 'No evidence at this resolution' : 'Unavailable at this resolution');
-      text('tissue-status', 'NONE');
-      text('tissue-detail', 'No tissue / WSI evidence is explicitly linked to this spatial target.');
-      text('cellular-state', level === 'cellular field' ? 'No evidence at this resolution' : 'Unavailable at this resolution');
-      text('cellular-status', 'NONE');
-      text('cellular-detail', 'No cellular evidence is explicitly linked to this spatial target.');
-      text('molecular-state', 'Unavailable at this resolution');
-      text('molecular-status', 'NONE');
-      text('molecular-detail', 'Molecular evidence is not inherited from the parent spatial region.');
-      text('confidence-state', 'Navigation only');
-      text('evidence-level', `No evidence at ${badge.textContent || level}`);
-      document.querySelectorAll('.evidence-scale, .spatial-resolution, [data-evidence-scale]').forEach(el => {
-        if (!el.closest('.spatial-navigator')) el.remove();
-      });
-      document.querySelectorAll('.twin-panel img').forEach(img => {
-        if (img.id !== 'twin-canvas') { img.removeAttribute('src'); img.removeAttribute('srcset'); img.hidden = true; }
-      });
-    }
-  };
-  new MutationObserver(sync).observe(document.body, {subtree:true, childList:true, characterData:true, attributes:true});
-  sync();
-})();
-</script>
+<script type="module" src="/digital-twin/assets/app.js?v=progressive-inspector-5"></script>
 </body>
 </html>
