@@ -1,56 +1,48 @@
 <!doctype html>
 <html lang="en">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Human Pathology Platform</title>
-  <link rel="stylesheet" href="/assets/style.css">
-</head>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Human Pathology Platform</title><link rel="stylesheet" href="/assets/style.css"></head>
 <body>
-  <header class="topbar">
-    <div><div class="eyebrow">RESEARCH PLATFORM</div><h1>Human Pathology Platform</h1><p>From multimodal input to transparent research evidence.</p></div>
-    <div class="status-pill" id="system-status">Checking system…</div>
-  </header>
-  <main class="container">
-    <section class="hero card"><div><span class="eyebrow">RUN OVERVIEW</span><h2>Understand what entered the platform and what happened to it.</h2><p>The dashboard separates data availability, processing state and biological inference. Missing or unsupported data is shown as a limitation rather than silently converted into a result.</p></div><button id="run-button">Run research pipeline</button></section>
+<header class="topbar"><div><div class="eyebrow">RESEARCH PLATFORM</div><h1>Human Pathology Platform</h1><p>From multimodal input to transparent research evidence.</p></div><div class="status-pill" id="system-status">Checking system…</div></header>
+<main class="container">
+<section class="hero card"><div><span class="eyebrow">RUN OVERVIEW</span><h2>Understand what entered the platform and what happened to it.</h2><p>The dashboard separates data availability, processing state and biological inference. Missing or unsupported data is shown as a limitation rather than silently converted into a result.</p></div><button id="run-button">Run research pipeline</button></section>
 
-    <section class="card upload-card">
-      <div class="section-head"><div><span class="eyebrow">DATA INGESTION</span><h2>Upload research data</h2><p class="section-note">Uploaded files are stored in <code>data/raw/</code> and registered without overwriting earlier uploads.</p></div><span id="upload-status" class="badge neutral">Ready</span></div>
-      <form id="upload-form" class="upload-form">
-        <label>Modality<select id="upload-modality"><option value="hand">Hand image</option><option value="video">Hand video</option><option value="images">Skin image</option><option value="wsi">WSI / DICOM</option><option value="rna">RNA</option><option value="metadata">Metadata</option></select></label>
-        <label>Subject<input id="upload-subject" value="own_cohort" required></label>
-        <label>Timepoint<input id="upload-timepoint" value="T0" required></label>
-        <label>Subtype<input id="upload-subtype" placeholder="e.g. normal_skin, aging_skin, skin"></label>
-        <label>View<input id="upload-view" placeholder="e.g. front, back, thumb"></label>
-        <label class="file-field">File<input id="upload-file" type="file" required></label>
-        <button type="submit">Upload</button>
-      </form>
-      <div id="upload-result" class="warnings"></div>
-    </section>
+<section class="card dataset-manager-card">
+  <div class="section-head"><div><span class="eyebrow">DATASET MANAGEMENT</span><h2>Real research datasets</h2><p class="section-note">A dataset now has its own ID, version, metadata and manifest. Files are evidence belonging to a dataset, not the dataset itself.</p></div><span id="dataset-manager-status" class="badge neutral">Loading</span></div>
+  <form id="dataset-form" class="dataset-form">
+    <label>Name<input id="dataset-name" required placeholder="e.g. own_hand_cohort"></label>
+    <label>Modality<select id="dataset-modality"><option value="hand">Hand / pose</option><option value="image">Images</option><option value="wsi">WSI / DICOM</option><option value="rna">RNA</option><option value="video">Video</option><option value="metadata">Metadata</option></select></label>
+    <label>Version<input id="dataset-version" value="1.0"></label>
+    <label>Source<input id="dataset-source" placeholder="Own cohort, GEO, TCGA…"></label>
+    <label class="wide">Description<textarea id="dataset-description" rows="2" placeholder="What is this dataset and what is its intended research use?"></textarea></label>
+    <label>Tags<input id="dataset-tags" placeholder="skin, longitudinal, hand"></label>
+    <button type="submit">Create dataset</button>
+  </form>
+  <div id="dataset-create-result" class="warnings"></div>
+  <div class="managed-datasets" id="managed-datasets"></div>
+</section>
 
-    <section class="card assets-card">
-      <div class="section-head"><div><span class="eyebrow">RAW INPUT INVENTORY</span><h2>All data currently in data/raw</h2><p class="section-note">This inventory includes files placed manually as well as files uploaded through the frontend. It is the complete current raw-input view.</p></div><button id="refresh-assets" type="button">Refresh</button></div>
-      <div class="asset-summary" id="asset-summary"></div>
-      <div class="asset-table-wrap"><table><thead><tr><th>Subject</th><th>Timepoint</th><th>Modality</th><th>Subtype</th><th>View</th><th>File</th><th>Size</th><th>Status</th></tr></thead><tbody id="asset-table"></tbody></table></div>
-      <div id="asset-empty" class="asset-empty">No files are currently present in data/raw.</div>
-    </section>
+<section class="card upload-card">
+  <div class="section-head"><div><span class="eyebrow">DATA INGESTION</span><h2>Add files to a dataset</h2><p class="section-note">Choose a managed dataset first. Uploads are stored inside that dataset's raw directory and added to its manifest.</p></div><span id="upload-status" class="badge neutral">Ready</span></div>
+  <form id="upload-form" class="upload-form">
+    <label>Dataset<select id="upload-dataset"><option value="">Select a managed dataset…</option></select></label>
+    <label>Modality<select id="upload-modality"><option value="hand">Hand image</option><option value="video">Hand video</option><option value="images">Skin image</option><option value="wsi">WSI / DICOM</option><option value="rna">RNA</option><option value="metadata">Metadata</option></select></label>
+    <label>Subject<input id="upload-subject" value="own_cohort" required></label>
+    <label>Timepoint<input id="upload-timepoint" value="T0" required></label>
+    <label>Subtype<input id="upload-subtype" placeholder="e.g. normal_skin, aging_skin"></label>
+    <label>View<input id="upload-view" placeholder="e.g. front, back, thumb"></label>
+    <label class="file-field">File<input id="upload-file" type="file" required></label>
+    <button type="submit">Add to dataset</button>
+  </form>
+  <div id="upload-result" class="warnings"></div>
+</section>
 
-    <section class="metrics" id="metrics">
-      <div class="metric card"><span>Datasets</span><strong id="metric-datasets">—</strong><small>available for this run</small></div>
-      <div class="metric card"><span>Files</span><strong id="metric-files">—</strong><small>supported input files</small></div>
-      <div class="metric card"><span>Modalities</span><strong id="metric-modalities">—</strong><small>represented in the run</small></div>
-      <div class="metric card"><span>Subject links</span><strong id="metric-links">0</strong><small>explicit links only</small></div>
-    </section>
-    <section class="card"><div class="section-head"><div><span class="eyebrow">PIPELINE</span><h2>What happened?</h2></div><span id="run-status" class="badge neutral">Not run</span></div><div id="pipeline" class="pipeline"></div></section>
-    <section class="grid-2">
-      <div class="card"><div class="section-head"><div><span class="eyebrow">INPUT</span><h2>Data coverage</h2></div></div><div id="modality-chart" class="bars"></div><div id="dataset-list" class="dataset-list"></div></div>
-      <div class="card"><div class="section-head"><div><span class="eyebrow">EVIDENCE</span><h2>Research result</h2></div></div><div id="result-panel" class="result-panel"><div class="result-icon">i</div><div><strong>No biological conclusion has been made.</strong><p>Run the pipeline to see the current evidence boundary and recommended next step.</p></div></div><div id="warnings" class="warnings"></div></div>
-    </section>
-    <section class="card"><div class="section-head"><div><span class="eyebrow">DATASET EXPLORER</span><h2>Input by dataset</h2></div><div id="filter-buttons" class="filters"></div></div><div class="table-wrap"><table><thead><tr><th>Dataset</th><th>Modality</th><th>Task</th><th>Files</th><th>Coverage</th><th>Status</th></tr></thead><tbody id="dataset-table"></tbody></table></div></section>
-    <footer>Research prototype · Dataset-level evidence only · Not a diagnostic or autonomous clinical decision system. <a href="/docs" target="_blank">Developer API</a></footer>
-  </main>
-  <script src="/assets/app.js"></script>
-  <script src="/assets/app_upload.js"></script>
-  <script src="/assets/raw_inventory.js"></script>
-</body>
-</html>
+<section class="card assets-card"><div class="section-head"><div><span class="eyebrow">RAW INPUT INVENTORY</span><h2>All data currently in data/raw</h2><p class="section-note">This includes files placed manually as well as files uploaded through the frontend.</p></div><button id="refresh-assets" type="button">Refresh</button></div><div class="asset-summary" id="asset-summary"></div><div class="asset-table-wrap"><table><thead><tr><th>Subject</th><th>Timepoint</th><th>Modality</th><th>Subtype</th><th>View</th><th>File</th><th>Size</th><th>Status</th></tr></thead><tbody id="asset-table"></tbody></table></div><div id="asset-empty" class="asset-empty">No files are currently present in data/raw.</div></section>
+
+<section class="metrics" id="metrics"><div class="metric card"><span>Datasets</span><strong id="metric-datasets">—</strong><small>available for this run</small></div><div class="metric card"><span>Files</span><strong id="metric-files">—</strong><small>supported input files</small></div><div class="metric card"><span>Modalities</span><strong id="metric-modalities">—</strong><small>represented in the run</small></div><div class="metric card"><span>Subject links</span><strong id="metric-links">0</strong><small>explicit links only</small></div></section>
+<section class="card"><div class="section-head"><div><span class="eyebrow">PIPELINE</span><h2>What happened?</h2></div><span id="run-status" class="badge neutral">Not run</span></div><div id="pipeline" class="pipeline"></div></section>
+<section class="grid-2"><div class="card"><div class="section-head"><div><span class="eyebrow">INPUT</span><h2>Data coverage</h2></div></div><div id="modality-chart" class="bars"></div><div id="dataset-list" class="dataset-list"></div></div><div class="card"><div class="section-head"><div><span class="eyebrow">EVIDENCE</span><h2>Research result</h2></div></div><div id="result-panel" class="result-panel"><div class="result-icon">i</div><div><strong>No biological conclusion has been made.</strong><p>Run the pipeline to see the current evidence boundary and recommended next step.</p></div></div><div id="warnings" class="warnings"></div></div></section>
+<section class="card"><div class="section-head"><div><span class="eyebrow">DATASET EXPLORER</span><h2>Input by dataset</h2></div><div id="filter-buttons" class="filters"></div></div><div class="table-wrap"><table><thead><tr><th>Dataset</th><th>Modality</th><th>Task</th><th>Files</th><th>Coverage</th><th>Status</th></tr></thead><tbody id="dataset-table"></tbody></table></div></section>
+<footer>Research prototype · Dataset-level evidence only · Not a diagnostic or autonomous clinical decision system. <a href="/docs" target="_blank">Developer API</a></footer>
+</main>
+<script src="/assets/app.js"></script><script src="/assets/app_upload.js"></script><script src="/assets/raw_inventory.js"></script><script src="/assets/dataset_manager.js"></script>
+</body></html>
