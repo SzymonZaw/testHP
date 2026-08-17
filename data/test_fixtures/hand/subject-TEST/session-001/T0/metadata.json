@@ -1,0 +1,12 @@
+{
+  "subject_id": "subject-TEST",
+  "subject_type": "synthetic_test_subject",
+  "body_part": "hand",
+  "hand_side": "right",
+  "session_id": "session-001",
+  "timepoint": "T0",
+  "capture_type": "still_image",
+  "region_ids": ["hand.wrist", "hand.palm", "hand.thumb", "hand.index", "hand.middle", "hand.ring", "hand.little"],
+  "provenance": "synthetic_fixture",
+  "interpretation": "not established"
+}
