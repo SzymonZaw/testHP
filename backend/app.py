@@ -9,8 +9,12 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
+from .availability import build_availability
 from .data_ingestion import ingest_upload, registry_status, safe_component
 from .hand_twin_v2 import build_twin
+from .longitudinal import compare_observations
+from .provenance import make_provenance
+from .video_analysis import analyze_video_directory, inspect_video
 
 ROOT = Path(__file__).resolve().parents[1]
 RAW_ROOT = ROOT / "data" / "raw"
@@ -21,7 +25,7 @@ IMAGE_FORMATS = {".jpg", ".jpeg", ".png", ".webp", ".tif", ".tiff", ".bmp"}
 WSI_FORMATS = {".dcm", ".svs", ".ndpi", ".mrxs", ".tif", ".tiff"}
 RNA_FORMATS = {".gz", ".mtx", ".tsv", ".csv", ".txt", ".h5", ".h5ad", ".tar"}
 
-app = FastAPI(title="Human Pathology Platform", version="0.5.0")
+app = FastAPI(title="Human Pathology Platform", version="0.6.0")
 
 
 class PipelineRequest(BaseModel):
@@ -32,6 +36,11 @@ class HandValidationRequest(BaseModel):
     subject_id: str
     timepoint: str
     session_id: str = "session-001"
+
+
+class LongitudinalRequest(BaseModel):
+    subject_id: str
+    observations: list[dict[str, Any]]
 
 
 def load_config() -> dict[str, Any]:
@@ -64,7 +73,7 @@ def dataset_registry() -> list[dict[str, Any]]:
             files = iter_files(path)
             enabled = bool(spec.get("enabled", True))
             formats = set(spec.get("formats") or spec.get("image_formats") or [])
-            formats |= {".jpg", ".jpeg", ".png", ".webp", ".tif", ".tiff", ".bmp"} if modality == "image" else set()
+            formats |= IMAGE_FORMATS if modality == "image" else set()
             formats |= WSI_FORMATS if modality == "wsi" else set()
             formats |= RNA_FORMATS if modality == "rna" else set()
             supported = [p for p in files if p.suffix.lower() in {x.lower() for x in formats}]
@@ -129,6 +138,11 @@ def ingestion_assets():
     return registry_status()
 
 
+@app.get("/api/availability")
+def availability():
+    return build_availability(registry_status()["assets"])
+
+
 @app.get("/api/hand/ontology")
 def hand_ontology():
     return load_hand_ontology()
@@ -157,7 +171,25 @@ async def upload(modality: str, file: UploadFile = File(...), subject_id: str = 
         asset = await ingest_upload(file, subject_id, timepoint, modality, subtype, view)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    return {"status": asset.status, "asset": asset.to_dict()}
+    return {"status": asset.status, "asset": asset.to_dict(), "provenance": make_provenance(asset_id=asset.asset_id, source=asset.path, method="upload")}
+
+
+@app.post("/api/longitudinal/compare")
+def longitudinal_compare(request: LongitudinalRequest):
+    return {"subject_id": request.subject_id, "changes": compare_observations(request.subject_id, request.observations)}
+
+
+@app.get("/api/video/inspect")
+def video_inspect(path: str):
+    target = ROOT / path
+    if not target.is_file():
+        raise HTTPException(status_code=404, detail="video not found")
+    return inspect_video(target)
+
+
+@app.get("/api/video")
+def video_inventory():
+    return {"videos": analyze_video_directory(RAW_ROOT / "hand" / "media")}
 
 
 @app.get("/api/pipeline")
