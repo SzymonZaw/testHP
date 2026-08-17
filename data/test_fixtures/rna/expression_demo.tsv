@@ -1,0 +1,6 @@
+gene_id	sample_T0	sample_T1	sample_ref
+GENE_A	10.0	12.5	11.0
+GENE_B	200.0	185.0	195.0
+GENE_C	3.0	4.0	3.5
+GENE_D	1000.0	1015.0	995.0
+GENE_E	0.0	1.0	0.0
