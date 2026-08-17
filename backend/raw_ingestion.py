@@ -32,8 +32,8 @@ def infer_modality(path: Path) -> str:
 def scan_raw(raw_root: str | Path) -> list[dict[str, Any]]:
     """Scan raw files without changing them.
 
-    The public result is kept as plain dictionaries for backwards compatibility
-    with the ingestion API and existing callers.
+    Paths are normalized to POSIX separators so manifests and API responses are
+    identical on Windows, Linux, and macOS.
     """
     root = Path(raw_root)
     if not root.exists():
@@ -42,7 +42,7 @@ def scan_raw(raw_root: str | Path) -> list[dict[str, Any]]:
     for path in sorted(p for p in root.rglob("*") if p.is_file()):
         result.append({
             "path": str(path),
-            "relative_path": str(path.relative_to(root)),
+            "relative_path": path.relative_to(root).as_posix(),
             "modality": infer_modality(path),
             "size_bytes": path.stat().st_size,
         })
