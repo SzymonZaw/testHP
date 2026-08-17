@@ -11,6 +11,7 @@ from pydantic import BaseModel
 
 from .availability import build_availability
 from .data_ingestion import ingest_upload, registry_status, safe_component
+from .hand_evidence_mapping import region_links_dict
 from .hand_twin_v2 import build_twin
 from .hand_zones import assign_feature_to_zone, zone_layout
 from .images_layer import scan_skin, validate_skin_dataset
@@ -121,13 +122,33 @@ def hand_analysis(subject_id: str = "own_cohort", timepoint: str = "T0"):
             width, height = features.get("width_px", 0), features.get("height_px", 0)
             view = asset.get("view") or "unknown"
             zone = assign_feature_to_zone(width / 2, height / 2, width, height) if width and height else None
-            item = {**item, "macro": macro, "zone_id": zone, "zone_assignment": "view_center_proxy" if zone else "unassigned", "view": view}
+            item = {
+                **item,
+                "macro": macro,
+                "zone_id": zone,
+                "zone_assignment": "view_center_proxy" if zone else "unassigned",
+                "view": view,
+                "region_links": region_links_dict(view),
+            }
         analyses.append(item)
     # analyze_asset deliberately exposes its own analysis status ("ready") rather
     # than copying the registry status ("available"). Coverage must therefore be
     # based on analysis readiness, not the ingestion registry label.
     hand_assets = [x for x in analyses if x.get("modality") == "hand" and x.get("status") == "ready"]
-    return {"subject_id":subject_id,"timepoint":timepoint,"analysis_level":"macro_features","biological_inference":"not_established","assets":analyses,"zones": {z["zone_id"]:[a["asset_id"] for a in hand_assets if a.get("zone_id")==z["zone_id"]] for z in zone_layout(900,600)},"coverage":{"macro":100 if hand_assets else 0,"micro":100 if any(x.get("modality")=="wsi" and x.get("status")=="ready" for x in analyses) else 0,"molecular":100 if any(x.get("modality")=="rna" and x.get("status")=="ready" for x in analyses) else 0}}
+    region_links = {
+        region_id: [a["asset_id"] for a in hand_assets if any(link["region_id"] == region_id for link in a.get("region_links", []))]
+        for region_id in ("wrist", "palm", "thumb", "index", "middle", "ring", "little")
+    }
+    return {
+        "subject_id": subject_id,
+        "timepoint": timepoint,
+        "analysis_level": "macro_features",
+        "biological_inference": "not_established",
+        "assets": analyses,
+        "zones": {z["zone_id"]:[a["asset_id"] for a in hand_assets if a.get("zone_id")==z["zone_id"]] for z in zone_layout(900,600)},
+        "region_links": region_links,
+        "coverage":{"macro":100 if hand_assets else 0,"micro":100 if any(x.get("modality")=="wsi" and x.get("status")=="ready" for x in analyses) else 0,"molecular":100 if any(x.get("modality")=="rna" and x.get("status")=="ready" for x in analyses) else 0}
+    }
 
 @app.get("/api/hand/evidence/{asset_id}")
 def hand_evidence(asset_id: str):
