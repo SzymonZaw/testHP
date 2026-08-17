@@ -29,3 +29,5 @@ async function uploadAsset(event) {
     button.disabled = false;
   }
 }
+
+document.getElementById('upload-form').onsubmit = uploadAsset;
