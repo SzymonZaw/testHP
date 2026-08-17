@@ -29,10 +29,10 @@
     </section>
 
     <section class="card assets-card">
-      <div class="section-head"><div><span class="eyebrow">RAW INPUT INVENTORY</span><h2>Data already uploaded</h2><p class="section-note">This is the registry of files uploaded through the frontend. It is separate from the dataset explorer below, which also sees manually placed files.</p></div><button id="refresh-assets" type="button">Refresh</button></div>
+      <div class="section-head"><div><span class="eyebrow">RAW INPUT INVENTORY</span><h2>All data currently in data/raw</h2><p class="section-note">This inventory includes files placed manually as well as files uploaded through the frontend. It is the complete current raw-input view.</p></div><button id="refresh-assets" type="button">Refresh</button></div>
       <div class="asset-summary" id="asset-summary"></div>
       <div class="asset-table-wrap"><table><thead><tr><th>Subject</th><th>Timepoint</th><th>Modality</th><th>Subtype</th><th>View</th><th>File</th><th>Size</th><th>Status</th></tr></thead><tbody id="asset-table"></tbody></table></div>
-      <div id="asset-empty" class="asset-empty">No files have been uploaded through this frontend yet.</div>
+      <div id="asset-empty" class="asset-empty">No files are currently present in data/raw.</div>
     </section>
 
     <section class="metrics" id="metrics">
@@ -51,5 +51,6 @@
   </main>
   <script src="/assets/app.js"></script>
   <script src="/assets/app_upload.js"></script>
+  <script src="/assets/raw_inventory.js"></script>
 </body>
 </html>
