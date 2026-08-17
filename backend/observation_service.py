@@ -31,9 +31,6 @@ def register_asset(asset: dict[str, Any]) -> dict[str, Any]:
     context, region = _anatomical_context(asset), None
     region = str(context["region_id"])
     artifact = Artifact(id=asset.get("asset_id") or _id("artifact"), subject_id=subject_id, timepoint_id=timepoint, modality=modality, uri=str(asset["path"]), media_type=asset.get("media_type"), anatomical_location_id=f"hand/{region}" if modality in {"hand", "video"} else None, metadata={"source": asset.get("source", "raw"), "filename": asset.get("filename"), "size_bytes": asset.get("size_bytes", 0), "anatomical_mapping": context})
-    # A hand region is a precise anatomical site, not a separate level in the
-    # core anatomy hierarchy. Using "site" keeps the observation model aligned
-    # with the validated AnatomicalLocation levels.
     location = AnatomicalLocation(id=f"hand/{region}", name=region, level="site", parent_id="hand")
     observation = Observation(id=_id("observation"), subject_id=subject_id, timepoint_id=timepoint, name="data_availability", value={"status": asset.get("status"), "modality": modality, "bytes": asset.get("size_bytes", 0)}, observed_at=datetime.now(timezone.utc), anatomical_location=location, metadata={"interpretation_boundary": "availability_only", "raw_path": asset["path"], "anatomical_mapping": context})
     evidence = Evidence(id=_id("evidence"), subject_id=subject_id, observation_id=observation.id, artifact_ids=[artifact.id], evidence_type="source_artifact", interpretation_boundary="observation_only", provenance={"path": asset["path"], "source": asset.get("source", "raw"), "anatomical_mapping": context}, confidence=1.0 if asset.get("status") == "available" else 0.0)
@@ -43,4 +40,17 @@ def register_asset(asset: dict[str, Any]) -> dict[str, Any]:
     result = {"artifact": artifact, "observation": observation, "evidence": evidence, "digital_twin": twin}; _write_json(f"{observation.id}.json", result); return result
 def analyze_asset(asset: dict[str, Any]) -> dict[str, Any]:
     result = register_asset(asset)
-    return {"status": "ready" if asset.get("status") == "available" else "warning", "analysis_level": "ingestion_quality", "biological_inference": "not_established", "artifact": result["artifact"], "observation": result["observation"], "evidence": result["evidence"], "digital_twin": result["digital_twin"], "next_analysis": "macro_image_analysis" if asset.get("modality") in {"hand", "images"} else "modality_specific_analysis"}
+    return {
+        "status": "ready" if asset.get("status") == "available" else "warning",
+        "analysis_level": "ingestion_quality",
+        "biological_inference": "not_established",
+        "asset_id": asset.get("asset_id") or result["artifact"].id,
+        "subject_id": asset.get("subject_id"),
+        "timepoint": asset.get("timepoint"),
+        "modality": asset.get("modality"),
+        "artifact": result["artifact"],
+        "observation": result["observation"],
+        "evidence": result["evidence"],
+        "digital_twin": result["digital_twin"],
+        "next_analysis": "macro_image_analysis" if asset.get("modality") in {"hand", "images"} else "modality_specific_analysis",
+    }
