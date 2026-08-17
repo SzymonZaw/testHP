@@ -9,7 +9,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from .data_ingestion import ingest_upload, registry_status
+from .data_ingestion import ingest_upload, registry_status, safe_component
 from .hand_twin_v2 import build_twin
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -17,7 +17,6 @@ RAW_ROOT = ROOT / "data" / "raw"
 CONFIG_PATH = ROOT / "configs" / "datasets.yaml"
 HAND_ONTOLOGY_PATH = ROOT / "configs" / "hand_zones.yaml"
 WEB_ROOT = ROOT / "web"
-
 IMAGE_FORMATS = {".jpg", ".jpeg", ".png", ".webp", ".tif", ".tiff", ".bmp"}
 WSI_FORMATS = {".dcm", ".svs", ".ndpi", ".mrxs", ".tif", ".tiff"}
 RNA_FORMATS = {".gz", ".mtx", ".tsv", ".csv", ".txt", ".h5", ".h5ad", ".tar"}
@@ -50,9 +49,7 @@ def load_hand_ontology() -> dict[str, Any]:
 
 
 def iter_files(path: Path):
-    if not path.exists():
-        return []
-    return [p for p in path.rglob("*") if p.is_file()]
+    return [p for p in path.rglob("*") if p.is_file()] if path.exists() else []
 
 
 def dataset_registry() -> list[dict[str, Any]]:
@@ -67,28 +64,12 @@ def dataset_registry() -> list[dict[str, Any]]:
             files = iter_files(path)
             enabled = bool(spec.get("enabled", True))
             formats = set(spec.get("formats") or spec.get("image_formats") or [])
-            if modality == "image":
-                formats |= IMAGE_FORMATS
-            elif modality == "wsi":
-                formats |= WSI_FORMATS
-            elif modality == "rna":
-                formats |= RNA_FORMATS
+            formats |= {".jpg", ".jpeg", ".png", ".webp", ".tif", ".tiff", ".bmp"} if modality == "image" else set()
+            formats |= WSI_FORMATS if modality == "wsi" else set()
+            formats |= RNA_FORMATS if modality == "rna" else set()
             supported = [p for p in files if p.suffix.lower() in {x.lower() for x in formats}]
             empty = [p for p in supported if p.stat().st_size == 0]
-            registry.append({
-                "name": name,
-                "modality": modality,
-                "task": spec.get("task") or spec.get("source_type") or "research dataset",
-                "path": path_value,
-                "exists": path.exists(),
-                "enabled": enabled,
-                "files": len(files),
-                "supported_files": len(supported),
-                "bytes": sum(p.stat().st_size for p in files),
-                "empty_files": len(empty),
-                "available": bool(supported),
-                "reason": spec.get("reason"),
-            })
+            registry.append({"name": name, "modality": modality, "task": spec.get("task") or spec.get("source_type") or "research dataset", "path": path_value, "exists": path.exists(), "enabled": enabled, "files": len(files), "supported_files": len(supported), "bytes": sum(p.stat().st_size for p in files), "empty_files": len(empty), "available": bool(supported), "reason": spec.get("reason")})
     return registry
 
 
@@ -114,9 +95,7 @@ def run_pipeline(selected: list[str]) -> dict[str, Any]:
     missing = [name for name in chosen if name not in by_name]
     validations = {name: validate_dataset(by_name[name]) for name in chosen if name in by_name}
     valid_items = [x for x in validations.values() if x["valid"]]
-    modalities = sorted({x["modality"] for x in valid_items})
-    total_files = sum(x["supported_files"] for x in valid_items)
-    total_bytes = sum(x["bytes"] for x in valid_items)
+    warnings = [w for item in validations.values() for w in item["warnings"]]
     steps = [
         {"id": "input", "name": "Input", "purpose": "Identify selected research datasets", "status": "ok" if not missing else "warning"},
         {"id": "ingestion", "name": "Ingestion", "purpose": "Read available files from data/raw", "status": "ok" if valid_items else "warning"},
@@ -125,21 +104,7 @@ def run_pipeline(selected: list[str]) -> dict[str, Any]:
         {"id": "fusion", "name": "Multimodal fusion", "purpose": "Aggregate dataset-level evidence without inventing subject links", "status": "ok" if valid_items else "warning"},
         {"id": "results", "name": "Research view", "purpose": "Present evidence, coverage and limitations", "status": "ok" if valid_items else "warning"},
     ]
-    warnings = [w for item in validations.values() for w in item["warnings"]]
-    return {
-        "status": "ready" if valid_items and not missing else "warning",
-        "selected": chosen,
-        "missing": missing,
-        "datasets": list(validations.values()),
-        "steps": steps,
-        "summary": {"datasets": len(valid_items), "files": total_files, "bytes": total_bytes, "modalities": modalities, "linked_subjects": 0},
-        "warnings": warnings + (["Subject-level links are not inferred without a shared identifier."] if valid_items else []),
-        "results": {
-            "evidence_level": "dataset-level research evidence",
-            "biological_inference": "not claimed by this ingestion dashboard",
-            "next_action": "Review the modality coverage and validation warnings before enabling downstream models.",
-        },
-    }
+    return {"status": "ready" if valid_items and not missing else "warning", "selected": chosen, "missing": missing, "datasets": list(validations.values()), "steps": steps, "summary": {"datasets": len(valid_items), "files": sum(x["supported_files"] for x in valid_items), "bytes": sum(x["bytes"] for x in valid_items), "modalities": sorted({x["modality"] for x in valid_items}), "linked_subjects": 0}, "warnings": warnings + (["Subject-level links are not inferred without a shared identifier."] if valid_items else []), "results": {"evidence_level": "dataset-level research evidence", "biological_inference": "not claimed by this ingestion dashboard", "next_action": "Review the modality coverage and validation warnings before enabling downstream models."}}
 
 
 @app.get("/api/health")
@@ -151,20 +116,12 @@ def health():
 def status():
     registry = dataset_registry()
     assets = registry_status()
-    return {
-        "status": "ready",
-        "raw_data": RAW_ROOT.exists(),
-        "registered_datasets": len(registry),
-        "available_datasets": sum(1 for x in registry if x["available"]),
-        "modalities": sorted({x["modality"] for x in registry}),
-        "uploaded_assets": assets["count"],
-    }
+    return {"status": "ready", "raw_data": RAW_ROOT.exists(), "registered_datasets": len(registry), "available_datasets": sum(1 for x in registry if x["available"]), "modalities": sorted({x["modality"] for x in registry}), "uploaded_assets": assets["count"]}
 
 
 @app.get("/api/datasets")
 def datasets():
-    registry = [validate_dataset(x) for x in dataset_registry()]
-    return {"raw_exists": RAW_ROOT.exists(), "datasets": registry}
+    return {"raw_exists": RAW_ROOT.exists(), "datasets": [validate_dataset(x) for x in dataset_registry()]}
 
 
 @app.get("/api/ingestion/assets")
@@ -179,36 +136,21 @@ def hand_ontology():
 
 @app.get("/api/hand/twin")
 def hand_twin(subject_id: str = "own_cohort"):
-    twin = build_twin(subject_id, load_hand_ontology())
-    return twin.snapshot()
+    return build_twin(subject_id, load_hand_ontology()).snapshot()
 
 
 @app.post("/api/hand/validate")
 def validate_hand(request: HandValidationRequest):
-    root = RAW_ROOT / "hand" / "own_cohort" / request.timepoint
+    subject = safe_component(request.subject_id, "subject")
+    root = RAW_ROOT / "hand" / subject / safe_component(request.timepoint, "T0")
     required = ["front", "back", "thumb", "side_left", "side_right"]
     found = {name: next((p for p in root.glob(f"{name}.*") if p.is_file() and p.suffix.lower() in IMAGE_FORMATS and p.stat().st_size > 0), None) for name in required}
     missing = [name for name, path in found.items() if path is None]
-    return {
-        "subject_id": request.subject_id,
-        "session_id": request.session_id,
-        "timepoint": request.timepoint,
-        "status": "available" if not missing else ("partial" if any(found.values()) else "unavailable"),
-        "required_views": required,
-        "available_views": [name for name, path in found.items() if path is not None],
-        "missing_views": missing,
-    }
+    return {"subject_id": request.subject_id, "session_id": request.session_id, "timepoint": request.timepoint, "status": "available" if not missing else ("partial" if any(found.values()) else "unavailable"), "required_views": required, "available_views": [name for name, path in found.items() if path], "missing_views": missing}
 
 
 @app.post("/api/upload/{modality}")
-async def upload(
-    modality: str,
-    file: UploadFile = File(...),
-    subject_id: str = Form("own_cohort"),
-    timepoint: str = Form("T0"),
-    subtype: str | None = Form(None),
-    view: str | None = Form(None),
-):
+async def upload(modality: str, file: UploadFile = File(...), subject_id: str = Form("own_cohort"), timepoint: str = Form("T0"), subtype: str | None = Form(None), view: str | None = Form(None)):
     if modality not in {"hand", "video", "images", "wsi", "rna", "metadata"}:
         raise HTTPException(status_code=400, detail="unsupported modality")
     try:
