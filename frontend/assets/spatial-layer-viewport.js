@@ -49,9 +49,6 @@ function resize(){const r=viewport.getBoundingClientRect(),w=Math.max(1,r.width)
 function animate(){requestAnimationFrame(animate);if(layerCanvas.style.display!=='none'){root.rotation.y+=.0025;renderer.render(scene,camera)}}
 layerCanvas.addEventListener('pointerdown',e=>{const r=layerCanvas.getBoundingClientRect();pointer.x=((e.clientX-r.left)/r.width)*2-1;pointer.y=-((e.clientY-r.top)/r.height)*2+1;raycaster.setFromCamera(pointer,camera);const hit=raycaster.intersectObjects(clickable,false)[0];if(hit?.object?.userData?.target)hit.object.userData.target.click()});
 
-// The server actually serves this file at /assets/spatial-layer-viewport.js.
-// Keep the layer selector here, not only in frontend/digital-twin/assets, so
-// the selector is present in the browser-visible implementation.
 const layerSwitcher=document.createElement('div');
 layerSwitcher.id='spatial-layer-switcher';
 Object.assign(layerSwitcher.style,{display:'flex',flexWrap:'wrap',gap:'6px',alignItems:'center',margin:'10px 0 12px'});
@@ -82,5 +79,4 @@ const navigator=document.querySelector('.spatial-navigator');
 const breadcrumb=document.getElementById('spatial-breadcrumb');
 if(navigator&&breadcrumb)navigator.insertBefore(layerSwitcher,breadcrumb);
 
-new MutationObserver(render).observe(badge,{childList:true,characterData:true,subtree:true});new MutationObserver(render).observe(node,{childList:true,characterData:true,subtree:true});new MutationObserver(render).observe(children,{childList:true,characterData:true,subtree:true});new MutationObserver(document.getElementById('spatial-breadcrumb'),{childList:true,subtree:true});
-new MutationObserver(renderLayerSwitcher).observe(document.getElementById('spatial-breadcrumb'),{childList:true,subtree:true,characterData:true});new MutationObserver(renderLayerSwitcher).observe(badge,{childList:true,characterData:true,subtree:true});window.addEventListener('resize',resize);render();renderLayerSwitcher();animate();
+new MutationObserver(render).observe(badge,{childList:true,characterData:true,subtree:true});new MutationObserver(render).observe(node,{childList:true,characterData:true,subtree:true});new MutationObserver(render).observe(children,{childList:true,characterData:true,subtree:true});new MutationObserver(render).observe(document.getElementById('spatial-breadcrumb'),{childList:true,subtree:true});new MutationObserver(renderLayerSwitcher).observe(document.getElementById('spatial-breadcrumb'),{childList:true,subtree:true,characterData:true});new MutationObserver(renderLayerSwitcher).observe(badge,{childList:true,characterData:true,subtree:true});window.addEventListener('resize',resize);render();renderLayerSwitcher();animate();
