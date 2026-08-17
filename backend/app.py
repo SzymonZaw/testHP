@@ -24,6 +24,7 @@ RAW_ROOT = ROOT / "data" / "raw"
 CONFIG_PATH = ROOT / "configs" / "datasets.yaml"
 HAND_ONTOLOGY_PATH = ROOT / "configs" / "hand_zones.yaml"
 WEB_ROOT = ROOT / "web"
+DIGITAL_TWIN_ROOT = ROOT / "frontend" / "digital-twin"
 IMAGE_FORMATS = {".jpg", ".jpeg", ".png", ".webp", ".tif", ".tiff", ".bmp"}
 WSI_FORMATS = {".dcm", ".svs", ".ndpi", ".mrxs", ".tif", ".tiff"}
 RNA_FORMATS = {".gz", ".mtx", ".tsv", ".csv", ".txt", ".h5", ".h5ad", ".tar"}
@@ -237,6 +238,13 @@ def run(request: PipelineRequest):
 
 if WEB_ROOT.exists():
     app.mount("/assets", StaticFiles(directory=WEB_ROOT), name="assets")
+if DIGITAL_TWIN_ROOT.exists():
+    app.mount("/digital-twin/assets", StaticFiles(directory=DIGITAL_TWIN_ROOT), name="digital_twin_assets")
+
+
+@app.get("/digital-twin")
+def digital_twin():
+    return FileResponse(DIGITAL_TWIN_ROOT / "index.html")
 
 
 @app.get("/")
