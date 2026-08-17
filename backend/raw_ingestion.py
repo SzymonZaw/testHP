@@ -1,17 +1,8 @@
-"""Non-destructive ingestion of files from data/raw into biological observations.
-
-The raw tree is treated as immutable source material. This module only reads it
-and emits normalized Artifact/Observation/Evidence records for downstream
-pipelines. It deliberately does not move, rename, or modify raw files.
-"""
+"""Non-destructive ingestion of files from data/raw into biological observations."""
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
-
-from core.artifact import Artifact
-
 
 IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".tif", ".tiff", ".bmp", ".webp"}
 VIDEO_EXTENSIONS = {".mp4", ".mov", ".avi", ".mkv", ".webm"}
@@ -38,32 +29,26 @@ def infer_modality(path: Path) -> str:
     return "unknown"
 
 
-@dataclass(frozen=True)
-class RawArtifact:
-    path: str
-    relative_path: str
-    modality: str
-    size_bytes: int
+def scan_raw(raw_root: str | Path) -> list[dict[str, Any]]:
+    """Scan raw files without changing them.
 
-
-def scan_raw(raw_root: str | Path) -> list[RawArtifact]:
-    """Scan raw files without changing them."""
+    The public result is kept as plain dictionaries for backwards compatibility
+    with the ingestion API and existing callers.
+    """
     root = Path(raw_root)
     if not root.exists():
         return []
-    result: list[RawArtifact] = []
+    result: list[dict[str, Any]] = []
     for path in sorted(p for p in root.rglob("*") if p.is_file()):
-        result.append(
-            RawArtifact(
-                path=str(path),
-                relative_path=str(path.relative_to(root)),
-                modality=infer_modality(path),
-                size_bytes=path.stat().st_size,
-            )
-        )
+        result.append({
+            "path": str(path),
+            "relative_path": str(path.relative_to(root)),
+            "modality": infer_modality(path),
+            "size_bytes": path.stat().st_size,
+        })
     return result
 
 
 def artifact_records(raw_root: str | Path) -> list[dict[str, Any]]:
     """Return JSON-serializable artifact records for the observation layer."""
-    return [asdict(item) for item in scan_raw(raw_root)]
+    return scan_raw(raw_root)
