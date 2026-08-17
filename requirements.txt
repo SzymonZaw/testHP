@@ -10,3 +10,4 @@ pydicom>=2.4,<4
 PyYAML>=6,<7
 fastapi>=0.115,<1
 uvicorn[standard]>=0.30,<1
+python-multipart>=0.0.20,<1
