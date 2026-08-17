@@ -14,6 +14,7 @@ from .data_ingestion import ingest_upload, registry_status, safe_component
 from .hand_twin_v2 import build_twin
 from .images_layer import scan_skin, validate_skin_dataset
 from .longitudinal import compare_observations
+from .observation_service import analyze_asset
 from .provenance import make_provenance
 from .skin_longitudinal import compare_skin_observations
 from .skin_ontology import ontology_snapshot
@@ -162,6 +163,13 @@ def hand_twin(subject_id: str = "own_cohort"):
     return build_twin(subject_id, load_hand_ontology()).snapshot()
 
 
+@app.get("/api/hand/analysis")
+def hand_analysis(subject_id: str = "own_cohort", timepoint: str = "T0"):
+    assets = [x for x in registry_status()["assets"] if x.get("subject_id") == safe_component(subject_id, "subject") and x.get("timepoint") == safe_component(timepoint, "T0")]
+    analyses = [analyze_asset(asset) for asset in assets]
+    return {"subject_id": subject_id, "timepoint": timepoint, "analysis_level": "ingestion_quality", "biological_inference": "not_established", "assets": analyses, "coverage": {"macro": 100 if any(x.get("modality") in {"hand", "images"} and x.get("status") == "available" for x in assets) else 0, "micro": 100 if any(x.get("modality") == "wsi" and x.get("status") == "available" for x in assets) else 0, "molecular": 100 if any(x.get("modality") == "rna" and x.get("status") == "available" for x in assets) else 0}}
+
+
 @app.post("/api/hand/validate")
 def validate_hand(request: HandValidationRequest):
     subject = safe_component(request.subject_id, "subject")
@@ -180,7 +188,8 @@ async def upload(modality: str, file: UploadFile = File(...), subject_id: str = 
         asset = await ingest_upload(file, subject_id, timepoint, modality, subtype, view)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    return {"status": asset.status, "asset": asset.to_dict(), "provenance": make_provenance(asset_id=asset.asset_id, source=asset.path, method="upload")}
+    analysis = analyze_asset(asset.to_dict())
+    return {"status": asset.status, "asset": asset.to_dict(), "provenance": make_provenance(asset_id=asset.asset_id, source=asset.path, method="upload"), "analysis": analysis}
 
 
 @app.post("/api/longitudinal/compare")
