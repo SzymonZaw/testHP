@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Biological Digital Twin</title>
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+  <main class="app-shell">
+    <header class="topbar">
+      <div><span class="eyebrow">BIOLOGICAL MONITORING</span><h1>Digital Twin</h1></div>
+      <div class="status"><span class="dot"></span> Monitoring</div>
+    </header>
+
+    <section class="subject-card">
+      <div><span class="label">SUBJECT</span><h2>SUBJECT-001</h2><p>Hand · latest observation <strong>T0</strong></p></div>
+      <div class="coverage"><span>Data coverage</span><b>Macro 100%</b><b>Micro 0%</b><b>Molecular 0%</b></div>
+    </section>
+
+    <section class="workspace">
+      <div class="panel twin-panel">
+        <div class="panel-title"><span>HAND MAP</span><span class="muted">T0 · 17 Aug 2026</span></div>
+        <div class="hand-map" role="img" aria-label="Interactive hand zones">
+          <button class="zone ok z1">01</button><button class="zone warn z2">02</button><button class="zone ok z3">03</button>
+          <button class="zone ok z4">04</button><button class="zone alert z5">05</button><button class="zone ok z6">06</button>
+          <button class="zone ok z7">07</button><button class="zone ok z8">08</button><button class="zone ok z9">09</button>
+        </div>
+        <p class="hint">Select a zone to inspect evidence and request deeper analysis.</p>
+      </div>
+
+      <aside class="panel state-panel">
+        <div class="panel-title"><span>BIOLOGICAL STATE</span><span class="muted">experimental</span></div>
+        <div class="metric"><span>Aging</span><b class="warn-text">Review</b></div>
+        <div class="metric"><span>Pathology</span><b class="ok-text">No signal</b></div>
+        <div class="metric"><span>Cellular damage</span><b class="warn-text">Unknown</b></div>
+        <div class="metric"><span>Inflammation</span><b class="ok-text">No signal</b></div>
+        <div class="metric"><span>Confidence</span><b>Macro only</b></div>
+        <hr>
+        <p class="disclaimer">This interface reports research evidence and data availability. It is not a medical diagnosis.</p>
+      </aside>
+    </section>
+
+    <section class="panel zone-panel">
+      <div class="panel-title"><span>SELECTED ZONE</span><span id="zone-label">Zone 05</span></div>
+      <div class="zone-grid">
+        <div><span class="label">MACRO</span><strong class="alert-text">Investigate</strong><p>Image morphology requires review.</p></div>
+        <div><span class="label">MICRO</span><strong>Not available</strong><p>No microscopy artifact registered.</p></div>
+        <div><span class="label">MOLECULAR</span><strong>Not available</strong><p>No non-image measurements registered.</p></div>
+        <button id="add-observation" class="primary">＋ Add observation</button>
+      </div>
+    </section>
+
+    <section class="panel timeline">
+      <div class="panel-title"><span>LONGITUDINAL TIMELINE</span><span class="muted">1 observation</span></div>
+      <div class="timeline-line"><span class="point active"><i></i><b>T0</b><small>17 Aug 2026</small></span><span class="future"><i></i><b>Next</b><small>awaiting data</small></span></div>
+    </section>
+
+    <dialog id="observation-dialog">
+      <form method="dialog" class="dialog-card">
+        <button class="close" value="cancel">×</button><span class="eyebrow">NEW OBSERVATION</span><h2>Add data to SUBJECT-001</h2>
+        <label>Body region<select><option>Hand</option><option>Skin</option></select></label>
+        <label>Zone<select><option>05</option><option>01</option><option>02</option><option>03</option></select></label>
+        <label>Modality<select><option>Photo</option><option>Video</option><option>Microscopy</option><option>Measurements</option><option>Molecular data</option></select></label>
+        <label>Files<input type="file" multiple></label>
+        <button class="primary" value="default">Register observation</button>
+      </form>
+    </dialog>
+  </main>
+  <script src="./app.js"></script>
+</body>
+</html>
