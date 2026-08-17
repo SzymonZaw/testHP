@@ -113,4 +113,5 @@ async function run() {
 }
 
 $('run-button').onclick = run;
+window.refreshDashboard = refresh;
 refresh();
