@@ -4,8 +4,8 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Hand Digital Twin · Biological Monitoring</title>
-  <link rel="stylesheet" href="./styles.css">
-  <link rel="stylesheet" href="./theme.css">
+  <link rel="stylesheet" href="/digital-twin/assets/styles.css">
+  <link rel="stylesheet" href="/digital-twin/assets/theme.css">
 </head>
 <body>
 <main class="app-shell">
@@ -90,6 +90,6 @@
 
   <dialog id="observation-dialog"><form method="dialog" class="dialog-card"><button class="close" value="cancel">×</button><span class="eyebrow">NEW OBSERVATION</span><h2>Add data to the twin</h2><label>Body region<select><option>Hand</option></select></label><label>Region<select id="form-region"><option>palm</option><option>thumb</option><option>index</option><option>middle</option><option>ring</option><option>little</option><option>wrist</option></select></label><label>Modality<select id="form-modality"><option>Photo</option><option>Video</option><option>Microscopy</option><option>Measurements</option><option>Molecular data</option></select></label><label>File<input id="observation-file" type="file" required></label><button id="register-observation" class="primary" value="default">Register observation</button></form></dialog>
 </main>
-<script type="module" src="./app.js"></script>
+<script type="module" src="/digital-twin/assets/app.js"></script>
 </body>
 </html>
