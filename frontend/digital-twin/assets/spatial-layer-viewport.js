@@ -53,24 +53,28 @@ layerSwitcher.id='spatial-layer-switcher';
 Object.assign(layerSwitcher.style,{display:'flex',flexWrap:'wrap',gap:'6px',alignItems:'center',margin:'10px 0 12px'});
 const layerNames={macro:'Macro anatomy',tissue:'Tissue field',cellular:'Cellular field',cell:'Single cell'};
 const layerOrder=['macro','tissue','cellular','cell'];
+function navigateToLayer(requested){
+  if(requested==='macro'){
+    const buttons=[...document.querySelectorAll('#spatial-breadcrumb button')];
+    const macro=buttons.length>1?buttons[1]:buttons[0];
+    macro?.click();
+    return;
+  }
+  for(let guard=0;guard<3 && level()!==requested;guard++){
+    const next=targetElements()[0];
+    if(!next)break;
+    next.click();
+  }
+}
 function renderLayerSwitcher(){
   layerSwitcher.replaceChildren();
   const label=document.createElement('span');label.textContent='VISUALIZATION LAYER';
   Object.assign(label.style,{font:'700 10px system-ui,sans-serif',letterSpacing:'.12em',opacity:'.65',marginRight:'4px'});layerSwitcher.appendChild(label);
-  const buttons=[...document.querySelectorAll('#spatial-breadcrumb button')];
   const current=level();
-  const currentIndex=layerOrder.indexOf(current);
   layerOrder.forEach((layer)=>{
     const b=document.createElement('button');b.type='button';b.textContent=layerNames[layer];
     Object.assign(b.style,{padding:'7px 10px',borderRadius:'9px',border:'1px solid #36544e',background:layer===current?'#23463e':'#101b1a',color:'#dcece6',font:'600 11px system-ui,sans-serif',cursor:'pointer'});
-    const idx=layerOrder.indexOf(layer);
-    const available=idx<=currentIndex && buttons.length>idx;
-    b.disabled=!available;b.style.opacity=available?'1':'.35';
-    if(available){
-      let breadcrumbIndex=idx;
-      if(layer==='macro'&&buttons.length>1)breadcrumbIndex=1;
-      b.onclick=()=>buttons[breadcrumbIndex]?.click();
-    }
+    b.onclick=()=>navigateToLayer(layer);
     layerSwitcher.appendChild(b);
   });
 }
