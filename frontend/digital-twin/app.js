@@ -50,7 +50,9 @@ capsule('middle',[-.35,2.25,0],.46,2.55);
 capsule('ring',[.42,2.12,0],.45,2.32);
 capsule('little',[1.12,1.86,0],.40,1.95,[0,0,.08]);
 
-function availableAssets(){return (analysis?.assets||[]).filter(x=>x.status==='available');}
+// The analysis API currently uses `ready` for successfully ingested evidence;
+// older/other endpoints may use `available`. Treat both as usable evidence.
+function availableAssets(){return (analysis?.assets||[]).filter(x=>['ready','available'].includes(String(x.status||'').toLowerCase()));}
 function handAssets(){return availableAssets().filter(x=>x.modality==='hand');}
 function assetView(asset){return String(asset.view||'unknown').toLowerCase();}
 function regionEvidence(region){
