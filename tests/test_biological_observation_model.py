@@ -1,4 +1,6 @@
-from core import AnatomicalLocation, Artifact, DigitalTwinState, Evidence, Measurement, Observation, Person, Timepoint
+from datetime import date, datetime, timezone
+
+from core import AnatomicalLocation, Artifact, Biomarker, DigitalTwinState, Evidence, Measurement, Observation, Person, Timepoint
 
 
 def test_artifact_can_represent_non_image_evidence():
@@ -17,17 +19,16 @@ def test_artifact_can_represent_non_image_evidence():
 def test_observation_and_measurement_share_subject_timepoint_and_region():
     location = AnatomicalLocation("hand.palm", "Palm", "site", parent_id="hand")
     person = Person("SUBJECT-001")
-    timepoint = Timepoint("T0", "2026-08-17")
-    assert person.id == "SUBJECT-001"
-    assert timepoint.id == "T0"
+    timepoint = Timepoint("T0", date(2026, 8, 17))
+    measured_at = datetime(2026, 8, 17, tzinfo=timezone.utc)
     measurement = Measurement(
         id="MEAS-001",
         subject_id=person.id,
         timepoint_id=timepoint.id,
         modality="rgb",
-        biomarker={"name": "mean_brightness"},
+        biomarker=Biomarker("brightness", "mean_brightness", "surface", "0-1"),
         value=0.42,
-        measured_at=timepoint.as_datetime(),
+        measured_at=measured_at,
         anatomical_location=location,
         unit="0-1",
     )
@@ -37,7 +38,7 @@ def test_observation_and_measurement_share_subject_timepoint_and_region():
         timepoint_id=timepoint.id,
         name="surface_brightness_observation",
         value="within_observed_range",
-        observed_at=timepoint.as_datetime(),
+        observed_at=measured_at,
         anatomical_location=location,
         source_measurement_ids=[measurement.id],
     )
