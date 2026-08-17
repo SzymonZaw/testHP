@@ -50,7 +50,7 @@ def compare_observations(subject_id: str, observations: list[dict[str, Any]]) ->
         values.sort(key=order_key)
         timepoints = [x[0] for x in values]
         numeric = [x[1] for x in values]
-        delta = numeric[-1] - numeric[0] if len(numeric) >= 2 else None
+        delta = round(numeric[-1] - numeric[0], 12) if len(numeric) >= 2 else None
         results.append(LongitudinalChange(
             subject_id=subject_id,
             zone=zone,
