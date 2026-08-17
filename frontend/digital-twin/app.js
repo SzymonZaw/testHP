@@ -9,12 +9,15 @@ let selectedZone = '05';
 
 async function refreshTwin() {
   try {
-    const response = await fetch('/api/hand/twin?subject_id=' + encodeURIComponent(subjectId));
+    const response = await fetch('/api/hand/analysis?subject_id=' + encodeURIComponent(subjectId) + '&timepoint=T0');
     if (!response.ok) return;
-    const twin = await response.json();
-    document.querySelector('.coverage b:nth-of-type(1)').textContent = `Macro ${twin.coverage?.macro ?? 100}%`;
+    const result = await response.json();
+    const coverage = result.coverage || {};
+    document.querySelector('.coverage b:nth-of-type(1)').textContent = `Macro ${coverage.macro ?? 0}%`;
+    document.querySelector('.coverage b:nth-of-type(2)').textContent = `Micro ${coverage.micro ?? 0}%`;
+    document.querySelector('.coverage b:nth-of-type(3)').textContent = `Molecular ${coverage.molecular ?? 0}%`;
   } catch (_) {
-    // The visual prototype remains usable when the API is unavailable.
+    // Keep the research view usable when the API is unavailable.
   }
 }
 
@@ -46,14 +49,15 @@ form.addEventListener('submit', async (event) => {
   body.append('view', `zone-${selectedZone}`);
   const button = form.querySelector('.primary');
   button.disabled = true;
-  button.textContent = 'Registering…';
+  button.textContent = 'Analyzing…';
   try {
     const response = await fetch(`/api/upload/${endpoint}`, { method: 'POST', body });
     const result = await response.json();
     if (!response.ok) throw new Error(result.detail || 'Upload failed');
     dialog.close();
     button.textContent = 'Register observation';
-    alert(`Observation registered: ${result.asset.asset_id}`);
+    const level = result.analysis?.analysis_level || 'ingestion_quality';
+    alert(`Observation registered: ${result.asset.asset_id}\nAnalysis: ${level}\nBiological inference: not established`);
     await refreshTwin();
   } catch (error) {
     alert(error.message);
