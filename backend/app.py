@@ -123,8 +123,11 @@ def hand_analysis(subject_id: str = "own_cohort", timepoint: str = "T0"):
             zone = assign_feature_to_zone(width / 2, height / 2, width, height) if width and height else None
             item = {**item, "macro": macro, "zone_id": zone, "zone_assignment": "view_center_proxy" if zone else "unassigned", "view": view}
         analyses.append(item)
-    hand_assets = [x for x in analyses if x.get("modality") == "hand" and x.get("status") == "available"]
-    return {"subject_id":subject_id,"timepoint":timepoint,"analysis_level":"macro_features","biological_inference":"not_established","assets":analyses,"zones": {z["zone_id"]:[a["asset_id"] for a in hand_assets if a.get("zone_id")==z["zone_id"]] for z in zone_layout(900,600)},"coverage":{"macro":100 if hand_assets else 0,"micro":100 if any(x.get("modality")=="wsi" and x.get("status")=="available" for x in assets) else 0,"molecular":100 if any(x.get("modality")=="rna" and x.get("status")=="available" for x in assets) else 0}}
+    # analyze_asset deliberately exposes its own analysis status ("ready") rather
+    # than copying the registry status ("available"). Coverage must therefore be
+    # based on analysis readiness, not the ingestion registry label.
+    hand_assets = [x for x in analyses if x.get("modality") == "hand" and x.get("status") == "ready"]
+    return {"subject_id":subject_id,"timepoint":timepoint,"analysis_level":"macro_features","biological_inference":"not_established","assets":analyses,"zones": {z["zone_id"]:[a["asset_id"] for a in hand_assets if a.get("zone_id")==z["zone_id"]] for z in zone_layout(900,600)},"coverage":{"macro":100 if hand_assets else 0,"micro":100 if any(x.get("modality")=="wsi" and x.get("status")=="ready" for x in analyses) else 0,"molecular":100 if any(x.get("modality")=="rna" and x.get("status")=="ready" for x in analyses) else 0}}
 
 @app.get("/api/hand/evidence/{asset_id}")
 def hand_evidence(asset_id: str):
