@@ -98,12 +98,15 @@ def create_dataset(*, name: str, modality: str, description: str = "", source: s
     return record.to_dict()
 
 def refresh_manifest(dataset_id: str) -> dict[str, Any]:
-    item = get_dataset(dataset_id)
-    if item is None: raise KeyError(dataset_id)
-    record = DatasetRecord(**item); manifest = _manifest(record)
-    record.status = "ready" if any(f["status"] == "available" for f in manifest["records"]) else "draft"
     items = _load()
+    item = next((x for x in items if x.get("dataset_id") == dataset_id), None)
+    if item is None: raise KeyError(dataset_id)
+    record = DatasetRecord(**item)
+    manifest = _manifest(record)
+    record.status = "ready" if any(f["status"] == "available" for f in manifest["records"]) else "draft"
     for i, x in enumerate(items):
-        if x.get("dataset_id") == dataset_id: items[i] = record.to_dict()
+        if x.get("dataset_id") == dataset_id:
+            items[i] = record.to_dict()
+            break
     _save(items); _write_manifest(record)
     return _manifest(record)
