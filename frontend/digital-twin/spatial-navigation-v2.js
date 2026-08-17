@@ -19,9 +19,18 @@ if(viewport&&badge&&node&&children&&breadcrumb){
   function level(){return String(badge.textContent||'MACRO').trim().toUpperCase();}
   function parent(){return [...breadcrumb.querySelectorAll('button')].slice(-2,-1)[0]||null;}
 
+  function syncInspectorBoundary(){
+    const macroRow=document.querySelector('.inspector .macro-row');
+    if(!macroRow)return;
+    const deep=level()!=='MACRO';
+    macroRow.hidden=deep;
+    macroRow.setAttribute('aria-hidden',deep?'true':'false');
+  }
+
   function render(){
     const current=level();
     view.hidden=current==='MACRO';
+    syncInspectorBoundary();
     if(current==='MACRO')return;
     view.replaceChildren();
 
