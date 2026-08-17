@@ -102,11 +102,24 @@ def destination_for(modality: str, subject_id: str, timepoint: str, subtype: str
     raise ValueError(f"unsupported modality: {modality}")
 
 
+def unique_destination(target: Path) -> Path:
+    """Never overwrite an existing raw input; preserve every upload as a version."""
+    if not target.exists():
+        return target
+    stem, suffix = target.stem, target.suffix
+    index = 2
+    while True:
+        candidate = target.with_name(f"{stem}_v{index}{suffix}")
+        if not candidate.exists():
+            return candidate
+        index += 1
+
+
 async def ingest_upload(upload: UploadFile, subject_id: str, timepoint: str, modality: str, subtype: str | None = None, view: str | None = None) -> DataAsset:
     ext = extension_for(upload.filename or "")
     if ext not in allowed_extensions(modality):
         raise ValueError(f"unsupported file extension {ext or '<none>'} for modality {modality}")
-    target = destination_for(modality, subject_id, timepoint, subtype, view, upload.filename or "upload.bin")
+    target = unique_destination(destination_for(modality, subject_id, timepoint, subtype, view, upload.filename or "upload.bin"))
     target.parent.mkdir(parents=True, exist_ok=True)
     content = await upload.read()
     target.write_bytes(content)
@@ -131,4 +144,9 @@ async def ingest_upload(upload: UploadFile, subject_id: str, timepoint: str, mod
 
 def registry_status() -> dict[str, Any]:
     assets = load_registry()
-    return {"assets": assets, "count": len(assets), "available": sum(1 for asset in assets if asset.get("status") == "available"), "unavailable": sum(1 for asset in assets if asset.get("status") != "available")}
+    return {
+        "assets": assets,
+        "count": len(assets),
+        "available": sum(1 for asset in assets if asset.get("status") == "available"),
+        "unavailable": sum(1 for asset in assets if asset.get("status") != "available"),
+    }
