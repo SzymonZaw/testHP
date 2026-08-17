@@ -12,8 +12,11 @@ from pydantic import BaseModel
 from .availability import build_availability
 from .data_ingestion import ingest_upload, registry_status, safe_component
 from .hand_twin_v2 import build_twin
+from .images_layer import scan_skin, validate_skin_dataset
 from .longitudinal import compare_observations
 from .provenance import make_provenance
+from .skin_longitudinal import compare_skin_observations
+from .skin_ontology import ontology_snapshot
 from .video_analysis import analyze_video_directory, inspect_video
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -25,7 +28,7 @@ IMAGE_FORMATS = {".jpg", ".jpeg", ".png", ".webp", ".tif", ".tiff", ".bmp"}
 WSI_FORMATS = {".dcm", ".svs", ".ndpi", ".mrxs", ".tif", ".tiff"}
 RNA_FORMATS = {".gz", ".mtx", ".tsv", ".csv", ".txt", ".h5", ".h5ad", ".tar"}
 
-app = FastAPI(title="Human Pathology Platform", version="0.6.0")
+app = FastAPI(title="Human Pathology Platform", version="0.7.0")
 
 
 class PipelineRequest(BaseModel):
@@ -39,6 +42,11 @@ class HandValidationRequest(BaseModel):
 
 
 class LongitudinalRequest(BaseModel):
+    subject_id: str
+    observations: list[dict[str, Any]]
+
+
+class SkinLongitudinalRequest(BaseModel):
     subject_id: str
     observations: list[dict[str, Any]]
 
@@ -190,6 +198,26 @@ def video_inspect(path: str):
 @app.get("/api/video")
 def video_inventory():
     return {"videos": analyze_video_directory(RAW_ROOT / "hand" / "media")}
+
+
+@app.get("/api/images/ontology")
+def images_ontology():
+    return ontology_snapshot()
+
+
+@app.get("/api/images/validate")
+def images_validate():
+    return validate_skin_dataset(RAW_ROOT / "images")
+
+
+@app.get("/api/images/observations")
+def images_observations(subject_id: str = "unknown", timepoint: str = "unknown"):
+    return {"observations": scan_skin(RAW_ROOT / "images", subject_id, timepoint)}
+
+
+@app.post("/api/images/longitudinal/compare")
+def images_longitudinal_compare(request: SkinLongitudinalRequest):
+    return {"subject_id": request.subject_id, "changes": compare_skin_observations(request.observations)}
 
 
 @app.get("/api/pipeline")
