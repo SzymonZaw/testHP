@@ -19,51 +19,22 @@
   </header>
 
   <section class="subject-bar">
-    <div class="subject-main">
-      <span class="label">SUBJECT</span>
-      <div class="subject-line"><h2 id="subject-title">own_cohort</h2><span class="observation-pill">T0 · latest</span></div>
-      <p>Hand observation workspace</p>
-    </div>
-    <div class="coverage-summary">
-      <span class="coverage-title">EVIDENCE COVERAGE</span>
-      <div class="coverage-items">
-        <span><i></i><b id="coverage-macro">Macro —</b></span>
-        <span><i></i><b id="coverage-micro">Tissue —</b></span>
-        <span><i></i><b id="coverage-cellular">Cellular —</b></span>
-        <span><i></i><b id="coverage-molecular">Molecular —</b></span>
-      </div>
-    </div>
+    <div class="subject-main"><span class="label">SUBJECT</span><div class="subject-line"><h2 id="subject-title">own_cohort</h2><span class="observation-pill">T0 · latest</span></div><p>Hand observation workspace</p></div>
+    <div class="coverage-summary"><span class="coverage-title">EVIDENCE COVERAGE</span><div class="coverage-items"><span><i></i><b id="coverage-macro">Macro —</b></span><span><i></i><b id="coverage-micro">Tissue —</b></span><span><i></i><b id="coverage-cellular">Cellular —</b></span><span><i></i><b id="coverage-molecular">Molecular —</b></span></div></div>
   </section>
 
   <section class="workspace">
     <div class="panel twin-panel">
       <div class="panel-title"><div><span class="section-kicker">SPATIAL MODEL</span><strong>3D DIGITAL TWIN</strong></div><span class="muted">Interactive anatomical view</span></div>
-      <div class="twin-viewport" id="twin-viewport">
-        <canvas id="twin-canvas"></canvas>
-        <div class="viewer-loading" id="viewer-loading">Building 3D twin…</div>
-        <div class="viewer-hint">Drag to rotate <span>·</span> wheel to zoom <span>·</span> click a region</div>
-        <div class="viewer-controls">
-          <button id="reset-view" type="button" aria-label="Reset view">↺</button>
-          <button id="rotate-left" type="button" aria-label="Rotate left">↶</button>
-          <button id="rotate-right" type="button" aria-label="Rotate right">↷</button>
-          <span></span>
-          <button id="zoom-in" type="button" aria-label="Zoom in">＋</button>
-          <button id="zoom-out" type="button" aria-label="Zoom out">−</button>
-          <b id="zoom-label">100%</b>
-        </div>
-      </div>
-      <div class="viewer-footer">
-        <span><i class="legend-dot available"></i>Evidence available</span>
-        <span><i class="legend-dot review"></i>Review / partial</span>
-        <span><i class="legend-dot none"></i>No evidence</span>
-      </div>
+      <div class="twin-viewport" id="twin-viewport"><canvas id="twin-canvas"></canvas><div class="viewer-loading" id="viewer-loading">Building 3D twin…</div><div class="viewer-hint">Drag to rotate <span>·</span> wheel to zoom <span>·</span> click a region</div><div class="viewer-controls"><button id="reset-view" type="button" aria-label="Reset view">↺</button><button id="rotate-left" type="button" aria-label="Rotate left">↶</button><button id="rotate-right" type="button" aria-label="Rotate right">↷</button><span></span><button id="zoom-in" type="button" aria-label="Zoom in">＋</button><button id="zoom-out" type="button" aria-label="Zoom out">−</button><b id="zoom-label">100%</b></div></div>
+      <div class="viewer-footer"><span><i class="legend-dot available"></i>Evidence available</span><span><i class="legend-dot review"></i>Review / partial</span><span><i class="legend-dot none"></i>No evidence</span></div>
     </div>
 
     <aside class="panel inspector">
       <div class="panel-title"><div><span class="section-kicker">REGION INSPECTOR</span><strong>SELECTED REGION</strong></div><span class="region-badge" id="zone-label">palm</span></div>
       <div class="region-heading"><h2 id="region-title">Palm</h2><span>Hand · T0</span></div>
       <div class="evidence-list">
-        <div class="evidence-row"><div><span class="layer">MACRO</span><strong id="macro-state">No evidence</strong></div><span class="evidence-status" id="macro-status">—</span><p id="macro-detail">Select a region to inspect image evidence.</p></div>
+        <div class="evidence-row macro-row"><div><span class="layer">MACRO</span><strong id="macro-state">No evidence</strong></div><span class="evidence-status" id="macro-status">—</span><p id="macro-detail">Select a region to inspect image evidence.</p><div class="evidence-preview" id="macro-preview" hidden><img id="macro-image" alt="Selected hand macro evidence"><div class="preview-caption"><span id="macro-filename"></span><span id="macro-view"></span></div></div></div>
         <div class="evidence-row"><div><span class="layer">TISSUE</span><strong id="tissue-state">Unavailable</strong></div><span class="evidence-status" id="tissue-status">—</span><p id="tissue-detail">No tissue / WSI evidence registered for this region.</p></div>
         <div class="evidence-row"><div><span class="layer">CELLULAR</span><strong id="cellular-state">Unavailable</strong></div><span class="evidence-status" id="cellular-status">—</span><p id="cellular-detail">No cellular evidence registered for this region.</p></div>
         <div class="evidence-row"><div><span class="layer">MOLECULAR</span><strong id="molecular-state">Unavailable</strong></div><span class="evidence-status" id="molecular-status">—</span><p id="molecular-detail">No molecular measurements are linked to this region.</p></div>
@@ -72,21 +43,9 @@
     </aside>
   </section>
 
-  <section class="panel state-panel">
-    <div class="panel-title"><div><span class="section-kicker">RESEARCH INTERPRETATION</span><strong>BIOLOGICAL STATE</strong></div><span class="research-badge">RESEARCH ONLY</span></div>
-    <div class="state-grid">
-      <div class="state-card"><span>Biological age</span><strong id="age-state">Not established</strong><small>Requires validated evidence</small></div>
-      <div class="state-card"><span>Structural / functional</span><strong id="structure-state">Evidence pending</strong><small>No inference established</small></div>
-      <div class="state-card"><span>Damage</span><strong id="damage-state">Not established</strong><small>Not assessed from current input</small></div>
-      <div class="state-card"><span>Pathology</span><strong id="pathology-state">Not established</strong><small>No diagnostic inference</small></div>
-    </div>
-    <div class="state-meta"><span>Confidence <b id="confidence-state">—</b></span><span>Evidence availability <b id="evidence-level">Ingestion only</b></span><p>The twin displays research evidence and data availability. It does not diagnose disease or invent cellular findings.</p></div>
-  </section>
+  <section class="panel state-panel"><div class="panel-title"><div><span class="section-kicker">RESEARCH INTERPRETATION</span><strong>BIOLOGICAL STATE</strong></div><span class="research-badge">RESEARCH ONLY</span></div><div class="state-grid"><div class="state-card"><span>Biological age</span><strong id="age-state">Not established</strong><small>Requires validated evidence</small></div><div class="state-card"><span>Structural / functional</span><strong id="structure-state">Evidence pending</strong><small>No inference established</small></div><div class="state-card"><span>Damage</span><strong id="damage-state">Not established</strong><small>Not assessed from current input</small></div><div class="state-card"><span>Pathology</span><strong id="pathology-state">Not established</strong><small>No diagnostic inference</small></div></div><div class="state-meta"><span>Confidence <b id="confidence-state">—</b></span><span>Evidence availability <b id="evidence-level">Ingestion only</b></span><p>The twin displays research evidence and data availability. It does not diagnose disease or invent cellular findings.</p></div></section>
 
-  <section class="panel timeline">
-    <div class="panel-title"><div><span class="section-kicker">LONGITUDINAL RECORD</span><strong>OBSERVATION TIMELINE</strong></div><button id="add-observation" class="secondary" type="button">＋ Add observation</button></div>
-    <div class="timeline-line"><span class="timeline-item active"><i></i><b>T0</b><small>latest available observation</small></span><span class="timeline-connector"></span><span class="timeline-item future"><i></i><b>Next</b><small>awaiting future observation</small></span></div>
-  </section>
+  <section class="panel timeline"><div class="panel-title"><div><span class="section-kicker">LONGITUDINAL RECORD</span><strong>OBSERVATION TIMELINE</strong></div><button id="add-observation" class="secondary" type="button">＋ Add observation</button></div><div class="timeline-line"><span class="timeline-item active"><i></i><b>T0</b><small>latest available observation</small></span><span class="timeline-connector"></span><span class="timeline-item future"><i></i><b>Next</b><small>awaiting future observation</small></span></div></section>
 
   <dialog id="observation-dialog"><form method="dialog" class="dialog-card"><button class="close" value="cancel">×</button><span class="eyebrow">NEW OBSERVATION</span><h2>Add data to the twin</h2><label>Body region<select><option>Hand</option></select></label><label>Region<select id="form-region"><option>palm</option><option>thumb</option><option>index</option><option>middle</option><option>ring</option><option>little</option><option>wrist</option></select></label><label>Modality<select id="form-modality"><option>Photo</option><option>Video</option><option>Microscopy</option><option>Measurements</option><option>Molecular data</option></select></label><label>File<input id="observation-file" type="file" required></label><button id="register-observation" class="primary" value="default">Register observation</button></form></dialog>
 </main>
