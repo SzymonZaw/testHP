@@ -9,27 +9,29 @@
   let analysis = null;
   let lastState = '';
   let requestToken = 0;
+  let activePreview = null;
 
   const overlay = document.createElement('section');
   overlay.id = 'spatial-evidence-overlay';
   Object.assign(overlay.style, {
-    position: 'absolute', inset: '58px 18px 58px 18px', zIndex: '35',
-    display: 'none', pointerEvents: 'none', color: '#dcece6',
-    fontFamily: 'system-ui, -apple-system, Segoe UI, sans-serif'
+    position: 'absolute', inset: '0', zIndex: '35', display: 'none',
+    pointerEvents: 'none', color: '#dcece6', fontFamily: 'system-ui, -apple-system, Segoe UI, sans-serif'
   });
   viewport.appendChild(overlay);
 
   const style = document.createElement('style');
   style.textContent = `
-    #spatial-evidence-overlay .evidence-card {position:absolute;right:0;top:0;max-width:340px;padding:12px 14px;border:1px solid rgba(155,216,196,.28);border-radius:12px;background:rgba(8,18,19,.92);box-shadow:0 12px 32px rgba(0,0,0,.28);backdrop-filter:blur(8px)}
-    #spatial-evidence-overlay .eyebrow {display:block;font-size:9px;letter-spacing:.14em;color:#9bd8c4;font-weight:800;margin-bottom:5px}
-    #spatial-evidence-overlay .title {font-size:13px;font-weight:800;margin-bottom:5px}
-    #spatial-evidence-overlay .meta {font-size:11px;color:#9fb7b0;line-height:1.45}
-    #spatial-evidence-overlay .asset {margin-top:8px;padding-top:8px;border-top:1px solid rgba(155,216,196,.12);font-size:10px;color:#b9cbc5;line-height:1.45}
-    #spatial-evidence-overlay .preview {position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:min(72%,760px);height:min(72%,480px);display:flex;align-items:center;justify-content:center;border:1px solid rgba(155,216,196,.24);border-radius:14px;overflow:hidden;background:#081315;box-shadow:0 18px 50px rgba(0,0,0,.34)}
-    #spatial-evidence-overlay img {width:100%;height:100%;object-fit:contain;display:block}
-    #spatial-evidence-overlay .preview-caption {position:absolute;left:0;right:0;bottom:0;padding:8px 11px;background:linear-gradient(transparent,rgba(5,12,13,.92));font-size:10px;color:#dcece6}
-    #spatial-evidence-overlay .warning {color:#d6a64f;font-weight:800}
+    #spatial-evidence-overlay .evidence-card{position:absolute;right:18px;top:58px;max-width:340px;padding:12px 14px;border:1px solid rgba(155,216,196,.28);border-radius:12px;background:rgba(8,18,19,.92);box-shadow:0 12px 32px rgba(0,0,0,.28);backdrop-filter:blur(8px);pointer-events:auto}
+    #spatial-evidence-overlay .eyebrow{display:block;font-size:9px;letter-spacing:.14em;color:#9bd8c4;font-weight:800;margin-bottom:5px}
+    #spatial-evidence-overlay .title{font-size:13px;font-weight:800;margin-bottom:5px}
+    #spatial-evidence-overlay .meta{font-size:11px;color:#9fb7b0;line-height:1.45}
+    #spatial-evidence-overlay .asset{margin-top:8px;padding-top:8px;border-top:1px solid rgba(155,216,196,.12);font-size:10px;color:#b9cbc5;line-height:1.45}
+    #spatial-evidence-overlay .preview{position:absolute;left:18px;right:18px;top:58px;bottom:58px;display:flex;align-items:center;justify-content:center;border:1px solid rgba(155,216,196,.24);border-radius:14px;overflow:hidden;background:#081315;box-shadow:0 18px 50px rgba(0,0,0,.34);pointer-events:auto;touch-action:none;cursor:grab}
+    #spatial-evidence-overlay .preview.dragging{cursor:grabbing}
+    #spatial-evidence-overlay img{position:absolute;max-width:none;max-height:none;display:block;user-select:none;-webkit-user-drag:none;transform-origin:center center}
+    #spatial-evidence-overlay .preview-caption{position:absolute;left:0;right:0;bottom:0;padding:24px 12px 9px;background:linear-gradient(transparent,rgba(5,12,13,.94));font-size:10px;color:#dcece6;pointer-events:none}
+    #spatial-evidence-overlay .preview-badge{position:absolute;left:12px;top:12px;padding:6px 8px;border-radius:8px;background:rgba(5,12,13,.82);border:1px solid rgba(155,216,196,.25);font-size:9px;letter-spacing:.08em;font-weight:800;color:#9bd8c4;pointer-events:none}
+    #spatial-evidence-overlay .warning{color:#d6a64f;font-weight:800}
   `;
   document.head.appendChild(style);
 
@@ -43,107 +45,137 @@
   }
   function path() { return [...breadcrumb.querySelectorAll('button')].map(text).filter(Boolean); }
   function target() { return text(node.querySelector('strong')) || 'Spatial target'; }
-  function regionId(asset) {
-    if (asset?.region_id) return String(asset.region_id);
-    if (asset?.zone_id) return String(asset.zone_id);
-    const mapping = asset?.artifact?.metadata?.anatomical_mapping;
-    if (mapping?.region_id) return String(mapping.region_id);
-    const location = asset?.observation?.anatomical_location;
-    if (location?.id) return String(location.id).split('/').pop();
-    if (location?.name) return String(location.name).toLowerCase().replaceAll(' ', '_');
+  function assetRegion(asset) {
+    if (asset?.region_id) return String(asset.region_id).toLowerCase();
+    if (asset?.zone_id) return String(asset.zone_id).toLowerCase();
     return '';
+  }
+  function regionFromPath() {
+    const known = ['palm','thumb','index','middle','ring','little','wrist'];
+    return path().map(x => x.toLowerCase().replaceAll(' ', '_')).find(x => known.includes(x)) || '';
   }
   function artifactName(asset) {
     return asset?.filename || asset?.artifact?.metadata?.filename || asset?.artifact?.uri?.split(/[\\/]/).pop() || asset?.asset_id || 'linked asset';
   }
   function extension(asset) {
     const name = artifactName(asset).toLowerCase();
+    if (name.endsWith('.ome.tiff')) return 'ome.tiff';
+    if (name.endsWith('.ome.tif')) return 'ome.tif';
     return name.includes('.') ? name.split('.').pop() : '';
   }
-  function assetsFor(levelName, region) {
-    const assets = (analysis?.assets || []).filter(a => ['ready', 'available'].includes(String(a.status || '').toLowerCase()));
-    if (levelName === 'macro') return assets.filter(a => a.modality === 'hand' && (regionId(a) === region || (region === 'palm' && ['front','back','side_left','side_right'].includes(String(a.view || '').toLowerCase()))));
-    if (levelName === 'tissue') return assets.filter(a => a.modality === 'wsi' && (!region || regionId(a) === region));
-    if (levelName === 'cellular' || levelName === 'cell') return assets.filter(a => ['microscopy','cellular'].includes(String(a.modality || '').toLowerCase()) && (!region || regionId(a) === region));
+  function availableAssets() {
+    return (analysis?.assets || []).filter(a => ['ready','available'].includes(String(a.status || '').toLowerCase()));
+  }
+  function assetsFor(levelName) {
+    const region = regionFromPath();
+    const assets = availableAssets().filter(a => a.subject_id === 'own_cohort' && a.timepoint === 'T0');
+    if (levelName === 'macro') return assets.filter(a => a.modality === 'hand' && (!region || assetRegion(a) === region || (region === 'palm' && ['front','back','side_left','side_right'].includes(String(a.view || '').toLowerCase()))));
+    if (levelName === 'tissue') {
+      const wsi = assets.filter(a => a.modality === 'wsi');
+      const regionMatched = wsi.filter(a => assetRegion(a) === region);
+      return regionMatched.length ? regionMatched : wsi;
+    }
+    if (levelName === 'cellular' || levelName === 'cell') {
+      const cellular = assets.filter(a => ['microscopy','cellular'].includes(String(a.modality || '').toLowerCase()));
+      const regionMatched = cellular.filter(a => assetRegion(a) === region);
+      return regionMatched.length ? regionMatched : cellular;
+    }
     return [];
   }
-  function clear() { overlay.replaceChildren(); overlay.style.display = 'none'; }
-  function card(title, body, asset) {
+  function clear() { overlay.replaceChildren(); overlay.style.display = 'none'; activePreview = null; }
+  function hideSyntheticDeep() {
+    const manager = window.spatialViewportManager;
+    if (!manager || level() === 'macro') return;
+    if (manager.deepCanvas) { manager.deepCanvas.style.opacity = '0'; manager.deepCanvas.style.pointerEvents = 'none'; }
+    if (manager.deepLabels) manager.deepLabels.style.opacity = '0';
+    if (manager.deepTitle) manager.deepTitle.style.opacity = '0';
+  }
+  function restoreSyntheticDeep() {
+    const manager = window.spatialViewportManager;
+    if (!manager) return;
+    if (manager.deepCanvas) { manager.deepCanvas.style.opacity = '1'; manager.deepCanvas.style.pointerEvents = 'auto'; }
+    if (manager.deepLabels) manager.deepLabels.style.opacity = '1';
+    if (manager.deepTitle) manager.deepTitle.style.opacity = '1';
+  }
+  function card(title, body, asset, warning = false) {
     const el = document.createElement('div');
     el.className = 'evidence-card';
-    el.innerHTML = '<span class="eyebrow">LINKED RESEARCH DATA</span><div class="title"></div><div class="meta"></div><div class="asset"></div>';
+    el.innerHTML = '<span class="eyebrow">REAL LINKED DATA</span><div class="title"></div><div class="meta"></div><div class="asset"></div>';
     el.querySelector('.title').textContent = title;
     el.querySelector('.meta').textContent = body;
     el.querySelector('.asset').textContent = asset ? `${artifactName(asset)} · ${asset.modality || 'unknown'} · ${asset.status || 'unknown'}` : '';
+    if (warning) el.querySelector('.meta').classList.add('warning');
     overlay.appendChild(el);
   }
-  function metadataOnly(levelName, assets) {
-    const modality = levelName === 'macro' ? 'hand image' : levelName === 'tissue' ? 'WSI / tissue' : 'microscopy / cellular';
-    if (!assets.length) {
-      card('Navigation target only', `No explicitly linked ${modality} asset exists for this spatial target. The renderer does not invent evidence.`);
-      overlay.style.display = 'block';
-      return;
-    }
-    const names = assets.slice(0, 4).map(artifactName).join(' · ');
-    card(`${assets.length} linked ${modality} asset${assets.length === 1 ? '' : 's'}`, `Explicit ingestion data is linked to this spatial resolution.`, assets[0]);
-    const extra = document.createElement('div');
-    extra.className = 'evidence-card'; extra.style.top = 'auto'; extra.style.bottom = '0';
-    extra.innerHTML = '<span class="eyebrow">ASSETS</span><div class="meta"></div>';
-    extra.querySelector('.meta').textContent = names;
-    overlay.appendChild(extra);
-    overlay.style.display = 'block';
+  function fitImage(img, holder) {
+    const iw = img.naturalWidth || 1, ih = img.naturalHeight || 1;
+    const scale = Math.min(holder.clientWidth / iw, holder.clientHeight / ih) * 0.94;
+    img.dataset.scale = String(Math.max(0.05, scale));
+    img.dataset.x = '0'; img.dataset.y = '0';
+    applyTransform(img);
   }
-  function previewable(asset) { return IMAGE_EXTENSIONS.has(extension(asset)) && Boolean(asset?.asset_id); }
-  async function showPreview(asset, note) {
-    if (!previewable(asset)) return false;
+  function applyTransform(img) {
+    const scale = Number(img.dataset.scale || 1);
+    const x = Number(img.dataset.x || 0), y = Number(img.dataset.y || 0);
+    img.style.transform = `translate(${x}px, ${y}px) scale(${scale})`;
+  }
+  function bindPreview(holder, img) {
+    let dragging = false, startX = 0, startY = 0, originX = 0, originY = 0;
+    holder.addEventListener('pointerdown', event => { dragging = true; holder.classList.add('dragging'); startX = event.clientX; startY = event.clientY; originX = Number(img.dataset.x || 0); originY = Number(img.dataset.y || 0); holder.setPointerCapture(event.pointerId); });
+    holder.addEventListener('pointermove', event => { if (!dragging) return; img.dataset.x = String(originX + event.clientX - startX); img.dataset.y = String(originY + event.clientY - startY); applyTransform(img); });
+    holder.addEventListener('pointerup', () => { dragging = false; holder.classList.remove('dragging'); });
+    holder.addEventListener('pointercancel', () => { dragging = false; holder.classList.remove('dragging'); });
+    holder.addEventListener('wheel', event => { event.preventDefault(); const old = Number(img.dataset.scale || 1); const next = Math.max(0.05, Math.min(20, old * (event.deltaY < 0 ? 1.15 : 0.87))); img.dataset.scale = String(next); applyTransform(img); }, { passive: false });
+  }
+  function bindControls(img, holder) {
+    const bind = (id, fn) => { const button = document.getElementById(id); if (button) button.onclick = fn; };
+    bind('reset-view', () => fitImage(img, holder));
+    bind('zoom-in', () => { img.dataset.scale = String(Math.min(20, Number(img.dataset.scale || 1) * 1.2)); applyTransform(img); });
+    bind('zoom-out', () => { img.dataset.scale = String(Math.max(0.05, Number(img.dataset.scale || 1) * 0.83)); applyTransform(img); });
+    bind('rotate-left', () => {}); bind('rotate-right', () => {});
+    bind('zoom-region', () => fitImage(img, holder));
+  }
+  async function showPreview(asset, label) {
     const token = ++requestToken;
-    const image = new Image();
-    image.alt = artifactName(asset);
-    image.onload = () => {
-      if (token !== requestToken) return;
-      const holder = document.createElement('div'); holder.className = 'preview'; holder.appendChild(image);
-      const caption = document.createElement('div'); caption.className = 'preview-caption';
-      caption.textContent = `${artifactName(asset)} · ${asset.view || asset.modality || 'evidence'}${note ? ` · ${note}` : ''}`;
-      holder.appendChild(caption); overlay.appendChild(holder); overlay.style.display = 'block';
-    };
-    image.onerror = () => {};
-    image.src = `/api/spatial/evidence/${encodeURIComponent(asset.asset_id)}`;
-    return true;
+    const holder = document.createElement('div'); holder.className = 'preview';
+    const img = document.createElement('img'); img.alt = artifactName(asset); img.draggable = false;
+    const badgeEl = document.createElement('div'); badgeEl.className = 'preview-badge'; badgeEl.textContent = label.toUpperCase();
+    const caption = document.createElement('div'); caption.className = 'preview-caption'; caption.textContent = `${artifactName(asset)} · pan + wheel zoom`;
+    holder.append(img, badgeEl, caption); overlay.appendChild(holder);
+    overlay.style.display = 'block'; activePreview = { img, holder };
+    const usePreview = !IMAGE_EXTENSIONS.has(extension(asset)) || asset.modality === 'wsi';
+    img.onload = () => { if (token !== requestToken) return; fitImage(img, holder); bindPreview(holder, img); bindControls(img, holder); };
+    img.onerror = () => { if (token !== requestToken) return; holder.remove(); card('Preview unavailable', `The linked asset exists, but this browser/server cannot decode ${artifactName(asset)} into a preview. The original file remains the source of truth.`, asset, true); };
+    img.src = usePreview ? `/api/spatial/preview/${encodeURIComponent(asset.asset_id)}` : `/api/spatial/evidence/${encodeURIComponent(asset.asset_id)}`;
   }
   async function render() {
-    const currentPath = path();
     const currentLevel = level();
+    const currentPath = path();
     const currentTarget = target();
     const state = `${currentLevel}|${currentPath.join('>')}|${currentTarget}`;
     if (state === lastState && analysis) return;
     lastState = state; clear();
-    const candidates = currentPath.map(x => x.toLowerCase().replaceAll(' ', '_'));
-    const region = candidates.find(x => ['palm','thumb','index','middle','ring','little','wrist'].includes(x)) || '';
-    const assets = assetsFor(currentLevel, region);
-    if (currentLevel === 'macro' && assets.length) {
-      const shown = await showPreview(assets[0], 'actual ingested image');
-      if (!shown) metadataOnly(currentLevel, assets);
-      else card('Macro evidence', 'The selected macro target is backed by the actual ingested hand image.', assets[0]);
+    if (currentLevel === 'macro') { restoreSyntheticDeep(); return; }
+    hideSyntheticDeep();
+    const assets = assetsFor(currentLevel);
+    if (currentLevel === 'tissue') {
+      if (assets.length) await showPreview(assets[0], 'TISSUE / WSI');
+      else { card('Tissue navigation only', 'No WSI asset is explicitly linked to this target. No tissue image is fabricated.'); overlay.style.display = 'block'; }
       return;
     }
-    if (currentLevel === 'tissue' && assets.length) {
-      const shown = await showPreview(assets[0], 'actual tissue asset');
-      if (!shown) metadataOnly(currentLevel, assets);
-      else card('Tissue evidence', 'The selected tissue target is backed by an explicitly linked WSI/image asset.', assets[0]);
-      return;
-    }
-    if (currentLevel === 'cellular' && assets.length) {
-      const shown = await showPreview(assets[0], 'microscopy source field');
-      if (!shown) metadataOnly(currentLevel, assets);
-      else card('Cellular evidence', 'The microscopy field is actual linked evidence. Cell targets are not fabricated without coordinates/segmentation.', assets[0]);
+    if (currentLevel === 'cellular') {
+      if (assets.length) await showPreview(assets[0], 'MICROSCOPY FIELD');
+      else { card('Cellular navigation only', 'No microscopy asset is explicitly linked to this target.'); overlay.style.display = 'block'; }
       return;
     }
     if (currentLevel === 'cell') {
-      if (assets.length) card(currentTarget, 'A microscopy asset is linked to the parent region. No cell coordinates or segmentation are present in the evidence model, so no synthetic cell position is claimed.', assets[0]);
-      else card(currentTarget, 'Navigation target only. No cellular asset is explicitly linked to the parent region.');
-      overlay.style.display = 'block'; return;
+      if (assets.length) {
+        await showPreview(assets[0], 'PARENT MICROSCOPY SOURCE');
+        card(currentTarget, 'This cell target is navigation-only until explicit cell coordinates or segmentation are linked. The preview is the real parent microscopy source; no synthetic cell location is claimed.', assets[0]);
+      } else {
+        card(currentTarget, 'Navigation target only. No cellular evidence is explicitly linked to this region.', null, true); overlay.style.display = 'block';
+      }
     }
-    metadataOnly(currentLevel, assets);
   }
   async function loadAnalysis() {
     try {
@@ -153,8 +185,8 @@
     } catch (_) {}
   }
   const observer = new MutationObserver(() => render());
-  [breadcrumb, node, badge].forEach(el => observer.observe(el, {childList:true,subtree:true,characterData:true,attributes:true}));
+  [breadcrumb, node, badge].forEach(el => observer.observe(el, { childList: true, subtree: true, characterData: true, attributes: true }));
   window.addEventListener('hand-analysis-updated', event => { analysis = event.detail || analysis; lastState = ''; render(); });
-  window.addEventListener('resize', () => render());
+  window.addEventListener('resize', () => { if (activePreview) fitImage(activePreview.img, activePreview.holder); });
   loadAnalysis();
 })();
