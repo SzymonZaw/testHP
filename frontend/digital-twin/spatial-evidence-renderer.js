@@ -66,21 +66,45 @@
   function availableAssets() {
     return (analysis?.assets || []).filter(a => ['ready','available'].includes(String(a.status || '').toLowerCase()));
   }
+  function resolution(asset) {
+    return String(asset?.resolution || asset?.spatial_resolution || asset?.level || '').toLowerCase();
+  }
+  function exactSpatialPath(asset) {
+    return String(asset?.spatial_path || asset?.path_in_twin || '').toLowerCase().replaceAll('›','>').replaceAll('→','>').replaceAll(' > ','>');
+  }
+  function matchesResolution(asset, levelName) {
+    const value = resolution(asset);
+    if (!value) return true;
+    const aliases = {
+      macro: new Set(['macro','macro anatomy','anatomy']),
+      tissue: new Set(['tissue','tissue field','wsi']),
+      cellular: new Set(['cellular','cellular field','microscopy']),
+      cell: new Set(['cell','single cell'])
+    };
+    return aliases[levelName]?.has(value) ?? true;
+  }
   function assetsFor(levelName) {
     const region = regionFromPath();
+    const currentPath = path().map(value => value.toLowerCase().replaceAll(' ','_')).join('>');
     const assets = availableAssets().filter(a => a.subject_id === 'own_cohort' && a.timepoint === 'T0');
-    if (levelName === 'macro') return assets.filter(a => a.modality === 'hand' && (!region || assetRegion(a) === region || (region === 'palm' && ['front','back','side_left','side_right'].includes(String(a.view || '').toLowerCase()))));
-    if (levelName === 'tissue') {
-      const wsi = assets.filter(a => a.modality === 'wsi');
-      const regionMatched = wsi.filter(a => assetRegion(a) === region);
-      return regionMatched.length ? regionMatched : wsi;
+
+    if (levelName === 'macro') {
+      return assets.filter(a => a.modality === 'hand' && (!region || assetRegion(a) === region || (region === 'palm' && ['front','back','side_left','side_right'].includes(String(a.view || '').toLowerCase()))));
     }
-    if (levelName === 'cellular' || levelName === 'cell') {
-      const cellular = assets.filter(a => ['microscopy','cellular'].includes(String(a.modality || '').toLowerCase()));
-      const regionMatched = cellular.filter(a => assetRegion(a) === region);
-      return regionMatched.length ? regionMatched : cellular;
-    }
-    return [];
+
+    const modality = levelName === 'tissue' ? 'wsi' : levelName === 'cellular' || levelName === 'cell' ? null : null;
+    const candidates = assets.filter(a => {
+      if (modality && a.modality !== modality) return false;
+      if (!modality && !['microscopy','cellular'].includes(String(a.modality || '').toLowerCase())) return false;
+      if (!matchesResolution(a, levelName)) return false;
+      const assetPath = exactSpatialPath(a);
+      if (assetPath && currentPath && !assetPath.includes(currentPath)) return false;
+      // Deep evidence must be explicitly tied to the selected anatomical region.
+      // Never fall back to an unrelated WSI/microscopy asset just because it exists.
+      return !!region && assetRegion(a) === region;
+    });
+
+    return candidates;
   }
   function clear() { overlay.replaceChildren(); overlay.style.display = 'none'; activePreview = null; }
   function hideSyntheticDeep() {
