@@ -1,19 +1,18 @@
 from __future__ import annotations
 
+import io
+import mimetypes
 from pathlib import Path
 from typing import Any
 
-import io
-import mimetypes
-
 import numpy as np
+import pydicom
 import yaml
-from PIL import Image
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
+from PIL import Image
 from pydantic import BaseModel
-import pydicom
 
 from .availability import build_availability
 from .data_ingestion import ingest_upload, registry_status, safe_component
@@ -27,6 +26,7 @@ from .provenance import make_provenance
 from .skin_longitudinal import compare_skin_observations
 from .skin_ontology import ontology_snapshot
 from .video_analysis import analyze_video_directory, inspect_video
+from .stage_2_4 import register_stage_routes
 
 ROOT = Path(__file__).resolve().parents[1]
 RAW_ROOT = ROOT / "data" / "raw"
@@ -38,7 +38,8 @@ IMAGE_FORMATS = {".jpg", ".jpeg", ".png", ".webp", ".tif", ".tiff", ".bmp"}
 WSI_FORMATS = {".dcm", ".svs", ".ndpi", ".mrxs", ".tif", ".tiff"}
 RNA_FORMATS = {".gz", ".mtx", ".tsv", ".csv", ".txt", ".h5", ".h5ad", ".tar"}
 
-app = FastAPI(title="Human Pathology Platform", version="0.7.0")
+app = FastAPI(title="Human Pathology Platform", version="0.8.0")
+register_stage_routes(app)
 
 class PipelineRequest(BaseModel):
     datasets: list[str] = []
@@ -121,11 +122,8 @@ def hand_analysis(subject_id: str = "own_cohort", timepoint: str = "T0"):
     for asset in assets:
         item = analyze_asset(asset)
         if asset.get("modality") == "hand" and asset.get("status") == "available":
-            image_path = ROOT / asset["path"]
-            macro = analyze_image(image_path)
-            features = macro.get("features", {})
-            width, height = features.get("width_px", 0), features.get("height_px", 0)
-            view = asset.get("view") or "unknown"
+            image_path = ROOT / asset["path"]; macro = analyze_image(image_path); features = macro.get("features", {})
+            width, height = features.get("width_px", 0), features.get("height_px", 0); view = asset.get("view") or "unknown"
             zone = assign_feature_to_zone(width / 2, height / 2, width, height) if width and height else None
             item = {**item, "macro": macro, "zone_id": zone, "zone_assignment": "view_center_proxy" if zone else "unassigned", "view": view}
         analyses.append(item)
@@ -135,8 +133,7 @@ def hand_analysis(subject_id: str = "own_cohort", timepoint: str = "T0"):
 @app.get("/api/spatial/evidence/{asset_id}")
 def spatial_evidence(asset_id: str):
     asset = next((x for x in registry_status()["assets"] if x.get("asset_id") == asset_id), None)
-    if not asset or asset.get("status") != "available":
-        raise HTTPException(status_code=404, detail="spatial evidence not found")
+    if not asset or asset.get("status") != "available": raise HTTPException(status_code=404, detail="spatial evidence not found")
     path = ROOT / str(asset.get("path", ""))
     try: path.resolve().relative_to(ROOT.resolve())
     except ValueError: raise HTTPException(status_code=404, detail="invalid evidence path")
@@ -147,39 +144,29 @@ def spatial_evidence(asset_id: str):
 @app.get("/api/spatial/preview/{asset_id}")
 def spatial_preview(asset_id: str, max_width: int = 1800, max_height: int = 1200):
     asset = next((x for x in registry_status()["assets"] if x.get("asset_id") == asset_id), None)
-    if not asset or asset.get("status") != "available":
-        raise HTTPException(status_code=404, detail="spatial evidence not found")
+    if not asset or asset.get("status") != "available": raise HTTPException(status_code=404, detail="spatial evidence not found")
     path = ROOT / str(asset.get("path", ""))
     try: path.resolve().relative_to(ROOT.resolve())
     except ValueError: raise HTTPException(status_code=404, detail="invalid evidence path")
     if not path.is_file(): raise HTTPException(status_code=404, detail="evidence file missing")
-    suffix = path.name.lower()
     try:
-        if asset.get("modality") == "wsi" and suffix.endswith(".dcm"):
-            dataset = pydicom.dcmread(str(path), force=True)
-            pixels = dataset.pixel_array.astype(np.float32)
+        if asset.get("modality") == "wsi" and path.name.lower().endswith(".dcm"):
+            dataset = pydicom.dcmread(str(path), force=True); pixels = dataset.pixel_array.astype(np.float32)
             if pixels.ndim > 2: pixels = pixels[0]
-            pixels -= pixels.min()
-            peak = pixels.max()
+            pixels -= pixels.min(); peak = pixels.max()
             if peak > 0: pixels /= peak
             image = Image.fromarray(np.uint8(pixels * 255), mode="L").convert("RGB")
         else:
-            image = Image.open(path)
-            try: image.seek(0)
-            except EOFError: pass
-            image = image.convert("RGB")
+            image = Image.open(path); image.seek(0); image = image.convert("RGB")
         image.thumbnail((max(256, min(max_width, 2400)), max(256, min(max_height, 1800))), Image.Resampling.LANCZOS)
-        output = io.BytesIO()
-        image.save(output, format="PNG", optimize=True)
+        output = io.BytesIO(); image.save(output, format="PNG", optimize=True)
         return Response(content=output.getvalue(), media_type="image/png", headers={"Cache-Control":"no-store", "X-Spatial-Source": asset.get("filename") or path.name})
-    except Exception as exc:
-        raise HTTPException(status_code=415, detail=f"preview unavailable for {path.name}: {exc}") from exc
+    except Exception as exc: raise HTTPException(status_code=415, detail=f"preview unavailable for {path.name}: {exc}") from exc
 
 @app.get("/api/hand/evidence/{asset_id}")
 def hand_evidence(asset_id: str):
     asset = next((x for x in registry_status()["assets"] if x.get("asset_id") == asset_id), None)
-    if not asset or asset.get("modality") != "hand" or asset.get("status") != "available":
-        raise HTTPException(status_code=404, detail="hand evidence not found")
+    if not asset or asset.get("modality") != "hand" or asset.get("status") != "available": raise HTTPException(status_code=404, detail="hand evidence not found")
     path = ROOT / asset["path"]
     try: path.resolve().relative_to(ROOT.resolve())
     except ValueError: raise HTTPException(status_code=404, detail="invalid evidence path")
