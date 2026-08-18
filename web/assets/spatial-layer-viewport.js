@@ -13,119 +13,49 @@ import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.m
   if (!viewport || !baseCanvas || !badge || !nodeEl || !childrenEl) return;
 
   const COLORS = { background: 0x0b1518, panel: 0x132923, macro: 0xc68b72, tissue: 0x5d9d89, cellular: 0x5fae98, cell: 0x8bc7b0, accent: 0x9bd8c4, grid: 0x4f9b86, nucleus: 0x315e51 };
-
-  class BaseRenderer {
-    constructor(manager) { this.manager = manager; }
-    mount() {}
-    destroy() {}
-    resize() {}
-    rotate() {}
-    zoom() {}
-    reset() {}
-  }
-
-  class Hand3DRenderer extends BaseRenderer {
-    mount() { this.manager.setBaseVisible(true); this.manager.setDeepUiVisible(false); }
-    reset() { document.getElementById('reset-view')?.click(); }
-    rotate(delta) { document.getElementById(delta < 0 ? 'rotate-left' : 'rotate-right')?.click(); }
-    zoom(factor) { document.getElementById(factor < 1 ? 'zoom-in' : 'zoom-out')?.click(); }
-  }
-
+  class BaseRenderer { constructor(manager){this.manager=manager;} mount(){} destroy(){} resize(){} rotate(){} zoom(){} reset(){} }
+  class Hand3DRenderer extends BaseRenderer { mount(){this.manager.setBaseVisible(true);this.manager.setDeepUiVisible(false);} reset(){document.getElementById('reset-view')?.click();} rotate(d){document.getElementById(d<0?'rotate-left':'rotate-right')?.click();} zoom(f){document.getElementById(f<1?'zoom-in':'zoom-out')?.click();} }
   class DeepRenderer extends BaseRenderer {
-    constructor(manager, level, title) {
-      super(manager); this.level = level; this.title = title;
-      this.scene = new THREE.Scene(); this.camera = new THREE.PerspectiveCamera(35, 1, 0.1, 100); this.camera.position.set(0, 0, 8);
-      this.root = new THREE.Group(); this.scene.add(this.root);
-      this.scene.add(new THREE.HemisphereLight(0xffffff, 0x10201d, 2.1));
-      const light = new THREE.DirectionalLight(0xffffff, 2.4); light.position.set(4, 5, 7); this.scene.add(light);
-      this.pointer = new THREE.Vector2(); this.raycaster = new THREE.Raycaster(); this.clickable = [];
-      this.dragging = false; this.lastX = 0; this.lastY = 0; this.zoomLevel = 8;
-    }
-    mount() {
-      this.canvas = this.manager.deepCanvas; this.renderer = this.manager.deepRenderer;
-      this.manager.setBaseVisible(false); this.manager.setDeepUiVisible(true, this.title); this.bindPointer(); this.renderContent(); this.resize();
-    }
-    bindPointer() {
-      this.onDown = e => { this.dragging = true; this.lastX = e.clientX; this.lastY = e.clientY; this.canvas.style.cursor = 'grabbing'; };
-      this.onMove = e => { if (!this.dragging) return; this.root.rotation.y += (e.clientX - this.lastX) * 0.008; this.root.rotation.x += (e.clientY - this.lastY) * 0.006; this.lastX = e.clientX; this.lastY = e.clientY; };
-      this.onUp = () => { this.dragging = false; this.canvas.style.cursor = 'grab'; };
-      this.onWheel = e => { e.preventDefault(); this.zoom(e.deltaY > 0 ? 1.12 : 0.89); };
-      this.onClick = e => { const r = this.canvas.getBoundingClientRect(); this.pointer.x = ((e.clientX-r.left)/r.width)*2-1; this.pointer.y = -((e.clientY-r.top)/r.height)*2+1; this.raycaster.setFromCamera(this.pointer,this.camera); const hit=this.raycaster.intersectObjects(this.clickable,false)[0]; if(hit?.object?.userData?.target) hit.object.userData.target.click(); };
-      this.canvas.addEventListener('pointerdown',this.onDown); this.canvas.addEventListener('pointermove',this.onMove); this.canvas.addEventListener('pointerup',this.onUp); this.canvas.addEventListener('pointercancel',this.onUp); this.canvas.addEventListener('pointerleave',this.onUp); this.canvas.addEventListener('wheel',this.onWheel,{passive:false}); this.canvas.addEventListener('click',this.onClick);
-    }
-    makeMesh(geometry,position,color,target=null) {
-      const material=new THREE.MeshStandardMaterial({color,roughness:.65,metalness:.03,emissive:0x071c17,emissiveIntensity:.2}); const mesh=new THREE.Mesh(geometry,material); mesh.position.set(...position);
-      if(target){mesh.userData.target=target;this.clickable.push(mesh);} this.root.add(mesh); return mesh;
-    }
-    addTargetLabel(text,x,y,target) {
-      const b=document.createElement('button'); b.type='button'; b.textContent=text;
-      Object.assign(b.style,{position:'absolute',left:`${x}%`,top:`${y}%`,transform:'translate(-50%,-50%)',pointerEvents:'auto',padding:'9px 12px',borderRadius:'10px',border:'1px solid #78bca866',background:'#12221fe8',color:'#dcece6',font:'700 12px system-ui,sans-serif',cursor:'pointer',backdropFilter:'blur(6px)'});
-      b.onclick=()=>target?.click(); this.manager.deepLabels.appendChild(b);
-    }
-    heading(text) { const e=document.createElement('div'); e.textContent=text; Object.assign(e.style,{position:'absolute',left:'50%',top:'12%',transform:'translateX(-50%)',font:'800 11px system-ui,sans-serif',letterSpacing:'.16em',color:'#9bd8c4',whiteSpace:'nowrap'}); this.manager.deepLabels.appendChild(e); }
-    targets(){return [...childrenEl.querySelectorAll('.spatial-target')].filter(el=>el.querySelector('strong'));}
-    targetName(el){return el.querySelector('strong')?.textContent?.trim()||'Spatial target';}
+    constructor(manager,level,title){super(manager);this.level=level;this.title=title;this.scene=new THREE.Scene();this.camera=new THREE.PerspectiveCamera(35,1,.1,100);this.camera.position.set(0,0,8);this.root=new THREE.Group();this.scene.add(this.root);this.scene.add(new THREE.HemisphereLight(0xffffff,0x10201d,2.1);const light=new THREE.DirectionalLight(0xffffff,2.4);light.position.set(4,5,7);this.scene.add(light);this.pointer=new THREE.Vector2();this.raycaster=new THREE.Raycaster();this.clickable=[];this.dragging=false;this.zoomLevel=8;}
+    mount(){this.canvas=this.manager.deepCanvas;this.renderer=this.manager.deepRenderer;this.manager.setBaseVisible(false);this.manager.setDeepUiVisible(true,this.title);this.bindPointer();this.renderContent();this.resize();}
+    bindPointer(){this.onDown=e=>{this.dragging=true;this.lastX=e.clientX;this.lastY=e.clientY;this.canvas.style.cursor='grabbing';};this.onMove=e=>{if(!this.dragging)return;this.root.rotation.y+=(e.clientX-this.lastX)*.008;this.root.rotation.x+=(e.clientY-this.lastY)*.006;this.lastX=e.clientX;this.lastY=e.clientY;};this.onUp=()=>{this.dragging=false;this.canvas.style.cursor='grab';};this.onWheel=e=>{e.preventDefault();this.zoom(e.deltaY>0?1.12:.89);};this.onClick=e=>{const r=this.canvas.getBoundingClientRect();this.pointer.x=((e.clientX-r.left)/r.width)*2-1;this.pointer.y=-((e.clientY-r.top)/r.height)*2+1;this.raycaster.setFromCamera(this.pointer,this.camera);const hit=this.raycaster.intersectObjects(this.clickable,false)[0];if(hit?.object?.userData?.target)hit.object.userData.target.click();};this.canvas.addEventListener('pointerdown',this.onDown);this.canvas.addEventListener('pointermove',this.onMove);this.canvas.addEventListener('pointerup',this.onUp);this.canvas.addEventListener('pointercancel',this.onUp);this.canvas.addEventListener('pointerleave',this.onUp);this.canvas.addEventListener('wheel',this.onWheel,{passive:false});this.canvas.addEventListener('click',this.onClick);}
+    makeMesh(geometry,position,color,target=null){const material=new THREE.MeshStandardMaterial({color,roughness:.65,metalness:.03,emissive:0x071c17,emissiveIntensity:.2});const mesh=new THREE.Mesh(geometry,material);mesh.position.set(...position);if(target){mesh.userData.target=target;this.clickable.push(mesh);}this.root.add(mesh);return mesh;}
+    addTargetLabel(text,x,y,target){const b=document.createElement('button');b.type='button';b.textContent=text;Object.assign(b.style,{position:'absolute',left:`${x}%`,top:`${y}%`,transform:'translate(-50%,-50%)',pointerEvents:'auto',padding:'9px 12px',borderRadius:'10px',border:'1px solid #78bca866',background:'#12221fe8',color:'#dcece6',font:'700 12px system-ui,sans-serif',cursor:'pointer',backdropFilter:'blur(6px)'});b.onclick=()=>target?.click();this.manager.deepLabels.appendChild(b);}
+    heading(text){const e=document.createElement('div');e.textContent=text;Object.assign(e.style,{position:'absolute',left:'50%',top:'12%',transform:'translateX(-50%)',font:'800 11px system-ui,sans-serif',letterSpacing:'.16em',color:'#9bd8c4',whiteSpace:'nowrap'});this.manager.deepLabels.appendChild(e);}
+    targets(){return[...childrenEl.querySelectorAll('.spatial-target')].filter(el=>el.querySelector('strong'));} targetName(el){return el.querySelector('strong')?.textContent?.trim()||'Spatial target';}
     renderContent(){if(this.level==='macro')this.renderMacroRegion();else if(this.level==='tissue')this.renderTissue();else if(this.level==='cellular')this.renderCellular();else this.renderCell();}
-    renderMacroRegion(){
-      const name=this.title.toLowerCase(); const isFinger=['thumb','index finger','middle finger','ring finger','little finger'].includes(name);
-      if(isFinger){const finger=this.makeMesh(new THREE.CapsuleGeometry(.78,3.9,10,24),[0,0,0],COLORS.macro);finger.rotation.z=name==='thumb'?.55:name==='little finger'?.08:0;} else this.makeMesh(new THREE.BoxGeometry(5.2,2.6,.55),[0,0,0],COLORS.macro);
-      this.heading(this.title.toUpperCase()); this.targets().slice(0,3).forEach((t,i)=>{this.addTargetLabel(this.targetName(t),25+i*25,57-(i%2)*15,t);this.makeMesh(new THREE.SphereGeometry(.14,16,12),[-1.8+i*1.8,-1.3+(i%2)*.3,.4],COLORS.accent,t);});
-    }
-    renderTissue(){
-      this.makeMesh(new THREE.BoxGeometry(7.2,4.3,.18),[0,0,-.6],COLORS.panel); this.heading('TISSUE PLANE'); const targets=this.targets().slice(0,3); const positions=[[-2.2,.7,.2],[0,-.15,.35],[2.2,.7,.2]];
-      targets.forEach((t,i)=>{const block=this.makeMesh(new THREE.BoxGeometry(1.8,1.35,.3),positions[i],COLORS.tissue,t);block.rotation.z=(i-1)*.05;this.addTargetLabel(this.targetName(t),23+i*27,57-(i%2)*17,t);}); if(!targets.length)this.addEmpty('No deeper tissue targets are defined.');
-    }
-    renderCellular(){
-      this.makeMesh(new THREE.BoxGeometry(7.2,4.3,.18),[0,0,-.5],0x101f20); for(let x=-3;x<=3;x++)for(let y=-2;y<=2;y++){const dot=new THREE.Mesh(new THREE.CircleGeometry(.1,16),new THREE.MeshBasicMaterial({color:COLORS.grid,transparent:true,opacity:.55}));dot.position.set(x+(y%2)*.35,y*.7,-.1);this.root.add(dot);}
-      this.heading('CELLULAR FIELD'); const targets=this.targets().slice(0,3); const positions=[[-2,.75,.2],[0,-.55,.3],[2,.8,.2]]; targets.forEach((t,i)=>{const cell=this.makeMesh(new THREE.SphereGeometry(.62,32,20),positions[i],COLORS.cellular,t);cell.scale.set(1,.72,.35);this.addTargetLabel(this.targetName(t),25+i*25,54-(i%2)*17,t);}); if(!targets.length)this.addEmpty('No deeper cellular targets are defined.');
-    }
-    renderCell(){
-      this.heading('SINGLE CELL'); const outer=this.makeMesh(new THREE.SphereGeometry(1.45,48,32),[0,0,.1],COLORS.cell); outer.material.transparent=true;outer.material.opacity=.82;outer.material.emissive.setHex(0x0b3026);outer.material.emissiveIntensity=.35;
-      const nucleus=this.makeMesh(new THREE.SphereGeometry(.55,40,24),[-.2,.1,1.05],COLORS.nucleus);nucleus.material.emissive.setHex(0x183b31);nucleus.material.emissiveIntensity=.45;this.addTargetLabel(this.title,50,82,null);this.addEmpty('Navigation target only · no cellular evidence is implied.');
-    }
+    renderMacroRegion(){const name=this.title.toLowerCase();const finger=['thumb','index finger','middle finger','ring finger','little finger'].includes(name);if(finger){const m=this.makeMesh(new THREE.CapsuleGeometry(.78,3.9,10,24),[0,0,0],COLORS.macro);m.rotation.z=name==='thumb'?.55:name==='little finger'?.08:0;}else this.makeMesh(new THREE.BoxGeometry(5.2,2.6,.55),[0,0,0],COLORS.macro);this.heading(this.title.toUpperCase());this.targets().slice(0,3).forEach((t,i)=>{this.addTargetLabel(this.targetName(t),25+i*25,57-(i%2)*15,t);this.makeMesh(new THREE.SphereGeometry(.14,16,12),[-1.8+i*1.8,-1.3+(i%2)*.3,.4],COLORS.accent,t);});}
+    renderTissue(){this.makeMesh(new THREE.BoxGeometry(7.2,4.3,.18),[0,0,-.6],COLORS.panel);this.heading('TISSUE PLANE');const finger=this.makeMesh(new THREE.CapsuleGeometry(.42,3.9,8,20),[-1.25,.15,.15],COLORS.tissue);finger.rotation.z=.08;const segment=this.makeMesh(new THREE.BoxGeometry(2.2,1.35,.35),[1.15,-.25,.35],COLORS.accent);segment.rotation.z=-.06;const ts=this.targets().slice(0,3);const p=[[-2.35,1.15,.4],[0,1.15,.4],[2.35,1.15,.4]];ts.forEach((t,i)=>this.addTargetLabel(this.targetName(t),23+i*27,61,t));if(!ts.length)this.addEmpty('Tissue visualization · no deeper targets are defined.');}
+    renderCellular(){this.makeMesh(new THREE.BoxGeometry(7.2,4.3,.18),[0,0,-.5],0x101f20);for(let x=-3;x<=3;x++)for(let y=-2;y<=2;y++){const d=new THREE.Mesh(new THREE.CircleGeometry(.1,16),new THREE.MeshBasicMaterial({color:COLORS.grid,transparent:true,opacity:.55}));d.position.set(x+(y%2)*.35,y*.7,-.1);this.root.add(d);}this.heading('CELLULAR FIELD');const ts=this.targets().slice(0,3),p=[[-2,.75,.2],[0,-.55,.3],[2,.8,.2]];ts.forEach((t,i)=>{const c=this.makeMesh(new THREE.SphereGeometry(.62,32,20),p[i],COLORS.cellular,t);c.scale.set(1,.72,.35);this.addTargetLabel(this.targetName(t),25+i*25,54-(i%2)*17,t);});if(!ts.length)this.addEmpty('No deeper cellular targets are defined.');}
+    renderCell(){this.heading('SINGLE CELL');const o=this.makeMesh(new THREE.SphereGeometry(1.45,48,32),[0,0,.1],COLORS.cell);o.material.transparent=true;o.material.opacity=.82;o.material.emissive.setHex(0x0b3026);o.material.emissiveIntensity=.35;const n=this.makeMesh(new THREE.SphereGeometry(.55,40,24),[-.2,.1,1.05],COLORS.nucleus);n.material.emissive.setHex(0x183b31);n.material.emissiveIntensity=.45;this.addTargetLabel(this.title,50,82,null);this.addEmpty('Navigation target only · no cellular evidence is implied.');}
     addEmpty(text){const e=document.createElement('div');e.textContent=text;Object.assign(e.style,{position:'absolute',left:'50%',bottom:'17%',transform:'translateX(-50%)',color:'#9fb7b0',font:'600 12px system-ui,sans-serif',textAlign:'center',whiteSpace:'nowrap'});this.manager.deepLabels.appendChild(e);}
-    resize(){const r=viewport.getBoundingClientRect();const w=Math.max(1,r.width),h=Math.max(1,r.height);this.camera.aspect=w/h;this.camera.updateProjectionMatrix();this.renderer.setSize(w,h,false);}
-    rotate(delta){this.root.rotation.y+=delta;}
-    zoom(factor){this.zoomLevel=Math.max(3.5,Math.min(18,this.zoomLevel*factor));this.camera.position.setLength(this.zoomLevel);}
-    reset(){this.root.rotation.set(0,0,0);this.zoomLevel=8;this.camera.position.set(0,0,8);}
-    destroy(){
-      if(this.canvas){this.canvas.removeEventListener('pointerdown',this.onDown);this.canvas.removeEventListener('pointermove',this.onMove);this.canvas.removeEventListener('pointerup',this.onUp);this.canvas.removeEventListener('pointercancel',this.onUp);this.canvas.removeEventListener('pointerleave',this.onUp);this.canvas.removeEventListener('wheel',this.onWheel);this.canvas.removeEventListener('click',this.onClick);}
-      this.root.traverse(o=>{o.geometry?.dispose?.();if(o.material){if(Array.isArray(o.material))o.material.forEach(m=>m.dispose?.());else o.material.dispose?.();}});this.root.clear();this.clickable=[];
-    }
+    resize(){const r=viewport.getBoundingClientRect(),w=Math.max(1,r.width),h=Math.max(1,r.height);this.camera.aspect=w/h;this.camera.updateProjectionMatrix();this.renderer.setSize(w,h,false);} rotate(d){this.root.rotation.y+=d;} zoom(f){this.zoomLevel=Math.max(3.5,Math.min(18,this.zoomLevel*f));this.camera.position.setLength(this.zoomLevel);} reset(){this.root.rotation.set(0,0,0);this.zoomLevel=8;this.camera.position.set(0,0,8);}
+    destroy(){if(this.canvas){this.canvas.removeEventListener('pointerdown',this.onDown);this.canvas.removeEventListener('pointermove',this.onMove);this.canvas.removeEventListener('pointerup',this.onUp);this.canvas.removeEventListener('pointercancel',this.onUp);this.canvas.removeEventListener('pointerleave',this.onUp);this.canvas.removeEventListener('wheel',this.onWheel);this.canvas.removeEventListener('click',this.onClick);}this.root.traverse(o=>{o.geometry?.dispose?.();if(o.material){if(Array.isArray(o.material))o.material.forEach(m=>m.dispose?.());else o.material.dispose?.();}});this.root.clear();this.clickable=[];}
   }
-
   class SpatialViewportManager {
-    constructor(){
-      this.active=null;this.activeKey='';
-      this.deepCanvas=document.createElement('canvas');this.deepCanvas.id='spatial-active-canvas';Object.assign(this.deepCanvas.style,{position:'absolute',inset:'0',width:'100%',height:'100%',zIndex:'20',display:'none',cursor:'grab',background:'#0b1518'});viewport.appendChild(this.deepCanvas);
-      this.deepLabels=document.createElement('div');Object.assign(this.deepLabels.style,{position:'absolute',inset:'0',zIndex:'21',display:'none',pointerEvents:'none'});viewport.appendChild(this.deepLabels);
-      this.deepTitle=document.createElement('div');Object.assign(this.deepTitle.style,{position:'absolute',left:'18px',bottom:'18px',zIndex:'40',display:'none',padding:'8px 11px',borderRadius:'10px',background:'rgba(13,25,24,.92)',border:'1px solid rgba(155,216,196,.35)',color:'#dcece6',font:'800 11px system-ui,sans-serif',letterSpacing:'.1em'});viewport.appendChild(this.deepTitle);
-      this.deepRenderer=new THREE.WebGLRenderer({canvas:this.deepCanvas,antialias:true,alpha:false});this.deepRenderer.setPixelRatio(Math.min(window.devicePixelRatio||1,2));this.deepRenderer.outputColorSpace=THREE.SRGBColorSpace;this.deepRenderer.setClearColor(COLORS.background,1);
-      this.originalControlHandlers=new Map();['reset-view','rotate-left','rotate-right','zoom-in','zoom-out','zoom-region'].forEach(id=>{const b=document.getElementById(id);if(b)this.originalControlHandlers.set(id,b.onclick);});
-      const observer=new MutationObserver(()=>this.render());[badge,nodeEl,childrenEl,breadcrumbEl].filter(Boolean).forEach(el=>observer.observe(el,{childList:true,subtree:true,characterData:true,attributes:true}));
-      window.addEventListener('resize',()=>this.resize());
+    constructor(){this.active=null;this.activeKey='';this.deepCanvas=document.createElement('canvas');this.deepCanvas.id='spatial-active-canvas';Object.assign(this.deepCanvas.style,{position:'absolute',inset:'0',width:'100%',height:'100%',zIndex:'20',display:'none',cursor:'grab',background:'#0b1518'});viewport.appendChild(this.deepCanvas);this.deepLabels=document.createElement('div');Object.assign(this.deepLabels.style,{position:'absolute',inset:'0',zIndex:'21',display:'none',pointerEvents:'none'});viewport.appendChild(this.deepLabels);this.deepTitle=document.createElement('div');Object.assign(this.deepTitle.style,{position:'absolute',left:'18px',bottom:'18px',zIndex:'40',display:'none',padding:'8px 11px',borderRadius:'10px',background:'rgba(13,25,24,.92)',border:'1px solid rgba(155,216,196,.35)',color:'#dcece6',font:'800 11px system-ui,sans-serif',letterSpacing:'.1em'});viewport.appendChild(this.deepTitle);this.deepRenderer=new THREE.WebGLRenderer({canvas:this.deepCanvas,antialias:true,alpha:false});this.deepRenderer.setPixelRatio(Math.min(window.devicePixelRatio||1,2));this.deepRenderer.outputColorSpace=THREE.SRGBColorSpace;this.deepRenderer.setClearColor(COLORS.background,1);this.originalControlHandlers=new Map();['reset-view','rotate-left','rotate-right','zoom-in','zoom-out','zoom-region'].forEach(id=>{const b=document.getElementById(id);if(b)this.originalControlHandlers.set(id,b.onclick);});const observer=new MutationObserver(()=>this.render());[badge,nodeEl,childrenEl,breadcrumbEl].filter(Boolean).forEach(el=>observer.observe(el,{childList:true,subtree:true,characterData:true,attributes:true}));window.addEventListener('resize',()=>this.resize());}
+    path(){return[...(breadcrumbEl?.querySelectorAll('button')||[])].map(b=>b.textContent.trim()).filter(Boolean);} title(){return nodeEl.querySelector('strong')?.textContent?.trim()||'Spatial target';}
+    level(){
+      const badgeText=String(badge.textContent||'').toUpperCase();
+      const title=String(this.title()||'').toLowerCase();
+      const pathText=this.path().join(' > ').toLowerCase();
+      // The navigator's badge is descriptive UI, but older navigator states can
+      // leave it at MACRO while the selected node has already moved deeper.
+      // Resolve from the selected node first so the viewport follows navigation.
+      if(/cell target|single cell/.test(title)||/cell target|single cell/.test(pathText))return'cell';
+      if(/microscopy field|cellular field/.test(title)||/microscopy field|cellular field/.test(pathText))return'cellular';
+      if(/segment|tissue/.test(title)||/segment|tissue/.test(pathText))return'tissue';
+      if(badgeText.includes('SINGLE'))return'cell';
+      if(badgeText.includes('CELLULAR'))return'cellular';
+      if(badgeText.includes('TISSUE'))return'tissue';
+      return'macro';
     }
-    path(){return [...(breadcrumbEl?.querySelectorAll('button')||[])].map(b=>b.textContent.trim()).filter(Boolean);}
-    title(){return nodeEl.querySelector('strong')?.textContent?.trim()||'Spatial target';}
-    level(){const text=String(badge.textContent||'').toUpperCase();if(text.includes('SINGLE'))return'cell';if(text.includes('CELLULAR'))return'cellular';if(text.includes('TISSUE'))return'tissue';return'macro';}
-    isRootMacro(){return this.level()==='macro'&&this.path().length<=1&&this.title()==='Hand';}
-    key(){return `${this.level()}|${this.path().join('>')}|${this.title()}|${[...childrenEl.querySelectorAll('.spatial-target strong')].map(x=>x.textContent.trim()).join('|')}`;}
-    setBaseVisible(visible){baseCanvas.style.display=visible?'block':'none';baseCanvas.style.visibility=visible?'visible':'hidden';}
-    setDeepUiVisible(visible,title=''){this.deepCanvas.style.display=visible?'block':'none';this.deepLabels.style.display=visible?'block':'none';this.deepTitle.style.display=visible?'block':'none';this.deepTitle.textContent=visible?`${this.level().toUpperCase()} · ${title.toUpperCase()}`:'';if(hint)hint.style.visibility=visible?'hidden':'visible';if(loading)loading.style.visibility='hidden';}
-    switchControls(deep){
-      const actions={'reset-view':()=>this.active?.reset(),'rotate-left':()=>this.active?.rotate(-Math.PI/9),'rotate-right':()=>this.active?.rotate(Math.PI/9),'zoom-in':()=>this.active?.zoom(.86),'zoom-out':()=>this.active?.zoom(1.16),'zoom-region':()=>this.active?.zoom(.84)};
-      Object.entries(actions).forEach(([id,handler])=>{const b=document.getElementById(id);if(b)b.onclick=deep?handler:(this.originalControlHandlers.get(id)||null);});
-      if(controls)controls.style.visibility='visible';
-    }
-    render(){
-      const key=this.key();if(key===this.activeKey){this.resize();return;}this.activeKey=key;
-      const rootMacro=this.isRootMacro();if(this.active){this.active.destroy();this.active=null;}this.deepLabels.replaceChildren();this.setBaseVisible(false);this.setDeepUiVisible(false);
-      if(rootMacro){this.active=new Hand3DRenderer(this);this.active.mount();this.switchControls(false);return;}
-      this.active=new DeepRenderer(this,this.level(),this.title());this.active.mount();this.switchControls(true);this.resize();
-    }
-    resize(){this.active?.resize();}
-    animate(){requestAnimationFrame(()=>this.animate());if(this.active instanceof DeepRenderer)this.deepRenderer.render(this.active.scene,this.active.camera);}
+    isRootMacro(){return this.level()==='macro'&&this.path().length<=1&&this.title().toLowerCase()==='hand';}
+    key(){return`${this.level()}|${this.path().join('>')}|${this.title()}|${[...childrenEl.querySelectorAll('.spatial-target strong')].map(x=>x.textContent.trim()).join('|')}`;}
+    setBaseVisible(v){baseCanvas.style.display=v?'block':'none';baseCanvas.style.visibility=v?'visible':'hidden';} setDeepUiVisible(v,title=''){this.deepCanvas.style.display=v?'block':'none';this.deepLabels.style.display=v?'block':'none';this.deepTitle.style.display=v?'block':'none';this.deepTitle.textContent=v?`${this.level().toUpperCase()} · ${title.toUpperCase()}`:'';if(hint)hint.style.visibility=v?'hidden':'visible';if(loading)loading.style.visibility='hidden';}
+    switchControls(deep){const a={'reset-view':()=>this.active?.reset(),'rotate-left':()=>this.active?.rotate(-Math.PI/9),'rotate-right':()=>this.active?.rotate(Math.PI/9),'zoom-in':()=>this.active?.zoom(.86),'zoom-out':()=>this.active?.zoom(1.16),'zoom-region':()=>this.active?.zoom(.84)};Object.entries(a).forEach(([id,h])=>{const b=document.getElementById(id);if(b)b.onclick=deep?h:(this.originalControlHandlers.get(id)||null);});if(controls)controls.style.visibility='visible';}
+    render(){const key=this.key();if(key===this.activeKey){this.resize();return;}this.activeKey=key;const rootMacro=this.isRootMacro();if(this.active){this.active.destroy();this.active=null;}this.deepLabels.replaceChildren();this.setBaseVisible(false);this.setDeepUiVisible(false);if(rootMacro){this.active=new Hand3DRenderer(this);this.active.mount();this.switchControls(false);return;}this.active=new DeepRenderer(this,this.level(),this.title());this.active.mount();this.switchControls(true);this.resize();}
+    resize(){this.active?.resize();} animate(){requestAnimationFrame(()=>this.animate());if(this.active instanceof DeepRenderer)this.deepRenderer.render(this.active.scene,this.active.camera);}
   }
-
   const manager=new SpatialViewportManager();window.spatialViewportManager=manager;manager.render();manager.animate();
 })();
