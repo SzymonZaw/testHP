@@ -4,10 +4,25 @@
   const subjectId = 'own_cohort';
   const timepoint = 'T0';
   const slug = (value) => value.toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+  const childId = (parent, label) => {
+    const key = label.toLowerCase().trim();
+    const direct = { 'palm':'palm', 'thumb':'thumb', 'index':'index', 'middle':'middle', 'ring':'ring', 'little':'little', 'wrist':'wrist', 'thenar':'thenar', 'hypothenar':'hypothenar', 'central palm':'central-palm' };
+    if (direct[key]) return direct[key];
+    if (key === 'proximal segment') return `${parent}-proximal`;
+    if (key === 'middle segment') return `${parent}-middle`;
+    if (key === 'distal segment') return `${parent}-distal`;
+    const field = key.match(/microscopy field\s*([abc])/i);
+    if (field) return `${parent}-field-${field[1].toLowerCase()}`;
+    const cell = key.match(/cell target\s*(\d+)/i);
+    if (cell) return `${parent}-cell-${cell[1]}`;
+    return slug(label);
+  };
   const nodeIdFromBreadcrumb = () => {
     const labels = [...document.querySelectorAll('#spatial-breadcrumb button')].map((b) => b.textContent.trim()).filter(Boolean);
     if (!labels.length) return 'hand';
-    return ['hand', ...labels.slice(1).map(slug)].join('/');
+    const ids = ['hand'];
+    labels.slice(1).forEach((label) => ids.push(childId(ids[ids.length - 1], label)));
+    return ids.join('/');
   };
   const currentLevel = () => (document.getElementById('spatial-level-badge')?.textContent || 'MACRO').toLowerCase().replace(' ', '');
 
