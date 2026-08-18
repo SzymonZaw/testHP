@@ -4,8 +4,8 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Hand Digital Twin · Biological Monitoring</title>
-  <link rel="stylesheet" href="/digital-twin/assets/styles.css">
-  <link rel="stylesheet" href="/digital-twin/assets/theme.css">
+  <link rel="stylesheet" href="/digital-twin/styles.css">
+  <link rel="stylesheet" href="/digital-twin/theme.css">
   <script type="importmap">
   {"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js"}}
   </script>
@@ -20,11 +20,11 @@
   <section class="panel timeline"><div class="panel-title"><div><span class="section-kicker">LONGITUDINAL RECORD</span><strong>OBSERVATION TIMELINE</strong></div><button id="add-observation" class="secondary" type="button">＋ Add observation</button></div><div class="timeline-line"><span class="timeline-item active"><i></i><b>T0</b><small>latest available observation</small></span><span class="timeline-connector"></span><span class="timeline-item future"><i></i><b>Next</b><small>awaiting future observation</small></span></div></section>
   <dialog id="observation-dialog"><form method="dialog" class="dialog-card"><button class="close" value="cancel">×</button><span class="eyebrow">NEW OBSERVATION</span><h2>Add data to the twin</h2><label>Body region<select><option>Hand</option></select></label><label>Region<select id="form-region"><option>palm</option><option>thumb</option><option>index</option><option>middle</option><option>ring</option><option>little</option><option>wrist</option></select></label><label>Modality<select id="form-modality"><option>Photo</option><option>Video</option><option>Microscopy</option><option>Measurements</option><option>Molecular data</option></select></label><label>File<input id="observation-file" type="file" required></label><button id="register-observation" class="primary" value="default">Register observation</button></form></dialog>
 </main>
-<script type="module" src="/digital-twin/assets/app.js?v=progressive-inspector-18"></script>
-<script type="module" src="/digital-twin/assets/spatial-layer-viewport.js?v=canonical-4"></script>
-<script src="/digital-twin/assets/spatial-evidence-renderer.js?v=evidence-3"></script>
-<script src="/digital-twin/assets/spatial-viewport-debug.js?v=canonical-3"></script>
-<script src="/digital-twin/assets/stages-2-4.js?v=stage-2-4-1"></script>
+<script type="module" src="/digital-twin/app.js?v=progressive-inspector-18"></script>
+<script type="module" src="/digital-twin/spatial-layer-viewport.js?v=canonical-4"></script>
+<script src="/digital-twin/spatial-evidence-renderer.js?v=evidence-3"></script>
+<script src="/digital-twin/spatial-viewport-debug.js?v=canonical-3"></script>
+<script src="/digital-twin/stages-2-4.js?v=stage-2-4-1"></script>
 <script src="/digital-twin/assets/stages-5-8.js?v=stage-5-8-1"></script>
 </body>
 </html>
