@@ -34,7 +34,26 @@ const raycaster=new THREE.Raycaster(),pointer=new THREE.Vector2();
 let clickable=[];let renderKey='';
 const colors={macro:0xc68b72,tissue:0x5d9d89,cellular:0x5fae98,cell:0x8bc7b0,grid:0x4f9b86};
 
-function level(){const text=String(badge.textContent||'').trim().toUpperCase();if(text.includes('SINGLE'))return'cell';if(text.includes('CELLULAR'))return'cellular';if(text.includes('TISSUE'))return'tissue';return'macro'}
+function level(){
+  const raw=String(node.getAttribute('data-resolution')||node.dataset?.resolution||node.querySelector('[data-resolution]')?.getAttribute('data-resolution')||'').trim().toLowerCase();
+  if(raw==='cell'||raw==='single-cell'||raw==='single_cell')return'cell';
+  if(raw==='cellular'||raw==='cellular-field'||raw==='cellular_field')return'cellular';
+  if(raw==='tissue'||raw==='tissue-field'||raw==='tissue_field')return'tissue';
+  if(raw==='macro'||raw==='macroscopic')return'macro';
+  const text=String(badge.textContent||'').trim().toUpperCase();
+  if(text.includes('SINGLE'))return'cell';
+  if(text.includes('CELLULAR'))return'cellular';
+  if(text.includes('TISSUE'))return'tissue';
+  const path=pathLabels();
+  const current=currentTitle().toLowerCase();
+  if(/cell target|single cell/.test(current))return'cell';
+  if(/microscopy field|cellular field/.test(current))return'cellular';
+  if(/segment|tissue field|tissue/.test(current))return'tissue';
+  if(path.length>=5)return'cell';
+  if(path.length===4)return'cellular';
+  if(path.length===3)return'tissue';
+  return'macro';
+}
 function currentTitle(){return node.querySelector('strong')?.textContent?.trim()||'Spatial target'}
 function pathLabels(){return [...document.querySelectorAll('#spatial-breadcrumb button')].map(x=>x.textContent.trim()).filter(Boolean)}
 function targetElements(){return [...children.querySelectorAll('.spatial-target')].filter(x=>x.querySelector('strong'))}
