@@ -27,6 +27,7 @@ from .skin_longitudinal import compare_skin_observations
 from .skin_ontology import ontology_snapshot
 from .video_analysis import analyze_video_directory, inspect_video
 from .stage_2_4 import register_stage_routes
+from .stages_5_8 import register_stage_5_8_routes
 
 ROOT = Path(__file__).resolve().parents[1]
 RAW_ROOT = ROOT / "data" / "raw"
@@ -40,6 +41,7 @@ RNA_FORMATS = {".gz", ".mtx", ".tsv", ".csv", ".txt", ".h5", ".h5ad", ".tar"}
 
 app = FastAPI(title="Human Pathology Platform", version="0.8.0")
 register_stage_routes(app)
+register_stage_5_8_routes(app)
 
 class PipelineRequest(BaseModel):
     datasets: list[str] = []
@@ -122,7 +124,8 @@ def hand_analysis(subject_id: str = "own_cohort", timepoint: str = "T0"):
     for asset in assets:
         item = analyze_asset(asset)
         if asset.get("modality") == "hand" and asset.get("status") == "available":
-            image_path = ROOT / asset["path"]; macro = analyze_image(image_path); features = macro.get("features", {})
+            image_path = ROOT / asset["path"]
+            macro = analyze_image(image_path); features = macro.get("features", {})
             width, height = features.get("width_px", 0), features.get("height_px", 0); view = asset.get("view") or "unknown"
             zone = assign_feature_to_zone(width / 2, height / 2, width, height) if width and height else None
             item = {**item, "macro": macro, "zone_id": zone, "zone_assignment": "view_center_proxy" if zone else "unassigned", "view": view}
@@ -196,24 +199,11 @@ def video_inspect(path: str):
     return inspect_video(target)
 @app.get("/api/video")
 def video_inventory(): return {"videos":analyze_video_directory(RAW_ROOT/"hand"/"media")}
-@app.get("/api/images/ontology")
-def images_ontology(): return ontology_snapshot()
-@app.get("/api/images/validate")
-def images_validate(): return validate_skin_dataset(RAW_ROOT/"images")
-@app.get("/api/images/observations")
-def images_observations(subject_id: str="unknown",timepoint: str="unknown"): return {"observations":scan_skin(RAW_ROOT/"images",subject_id,timepoint)}
-@app.post("/api/images/longitudinal/compare")
-def images_longitudinal_compare(request: SkinLongitudinalRequest): return {"subject_id":request.subject_id,"changes":compare_skin_observations(request.observations)}
-@app.get("/api/pipeline")
-def pipeline(): return run_pipeline([])
-@app.post("/api/pipeline/validate")
-def validate(request: PipelineRequest): return run_pipeline(request.datasets)
-@app.post("/api/run")
-def run(request: PipelineRequest): return run_pipeline(request.datasets)
+@app.get("/api/skin/longitudinal")
+def skin_longitudinal(request: SkinLongitudinalRequest): return {"subject_id":request.subject_id,"changes":compare_skin_observations(request.subject_id,request.observations)}
 
-if WEB_ROOT.exists(): app.mount("/assets",StaticFiles(directory=WEB_ROOT),name="assets")
-if DIGITAL_TWIN_ROOT.exists(): app.mount("/digital-twin/assets",StaticFiles(directory=DIGITAL_TWIN_ROOT),name="digital_twin_assets")
-@app.get("/digital-twin")
-def digital_twin(): return FileResponse(DIGITAL_TWIN_ROOT/"index.html")
-@app.get("/")
-def home(): return FileResponse(WEB_ROOT/"index.html")
+@app.get("/api/ontology/skin")
+def skin_ontology(): return ontology_snapshot()
+
+app.mount("/web", StaticFiles(directory=WEB_ROOT), name="web")
+app.mount("/digital-twin", StaticFiles(directory=DIGITAL_TWIN_ROOT, html=True), name="digital-twin")
