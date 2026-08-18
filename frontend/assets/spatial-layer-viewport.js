@@ -38,7 +38,7 @@ if(viewport&&badge&&node&&children){
   let clickable=[];
   let renderKey='';
 
-  const colors={macro:0xc68b72,tissue:0x5d9d89,cellular:0x5fae98,cell:0x8bc7b0,accent:0x9bd8c4,grid:0x4f9b86};
+  const colors={macro:0xc68b72,tissue:0x5d9d89,cellular:0x5fae98,cell:0x8bc7b0,grid:0x4f9b86};
 
   function level(){
     const text=String(badge.textContent||'').toUpperCase();
@@ -47,14 +47,14 @@ if(viewport&&badge&&node&&children){
     if(text.includes('TISSUE'))return'tissue';
     return'macro';
   }
-  function currentTitle(){return node.querySelector('strong')?.textContent?.trim()||'Spatial target';}
-  function pathLabels(){return [...(breadcrumb?.querySelectorAll('button')||[])].map(b=>b.textContent.trim()).filter(Boolean);}
-  function targetElements(){return [...children.querySelectorAll('.spatial-target')].filter(x=>x.querySelector('strong'));}
-  function targetText(x){return x.querySelector('strong')?.textContent?.trim()||'Spatial target';}
-  function clear(){while(root.children.length){const o=root.children.pop();o.traverse?.(c=>{c.geometry?.dispose?.();if(c.material){if(Array.isArray(c.material))c.material.forEach(m=>m.dispose?.());else c.material.dispose?.()}})}clickable=[];overlay.replaceChildren();}
+  function currentTitle(){return node.querySelector('strong')?.textContent?.trim()||'Spatial target'}
+  function pathLabels(){return [...(breadcrumb?.querySelectorAll('button')||[])].map(b=>b.textContent.trim()).filter(Boolean)}
+  function targetElements(){return [...children.querySelectorAll('.spatial-target')].filter(x=>x.querySelector('strong'))}
+  function targetText(x){return x.querySelector('strong')?.textContent?.trim()||'Spatial target'}
+  function clear(){while(root.children.length){const o=root.children.pop();o.traverse?.(c=>{c.geometry?.dispose?.();if(c.material){if(Array.isArray(c.material))c.material.forEach(m=>m.dispose?.());else c.material.dispose?.()}})}clickable=[];overlay.replaceChildren()}
   function addLabel(text,x,y,target){
     const b=document.createElement('button');b.type='button';b.textContent=text;
-    Object.assign(b.style,{position:'absolute',left:`${x}%`,top:`${y}%`,transform:'translate(-50%,-50%)',pointerEvents:'auto',padding:'10px 13px',borderRadius:'11px',border:'1px solid #78bca866',background:'#12221fe8',color:'#dcece6',font:'700 12px system-ui,sans-serif',cursor:'pointer',backdropFilter:'blur(6px)'});
+    Object.assign(b.style,{position:'absolute',left:`${x}%`,top:`${y}%`,transform:'translate(-50%,-50%)',pointerEvents:'auto',padding:'10px 13px',borderRadius:'11px',border:'1px solid #78bca866',background:'#12221fe8',color:'#dcece6',font:'700 12px system-ui,sans-serif',cursor:'pointer'});
     if(target)b.onclick=()=>target.click();
     overlay.appendChild(b);
   }
@@ -68,39 +68,34 @@ if(viewport&&badge&&node&&children){
     overlay.appendChild(h);
   }
 
-  function renderMacroHand(){
-    title.textContent='MACRO ANATOMY · HAND';
-    title.style.display='block';
+  function showBaseHand(){
     baseCanvas.style.display='block';
     canvas.style.display='none';
     overlay.style.display='none';
+    title.style.display='none';
     if(controls)controls.style.visibility='visible';
     if(hint)hint.style.visibility='visible';
-    if(loading)loading.style.visibility='visible';
-    document.body.classList.remove('spatial-deep');
+    if(loading)loading.style.visibility='hidden';
   }
 
   function renderMacroRegion(){
     const labels=pathLabels();
-    const region=(labels[labels.length-1]||currentTitle()).toLowerCase();
-    const isFinger=['thumb','index finger','middle finger','ring finger','little finger'].includes(region);
-    if(!isFinger){renderMacroHand();return;}
-    const geom=new THREE.CapsuleGeometry(.78,3.9,10,24);
-    const finger=makeMesh(geom,[0,0,0],colors.macro,null);
-    finger.rotation.z=region==='little finger'?.08:region==='thumb'?.55:0;
+    const current=(labels[labels.length-1]||currentTitle()).toLowerCase();
+    const isFinger=['thumb','index finger','middle finger','ring finger','little finger'].includes(current);
+    if(!isFinger){showBaseHand();return}
+    const finger=makeMesh(new THREE.CapsuleGeometry(.78,3.9,10,24),[0,0,0],colors.macro,null);
+    finger.rotation.z=current==='little finger'?.08:current==='thumb'?.55:0;
     finger.material.roughness=.72;
     heading(currentTitle().toUpperCase());
-    const targets=targetElements();
-    targets.forEach((t,i)=>addLabel(targetText(t),30+i*20,58+(i%2)*15,t));
+    targetElements().forEach((t,i)=>addLabel(targetText(t),30+i*20,58+(i%2)*15,t));
     title.textContent=`MACRO ANATOMY · ${currentTitle().toUpperCase()}`;
   }
 
   function renderTissue(){
     makeMesh(new THREE.BoxGeometry(7,4.2,.18),[0,0,-.55],0x132923,null).material.roughness=.9;
     heading('TISSUE PLANE');
-    const targets=targetElements();
     const positions=[[-2.15,.7,.2],[0,-.15,.35],[2.15,.7,.2]];
-    targets.slice(0,3).forEach((t,i)=>{
+    targetElements().slice(0,3).forEach((t,i)=>{
       const m=makeMesh(new THREE.BoxGeometry(1.8,1.35,.28),positions[i],colors.tissue,t);
       m.rotation.z=(i-1)*.05;
       addLabel(targetText(t),23+i*27,58-(i%2)*18,t);
@@ -115,9 +110,8 @@ if(viewport&&badge&&node&&children){
       c.position.set(x+(y%2)*.35,y*.7,-.1);root.add(c);
     }
     heading('CELLULAR FIELD');
-    const targets=targetElements();
     const positions=[[-2,.75,.2],[0,-.55,.3],[2,.8,.2]];
-    targets.slice(0,3).forEach((t,i)=>{
+    targetElements().slice(0,3).forEach((t,i)=>{
       const m=makeMesh(new THREE.SphereGeometry(.62,32,20),positions[i],colors.cellular,t);
       m.scale.set(1,.72,.35);
       addLabel(targetText(t),25+i*25,54-(i%2)*17,t);
@@ -127,52 +121,46 @@ if(viewport&&badge&&node&&children){
 
   function renderCell(){
     heading('SINGLE CELL');
-    const t=currentTitle();
     const outer=makeMesh(new THREE.SphereGeometry(1.45,48,32),[0,0,.1],colors.cell,null);
     outer.material.transparent=true;outer.material.opacity=.82;outer.material.emissive.setHex(0x0b3026);outer.material.emissiveIntensity=.35;
     const nucleus=makeMesh(new THREE.SphereGeometry(.55,40,24),[-.2,.1,1.05],0x315e51,null);
     nucleus.material.emissive.setHex(0x183b31);nucleus.material.emissiveIntensity=.45;
-    addLabel(t,50,82,null);
-    title.textContent=`SINGLE CELL · ${t.toUpperCase()}`;
-  }
-
-  function syncBoundary(deep){
-    const inspector=document.querySelector('.inspector'),statePanel=document.querySelector('.state-panel');
-    [inspector,statePanel].forEach(e=>{if(e)e.style.setProperty('display',deep?'none':'','important')});
-    document.body.classList.toggle('spatial-deep',deep);
+    addLabel(currentTitle(),50,82,null);
+    title.textContent=`SINGLE CELL · ${currentTitle().toUpperCase()}`;
   }
 
   function render(){
     const l=level();
     const t=currentTitle();
     const labels=pathLabels();
-    const key=`${l}|${labels.join('>')}|${[...targetElements()].map(targetText).join('|')}`;
-    if(key===renderKey){resize();return;}
+    const handRoot=labels.length===0||t==='Hand';
+    const key=`${l}|${handRoot}|${labels.join('>')}|${t}|${[...targetElements()].map(targetText).join('|')}`;
+    if(key===renderKey){resize();return}
     renderKey=key;
     clear();
     camera.position.set(0,0,8);camera.lookAt(0,0,0);
-    const handRoot=labels.length<=1||t==='Hand';
-    const deep=l!=='macro'||!handRoot;
-    syncBoundary(deep);
-    if(!deep){renderMacroHand();resize();return;}
+
+    if(handRoot){showBaseHand();resize();return}
+
     baseCanvas.style.display='none';
-    canvas.style.display='block';overlay.style.display='block';
+    canvas.style.display='block';
+    overlay.style.display='block';
     if(controls)controls.style.visibility='hidden';
     if(hint)hint.style.visibility='hidden';
     if(loading)loading.style.visibility='hidden';
+
     if(l==='macro')renderMacroRegion();
     else if(l==='tissue')renderTissue();
     else if(l==='cellular')renderCellular();
     else renderCell();
+
+    title.style.display='block';
     resize();
   }
 
   function resize(){const r=viewport.getBoundingClientRect(),w=Math.max(1,r.width),h=Math.max(1,r.height);camera.aspect=w/h;camera.updateProjectionMatrix();renderer.setSize(w,h,false)}
   function animate(){requestAnimationFrame(animate);if(canvas.style.display!=='none'){root.rotation.y+=.0025;renderer.render(scene,camera)}}
-  canvas.addEventListener('pointerdown',e=>{
-    const r=canvas.getBoundingClientRect();pointer.x=((e.clientX-r.left)/r.width)*2-1;pointer.y=-((e.clientY-r.top)/r.height)*2+1;
-    raycaster.setFromCamera(pointer,camera);const hit=raycaster.intersectObjects(clickable,false)[0];if(hit?.object?.userData?.target)hit.object.userData.target.click();
-  });
+  canvas.addEventListener('pointerdown',e=>{const r=canvas.getBoundingClientRect();pointer.x=((e.clientX-r.left)/r.width)*2-1;pointer.y=-((e.clientY-r.top)/r.height)*2+1;raycaster.setFromCamera(pointer,camera);const hit=raycaster.intersectObjects(clickable,false)[0];if(hit?.object?.userData?.target)hit.object.userData.target.click()});
 
   const observerConfig={childList:true,subtree:true,characterData:true};
   new MutationObserver(render).observe(badge,observerConfig);
