@@ -1,8 +1,7 @@
 """Stages 2-4: spatial evidence, current biological state and hierarchy.
 
-Research-only implementation. It never turns missing evidence into a biological
-claim. Biological signals are accepted only when explicitly supplied with an
-evidence attachment (or a structured metadata file).
+Research-only implementation. Missing evidence stays missing; biological claims
+are never inferred from spatial depth alone.
 """
 from __future__ import annotations
 
@@ -14,7 +13,7 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 from .data_ingestion import ingest_upload, safe_component
 
@@ -47,7 +46,10 @@ def _save(items: list[dict[str, Any]]) -> None:
     tmp.replace(REGISTRY_PATH)
 
 def _now() -> str: return datetime.now(timezone.utc).isoformat()
-def _safe_node(node_id: str) -> str: return safe_component(node_id, "hand")[:160]
+
+def _safe_node(node_id: str) -> str:
+    parts = [safe_component(part, "node") for part in node_id.split("/") if part]
+    return "/".join(parts)[:160] or "hand"
 
 def _validate_level(level: str) -> str:
     value = level.strip().lower()
@@ -55,8 +57,7 @@ def _validate_level(level: str) -> str:
     return value
 
 def _clean_signals(signals: dict[str, Any]) -> dict[str, Any]:
-    clean: dict[str, Any] = {}
-    allowed = set().union(*SIGNAL_LAYERS.values())
+    clean: dict[str, Any] = {}; allowed = set().union(*SIGNAL_LAYERS.values())
     for key, value in signals.items():
         key = str(key).strip().lower()
         if key not in allowed: continue
@@ -105,8 +106,7 @@ def _coverage(items: list[dict[str, Any]]) -> dict[str, Any]:
     return {layer: {"evidence_items": sum(1 for i in items if layer in (i.get("layers") or [])), "observed": any(layer in (i.get("layers") or []) for i in items)} for layer in (*SIGNAL_LAYERS.keys(), "molecular")}
 
 def _direct_state(items: list[dict[str, Any]], node_id: str | None = None) -> dict[str, Any]:
-    selected = [i for i in items if _node_matches(i, node_id)]
-    signal_summary = _signal_summary(selected)
+    selected = [i for i in items if _node_matches(i, node_id)]; signal_summary = _signal_summary(selected)
     return {"evidence_count": len(selected), "signals": signal_summary, "biological_age": _age_summary(signal_summary), "coverage": _coverage(selected), "interpretation_boundary": "research_signals_only", "insufficient_evidence": not bool(signal_summary)}
 
 def _node_path(node_id: str) -> list[str]:
@@ -128,7 +128,7 @@ async def attach_evidence(file: UploadFile = File(...), subject_id: str = Form("
     if modality not in {"hand", "images", "wsi", "rna", "metadata"}: raise HTTPException(status_code=400, detail="unsupported evidence modality")
     try: signals = _clean_signals(json.loads(signals_json)) if signals_json else {}
     except (json.JSONDecodeError, TypeError): raise HTTPException(status_code=400, detail="signals_json must be a JSON object")
-    try: asset = await ingest_upload(file, subject_id, timepoint, modality, spatial_level, spatial_node_id)
+    try: asset = await ingest_upload(file, subject_id, timepoint, modality)
     except ValueError as exc: raise HTTPException(status_code=400, detail=str(exc)) from exc
     item = {"evidence_id": f"evidence_{uuid.uuid4().hex[:12]}", "asset_id": asset.asset_id, "subject_id": asset.subject_id, "timepoint": asset.timepoint, "spatial_node_id": _safe_node(spatial_node_id), "spatial_level": level, "modality": modality, "resolution": resolution, "source": source or "upload", "filename": asset.filename, "path": asset.path, "created_at": _now(), "signals": signals, "layers": sorted({x for key in signals for x in [_layer_for_signal(key)] if x}), "interpretation_boundary": "explicitly_attached_evidence"}
     items = _load(); items.append(item); _save(items)
@@ -154,8 +154,7 @@ def spatial_tree(subject_id: str = "own_cohort", timepoint: str = "T0"):
     items = [i for i in _load() if _matches(i, subject_id, timepoint)]
     nodes: dict[str, dict[str, Any]] = {"hand": {"node_id": "hand", "level": "macro", "evidence_count": 0}}
     for item in items:
-        node = item["spatial_node_id"]
-        parts = _node_path(node)
+        node = item["spatial_node_id"]; parts = _node_path(node)
         for index, part in enumerate(parts):
             level = "macro" if index == 0 else ("tissue" if index == 1 else ("cellular" if index == 2 else "cell"))
             nodes.setdefault(part, {"node_id": part, "level": level, "evidence_count": 0})
