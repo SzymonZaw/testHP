@@ -3,11 +3,17 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+import io
+import mimetypes
+
+import numpy as np
 import yaml
+from PIL import Image
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
+import pydicom
 
 from .availability import build_availability
 from .data_ingestion import ingest_upload, registry_status, safe_component
@@ -123,11 +129,51 @@ def hand_analysis(subject_id: str = "own_cohort", timepoint: str = "T0"):
             zone = assign_feature_to_zone(width / 2, height / 2, width, height) if width and height else None
             item = {**item, "macro": macro, "zone_id": zone, "zone_assignment": "view_center_proxy" if zone else "unassigned", "view": view}
         analyses.append(item)
-    # analyze_asset deliberately exposes its own analysis status ("ready") rather
-    # than copying the registry status ("available"). Coverage must therefore be
-    # based on analysis readiness, not the ingestion registry label.
     hand_assets = [x for x in analyses if x.get("modality") == "hand" and x.get("status") == "ready"]
     return {"subject_id":subject_id,"timepoint":timepoint,"analysis_level":"macro_features","biological_inference":"not_established","assets":analyses,"zones": {z["zone_id"]:[a["asset_id"] for a in hand_assets if a.get("zone_id")==z["zone_id"]] for z in zone_layout(900,600)},"coverage":{"macro":100 if hand_assets else 0,"micro":100 if any(x.get("modality")=="wsi" and x.get("status")=="ready" for x in analyses) else 0,"molecular":100 if any(x.get("modality")=="rna" and x.get("status")=="ready" for x in analyses) else 0}}
+
+@app.get("/api/spatial/evidence/{asset_id}")
+def spatial_evidence(asset_id: str):
+    asset = next((x for x in registry_status()["assets"] if x.get("asset_id") == asset_id), None)
+    if not asset or asset.get("status") != "available":
+        raise HTTPException(status_code=404, detail="spatial evidence not found")
+    path = ROOT / str(asset.get("path", ""))
+    try: path.resolve().relative_to(ROOT.resolve())
+    except ValueError: raise HTTPException(status_code=404, detail="invalid evidence path")
+    if not path.is_file(): raise HTTPException(status_code=404, detail="evidence file missing")
+    media_type = asset.get("media_type") or mimetypes.guess_type(path.name)[0] or "application/octet-stream"
+    return FileResponse(path, media_type=media_type, filename=asset.get("filename") or path.name)
+
+@app.get("/api/spatial/preview/{asset_id}")
+def spatial_preview(asset_id: str, max_width: int = 1800, max_height: int = 1200):
+    asset = next((x for x in registry_status()["assets"] if x.get("asset_id") == asset_id), None)
+    if not asset or asset.get("status") != "available":
+        raise HTTPException(status_code=404, detail="spatial evidence not found")
+    path = ROOT / str(asset.get("path", ""))
+    try: path.resolve().relative_to(ROOT.resolve())
+    except ValueError: raise HTTPException(status_code=404, detail="invalid evidence path")
+    if not path.is_file(): raise HTTPException(status_code=404, detail="evidence file missing")
+    suffix = path.name.lower()
+    try:
+        if asset.get("modality") == "wsi" and suffix.endswith(".dcm"):
+            dataset = pydicom.dcmread(str(path), force=True)
+            pixels = dataset.pixel_array.astype(np.float32)
+            if pixels.ndim > 2: pixels = pixels[0]
+            pixels -= pixels.min()
+            peak = pixels.max()
+            if peak > 0: pixels /= peak
+            image = Image.fromarray(np.uint8(pixels * 255), mode="L").convert("RGB")
+        else:
+            image = Image.open(path)
+            try: image.seek(0)
+            except EOFError: pass
+            image = image.convert("RGB")
+        image.thumbnail((max(256, min(max_width, 2400)), max(256, min(max_height, 1800))), Image.Resampling.LANCZOS)
+        output = io.BytesIO()
+        image.save(output, format="PNG", optimize=True)
+        return Response(content=output.getvalue(), media_type="image/png", headers={"Cache-Control":"no-store", "X-Spatial-Source": asset.get("filename") or path.name})
+    except Exception as exc:
+        raise HTTPException(status_code=415, detail=f"preview unavailable for {path.name}: {exc}") from exc
 
 @app.get("/api/hand/evidence/{asset_id}")
 def hand_evidence(asset_id: str):
