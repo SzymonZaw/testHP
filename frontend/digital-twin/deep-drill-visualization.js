@@ -36,21 +36,17 @@
 
   const level = () => {
     const value = badge.textContent.trim().toUpperCase();
-    if (value.includes('SINGLE')) return 'cell';
-    if (value.includes('CELLULAR')) return 'cellular';
-    if (value.includes('TISSUE')) return 'tissue';
+    if (value.includes('SINGLE') || value.includes('POJEDYNCZ')) return 'cell';
+    if (value.includes('CELLULAR') || value.includes('KOMÓRKOW')) return 'cellular';
+    if (value.includes('TISSUE') || value.includes('TKANK')) return 'tissue';
     return 'macro';
   };
   const target = () => node.querySelector('strong')?.textContent?.trim() || 'Spatial target';
 
   function isolateMacroCanvas(deep) {
-    // The canonical macro renderer lives on twin-canvas. While drilling down,
-    // remove it from both the visual and pointer-event stacks so the macro
-    // hand cannot remain visible or keep responding underneath the drill view.
     baseCanvas.style.display = deep ? 'none' : 'block';
     baseCanvas.style.visibility = deep ? 'hidden' : 'visible';
     baseCanvas.style.pointerEvents = deep ? 'none' : 'auto';
-
     if (hint) hint.style.visibility = deep ? 'hidden' : 'visible';
     if (controls) controls.style.visibility = deep ? 'hidden' : 'visible';
     viewport.dataset.activeVisualization = deep ? `deep:${level()}` : 'macro';
