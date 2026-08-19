@@ -19,12 +19,14 @@
   <section class="panel state-panel"><div class="panel-title"><div><span class="section-kicker">RESEARCH INTERPRETATION</span><strong>BIOLOGICAL STATE</strong></div><span class="research-badge">RESEARCH ONLY</span></div><div class="state-grid"><div class="state-card"><span>Biological age</span><strong id="age-state">Not established</strong><small>Requires validated evidence</small></div><div class="state-card"><span>Structural / functional</span><strong id="structure-state">Evidence pending</strong><small>No inference established</small></div><div class="state-card"><span>Damage</span><strong id="damage-state">Not established</strong><small>Not assessed from current input</small></div><div class="state-card"><span>Pathology</span><strong id="pathology-state">Not established</strong><small>No diagnostic inference</small></div></div><div class="state-meta"><span>Confidence <b id="confidence-state">—</b></span><span>Evidence availability <b id="evidence-level">Ingestion only</b></span><p>The twin displays research evidence and data availability. It does not diagnose disease or invent cellular findings.</p></div></section>
   <section class="panel timeline"><div class="panel-title"><div><span class="section-kicker">LONGITUDINAL RECORD</span><strong>OBSERVATION TIMELINE</strong></div></div><div class="timeline-line"><span class="timeline-item active"><i></i><b>T0</b><small>latest available observation</small></span><span class="timeline-connector"></span><span class="timeline-item future"><i></i><b>Next</b><small>awaiting future observation</small></span></div></section>
 </main>
-<script type="module" src="/digital-twin/app.js?v=progressive-inspector-18"></script>
+<!-- Compatibility shell for the legacy upload hooks still present in app.js. It is inert; Evidence UX owns observation creation. -->
+<dialog id="observation-dialog" hidden aria-hidden="true"><button type="button" class="close" hidden>Close</button><button id="register-observation" type="button" hidden>Register</button></dialog>
+<script type="module" src="/digital-twin/app.js?v=progressive-inspector-19"></script>
 <script type="module" src="/digital-twin/spatial-layer-viewport.js?v=canonical-4"></script>
 <script src="/digital-twin/spatial-evidence-renderer.js?v=evidence-3"></script>
 <script src="/digital-twin/spatial-viewport-debug.js?v=canonical-3"></script>
-<script src="/digital-twin/stages-2-4.js?v=stage-2-4-2"></script>
+<script src="/digital-twin/stages-2-4.js?v=stage-2-4-3"></script>
 <script src="/digital-twin/assets/stages-5-8.js?v=stage-5-8-1"></script>
-<script src="/digital-twin/evidence-ux.js?v=evidence-ux-3"></script>
+<script src="/digital-twin/evidence-ux.js?v=evidence-ux-4"></script>
 </body>
 </html>
