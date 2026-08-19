@@ -1,6 +1,7 @@
 (() => {
-  // Diagnostic adapter for the canonical Three.js viewport owned by app.js.
-  // IMPORTANT: this module must never replace or fake the real renderer.
+  // Observe the canonical Three.js viewport owned by app.js.
+  // This module must never create a fake renderer/manager: doing so can make
+  // the bootstrap report READY while the real 3D scene is still missing.
   const viewport = document.getElementById('twin-viewport');
   const canvas = document.getElementById('twin-canvas');
   if (!viewport || !canvas) return;
@@ -10,56 +11,42 @@
   const crumbs = () => [...document.querySelectorAll('#spatial-breadcrumb button')].map(x => x.textContent.trim()).filter(Boolean);
   const children = () => [...document.querySelectorAll('#spatial-children .spatial-target strong')].map(x => x.textContent.trim()).filter(Boolean);
 
-  const makeDiagnosticManager = () => ({
-    version: 'diagnostic-adapter-2',
-    deepCanvas: canvas,
-    deepRenderer: null,
-    activeKey: 'macro|hand',
-    active: {
-      constructor: { name: 'ThreeCanvasRenderer' },
-      clickable: []
-    },
-    render() {
-      const path = crumbs();
-      const currentLevel = level();
-      const currentTarget = target();
-      this.activeKey = `${currentLevel}|${path.join('>') || currentTarget}`;
-      this.active = {
-        constructor: { name: 'ThreeCanvasRenderer' },
-        clickable: [],
-        root: null,
-        scene: null,
-        camera: null
-      };
-      window.dispatchEvent(new CustomEvent('testhp:viewport-rendered', {
-        detail: {
-          level: currentLevel,
-          target: currentTarget,
-          path,
-          children: children(),
-          renderer: 'Three.js canvas owner: app.js'
-        }
-      }));
-    },
-    resize() {
-      window.dispatchEvent(new Event('resize'));
-    }
-  });
-
-  // Never overwrite a manager created by the canonical runtime.
-  // If app.js does not expose one, install only a clearly diagnostic adapter.
-  if (!window.spatialViewportManager) {
-    window.spatialViewportManager = makeDiagnosticManager();
-    window.spatialViewportManager.render();
-  }
-
-  const observer = new MutationObserver(() => {
+  const canonical = () => {
     const manager = window.spatialViewportManager;
-    if (manager && typeof manager.render === 'function') manager.render();
-  });
+    return !!(manager && manager.version === 'canonical-three-1' && manager.active?.scene && manager.active?.camera && manager.deepRenderer);
+  };
+
+  const report = () => {
+    const manager = window.spatialViewportManager;
+    if (!manager) {
+      window.dispatchEvent(new CustomEvent('testhp:viewport-waiting', { detail: { reason: 'canonical manager not published yet' } }));
+      return;
+    }
+    if (!canonical()) {
+      window.dispatchEvent(new CustomEvent('testhp:viewport-error', { detail: { error: new Error('Non-canonical viewport manager detected; refusing to replace the real renderer') } }));
+      return;
+    }
+    manager.render?.();
+    window.dispatchEvent(new CustomEvent('testhp:viewport-rendered', {
+      detail: {
+        level: level(),
+        target: target(),
+        path: crumbs(),
+        children: children(),
+        renderer: manager.active?.constructor?.name || 'ThreeCanvasRenderer'
+      }
+    }));
+  };
+
+  const observer = new MutationObserver(report);
   ['spatial-level-badge', 'spatial-breadcrumb', 'spatial-node', 'spatial-children'].forEach(id => {
     const el = document.getElementById(id);
     if (el) observer.observe(el, { childList: true, subtree: true, characterData: true });
   });
+
+  window.addEventListener('testhp:viewport-manager-ready', report);
+  window.addEventListener('resize', () => window.spatialViewportManager?.resize?.(), { passive: true });
   window.addEventListener('beforeunload', () => observer.disconnect(), { once: true });
+
+  report();
 })();
