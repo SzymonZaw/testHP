@@ -86,7 +86,7 @@
       await withTimeout(import('./app.js?v=progressive-inspector-25'), 15000, 'Kanoniczny widok');
       mark('Three.js + canonical viewport', true, 'app.js załadowano');
 
-      await loadClassic('/digital-twin/spatial-layer-viewport.js?v=canonical-9', 'Spatial bridge');
+      await loadClassic('/digital-twin/spatial-layer-viewport.js?v=canonical-10', 'Spatial bridge');
       await loadClassic('/digital-twin/spatial-evidence-renderer.js?v=evidence-5', 'Evidence renderer');
       await loadClassic('/digital-twin/spatial-viewport-debug.js?v=twin-debug-10', 'Viewport debug');
       await loadClassic('/digital-twin/evidence-registry-bridge.js?v=registry-bridge-5', 'Evidence registry');
