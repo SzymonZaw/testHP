@@ -8,15 +8,12 @@ import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.m
   const text = id => document.getElementById(id)?.textContent?.trim() || '';
   const level = () => {
     const value = text('spatial-level-badge').toLowerCase();
-    // The Polish i18n layer translates the level badge after the spatial
-    // stages render. Navigation must therefore never depend on English-only
-    // labels such as "SINGLE" or "CELLULAR".
     if (value.includes('pojedyncz') || value.includes('single')) return 'cell';
     if (value.includes('komórkow') || value.includes('cellular')) return 'cellular';
     if (value.includes('tkank') || value.includes('tissue')) return 'tissue';
     return 'macro';
   };
-  const target = () => text('spatial-node').match(/<strong[^>]*>(.*?)<\/strong>/)?.[1]?.trim() || document.getElementById('spatial-node')?.querySelector('strong')?.textContent?.trim() || 'Spatial target';
+  const target = () => document.getElementById('spatial-node')?.querySelector('strong')?.textContent?.trim() || 'Spatial target';
   const path = () => [...document.querySelectorAll('#spatial-breadcrumb button')].map(x => x.textContent.trim()).filter(Boolean);
   const childButtons = () => [...document.querySelectorAll('#spatial-children .spatial-target')];
   const children = () => childButtons().map(x => x.querySelector('strong')?.textContent?.trim()).filter(Boolean);
@@ -84,7 +81,6 @@ import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.m
     const camera = manager.active.camera;
     const controls = manager.active.controls;
     const next = kind === 'cell' ? 5.8 : kind === 'cellular' ? 7.2 : 8.0;
-    if (lastVisualState) return;
     camera.position.set(0, kind === 'cell' ? 0.55 : 0.8, next);
     controls.target.set(0, 0.2, 0);
     controls.update();
@@ -137,8 +133,6 @@ import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.m
     }
 
     if (!currentChildren.length) {
-      // Leaf nodes remain real Three.js objects. They are navigation targets,
-      // not biological evidence, and deliberately have no child target.
       addLeaf(kind, currentTarget);
       manager.active.clickable = [...deepGroup.children];
       group.position.set(0, 0.25, 0);
@@ -155,8 +149,6 @@ import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.m
     currentChildren.forEach((label, index) => {
       const mesh = new THREE.Mesh(geometry.clone(), materialFor(kind, index));
       mesh.name = `navigation-target-${index}`;
-      // Never use translated text as the navigation key. The Polish i18n
-      // layer changes DOM labels after rendering, while child order is stable.
       mesh.userData.navigationIndex = index;
       mesh.userData.navigationLabel = label;
       mesh.position.set((index - (currentChildren.length - 1) / 2) * spacing, 0.15, 0);
@@ -176,16 +168,12 @@ import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.m
     const manager = window.spatialViewportManager;
     if (!managerReady()) return;
     window.dispatchEvent(new CustomEvent('testhp:viewport-rendered', {
-      detail: {
-        level: level(), target: target(), path: path(), children: children(),
-        renderer: manager.active?.constructor?.name || 'ThreeCanvasRenderer', reason
-      }
+      detail: { level: level(), target: target(), path: path(), children: children(), renderer: 'ThreeCanvasRenderer', reason }
     }));
   }
 
   function clickSpatialTargetByIndex(index) {
-    const buttons = childButtons();
-    const button = Number.isInteger(index) ? buttons[index] : null;
+    const button = Number.isInteger(index) ? childButtons()[index] : null;
     if (!button) return false;
     button.click();
     return true;
@@ -208,20 +196,12 @@ import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.m
     const data = hit.object.userData;
     const index = Number.isInteger(data.navigationIndex) ? data.navigationIndex : null;
     const navigated = index === null ? false : clickSpatialTargetByIndex(index);
-
     window.dispatchEvent(new CustomEvent('testhp:viewport-deep-click', {
-      detail: {
-        level: level(), target: target(), path: path(),
-        child: data.navigationLabel || data.navigationId || target(),
-        index, navigated, leaf: !!data.navigationLeaf
-      }
+      detail: { level: level(), target: target(), path: path(), child: data.navigationLabel || data.navigationId || target(), index, navigated, leaf: !!data.navigationLeaf }
     }));
     return navigated;
   }
 
-  // One interaction path owns deep-layer clicks. This listener is registered
-  // before any legacy macro click handlers and blocks them after handling the
-  // deep target, preventing a click from jumping back to the macro hand.
   canvas.addEventListener('click', event => {
     if (level() === 'macro' || level() === 'macro anatomy') return;
     handleDeepClick(event);
@@ -230,13 +210,9 @@ import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.m
   }, true);
 
   window.addEventListener('testhp:viewport-rendered', () => {
-    if (managerReady()) {
-      rebuild();
-      window.spatialViewportManager.active.renderer?.render?.(
-        window.spatialViewportManager.active.scene,
-        window.spatialViewportManager.active.camera
-      );
-    }
+    if (!managerReady()) return;
+    rebuild();
+    window.spatialViewportManager.active.renderer?.render?.(window.spatialViewportManager.active.scene, window.spatialViewportManager.active.camera);
   }, true);
 
   window.addEventListener('testhp:spatial-layer-changed', event => {
@@ -274,9 +250,7 @@ import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.m
     return true;
   }
 
-  const timer = setInterval(() => {
-    if (hookManager()) rebuild();
-  }, 100);
+  const timer = setInterval(() => { if (hookManager()) rebuild(); }, 100);
   window.addEventListener('beforeunload', () => { clearInterval(timer); observer.disconnect(); }, { once: true });
   window.addEventListener('testhp:viewport-manager-ready', () => { hookManager(); rebuild(); publish('manager-ready'); });
 
