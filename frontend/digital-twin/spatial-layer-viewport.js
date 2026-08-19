@@ -300,7 +300,7 @@ import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.m
   window.addEventListener('testhp:viewport-rendered', () => {
     if (!managerReady()) return;
     rebuild();
-    window.spatialViewportManager.active.renderer?.render?.(window.spatialViewportManager.active.scene, window.spatialViewportManagerManager?.active?.camera || window.spatialViewportManager.active.camera);
+    window.spatialViewportManager.active.renderer?.render?.(window.spatialViewportManager.active.scene, window.spatialViewportManager.active.camera);
   }, true);
 
   window.addEventListener('testhp:spatial-layer-changed', event => {
