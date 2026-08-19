@@ -6,8 +6,17 @@ import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.m
   if (!viewport || !canvas) return;
 
   const text = id => document.getElementById(id)?.textContent?.trim() || '';
-  const level = () => text('spatial-level-badge').toLowerCase();
-  const target = () => document.getElementById('spatial-node')?.querySelector('strong')?.textContent?.trim() || 'Spatial target';
+  const level = () => {
+    const value = text('spatial-level-badge').toLowerCase();
+    // The Polish i18n layer translates the level badge after the spatial
+    // stages render. Navigation must therefore never depend on English-only
+    // labels such as "SINGLE" or "CELLULAR".
+    if (value.includes('pojedyncz') || value.includes('single')) return 'cell';
+    if (value.includes('komórkow') || value.includes('cellular')) return 'cellular';
+    if (value.includes('tkank') || value.includes('tissue')) return 'tissue';
+    return 'macro';
+  };
+  const target = () => text('spatial-node').match(/<strong[^>]*>(.*?)<\/strong>/)?.[1]?.trim() || document.getElementById('spatial-node')?.querySelector('strong')?.textContent?.trim() || 'Spatial target';
   const path = () => [...document.querySelectorAll('#spatial-breadcrumb button')].map(x => x.textContent.trim()).filter(Boolean);
   const childButtons = () => [...document.querySelectorAll('#spatial-children .spatial-target')];
   const children = () => childButtons().map(x => x.querySelector('strong')?.textContent?.trim()).filter(Boolean);
@@ -116,9 +125,9 @@ import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.m
       return true;
     }
 
-    const kind = currentLevel.includes('tissue') ? 'tissue'
-      : currentLevel.includes('cellular') ? 'cellular'
-      : (currentLevel.includes('single') || currentLevel.includes('cell')) ? 'cell'
+    const kind = currentLevel === 'tissue' ? 'tissue'
+      : currentLevel === 'cellular' ? 'cellular'
+      : currentLevel === 'cell' ? 'cell'
       : null;
     if (!kind) return true;
 
@@ -128,8 +137,8 @@ import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.m
     }
 
     if (!currentChildren.length) {
-      // Leaf nodes used to leave the deep scene empty. Keep a real 3D object
-      // visible at the deepest level, even though there is no lower target.
+      // Leaf nodes remain real Three.js objects. They are navigation targets,
+      // not biological evidence, and deliberately have no child target.
       addLeaf(kind, currentTarget);
       manager.active.clickable = [...deepGroup.children];
       group.position.set(0, 0.25, 0);
@@ -147,8 +156,7 @@ import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.m
       const mesh = new THREE.Mesh(geometry.clone(), materialFor(kind, index));
       mesh.name = `navigation-target-${index}`;
       // Never use translated text as the navigation key. The Polish i18n
-      // layer changes DOM labels after rendering, while the child order is
-      // stable. Index is therefore the safe bridge to the actual button.
+      // layer changes DOM labels after rendering, while child order is stable.
       mesh.userData.navigationIndex = index;
       mesh.userData.navigationLabel = label;
       mesh.position.set((index - (currentChildren.length - 1) / 2) * spacing, 0.15, 0);
@@ -211,6 +219,9 @@ import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.m
     return navigated;
   }
 
+  // One interaction path owns deep-layer clicks. This listener is registered
+  // before any legacy macro click handlers and blocks them after handling the
+  // deep target, preventing a click from jumping back to the macro hand.
   canvas.addEventListener('click', event => {
     if (level() === 'macro' || level() === 'macro anatomy') return;
     handleDeepClick(event);
