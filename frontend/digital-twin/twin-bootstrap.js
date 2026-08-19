@@ -49,6 +49,18 @@
     mark(label, true, 'loaded');
   }
 
+  // Stages 5–8 is a UI/status layer. It must never hold the critical
+  // viewport boot open. Load it in the background and report errors without
+  // blocking the remaining Digital Twin.
+  function loadStages58NonBlocking() {
+    log('Stages 5–8', 'loading in background');
+    const script = document.createElement('script');
+    script.src = '/digital-twin/assets/stages-5-8.js?v=stage-5-8-4';
+    script.onload = () => mark('Stages 5–8', true, 'loaded asynchronously');
+    script.onerror = () => mark('Stages 5–8', false, 'optional layer unavailable; viewport continues');
+    document.body.appendChild(script);
+  }
+
   async function boot() {
     showBootUi();
     try {
@@ -64,7 +76,9 @@
       await loadClassic('/digital-twin/spatial-viewport-debug.js?v=twin-debug-10', 'Viewport debug');
       await loadClassic('/digital-twin/evidence-registry-bridge.js?v=registry-bridge-5', 'Evidence registry');
       await loadClassic('/digital-twin/stages-2-4.js?v=stage-2-4-9', 'Spatial stages 2–4');
-      await loadClassic('/digital-twin/assets/stages-5-8.js?v=stage-5-8-3', 'Stages 5–8');
+
+      loadStages58NonBlocking();
+
       await loadClassic('/digital-twin/evidence-ux.js?v=evidence-ux-7', 'Evidence UX');
       await loadClassic('/digital-twin/deep-drill-visualization.js?v=deep-drill-3', 'Deep drill');
 
@@ -76,7 +90,6 @@
       await loadClassic('/digital-twin/hand-surface-edit-bridge.js?v=edit-bridge-2', 'Hand surface edit bridge');
       await loadClassic('/digital-twin/hand-surface-stages-20-22.js?v=stages-20-22-2', 'Hand surface stages 20–22');
 
-      // Photo reconstruction is deliberately outside the critical path.
       const loadPhoto = async () => {
         log('Photo reconstruction');
         await withTimeout(import('./hand-surface-photo-reconstruction.js?v=photo-reconstruction-2'), 15000, 'Photo reconstruction');
@@ -98,7 +111,7 @@
 
       document.getElementById('viewer-loading')?.setAttribute('hidden', '');
       window.__testhpTwinBootComplete = true;
-      window.dispatchEvent(new CustomEvent('testhp:twin-progress', { detail: { step: 'BOOT COMPLETE', detail: 'critical path loaded; photo reconstruction is lazy' } }));
+      window.dispatchEvent(new CustomEvent('testhp:twin-progress', { detail: { step: 'BOOT COMPLETE', detail: 'critical path loaded; stages 5–8 and photo reconstruction are non-blocking' } }));
     } catch (error) {
       console.error('[Twin Bootstrap]', error);
       const current = [...document.querySelectorAll('#twin-boot-lines .twin-boot-line')].reverse().find(x => !x.classList.contains('ok'))?.querySelector('strong')?.textContent;
