@@ -12,6 +12,7 @@ import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.m
   const children = () => [...document.querySelectorAll('#spatial-children .spatial-target strong')].map(x => x.textContent.trim()).filter(Boolean);
 
   let deepGroup = null;
+  let attachedScene = null;
   let lastVisualState = '';
   let managerHooked = false;
   const raycaster = new THREE.Raycaster();
@@ -36,10 +37,19 @@ import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.m
   }
 
   function ensureGroup(manager) {
+    const scene = manager.active.scene;
     if (!deepGroup) {
       deepGroup = new THREE.Group();
       deepGroup.name = 'digital-twin-navigation-layer';
-      manager.active.scene.add(deepGroup);
+    }
+
+    // The canonical manager may replace `active` (and therefore its Scene)
+    // during every render. Keep the deep navigation group attached to the
+    // CURRENT scene instead of leaving it orphaned on a previous scene.
+    if (attachedScene !== scene) {
+      if (deepGroup.parent) deepGroup.parent.remove(deepGroup);
+      scene.add(deepGroup);
+      attachedScene = scene;
     }
     return deepGroup;
   }
@@ -77,6 +87,10 @@ import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.m
     group.visible = !isMacro;
     manager.active.root.visible = isMacro;
     clearGroup();
+
+    // Always synchronize the canonical descriptor with the DOM spatial state.
+    // The canonical render loop may replace `active`, so this must run after
+    // every canonical render, not only after navigation clicks.
     manager.activeKey = `${currentLevel}|${currentTarget}`;
 
     if (isMacro || !currentChildren.length) {
@@ -91,7 +105,7 @@ import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.m
     if (!kind) return true;
 
     if (state !== lastVisualState) {
-      manager.active.camera.position.set(0, 0.8, kind === 'cell' ? 5.8 : 7.2);
+      manager.active.camera.position.set(0, kind === 'cell' ? 0.55 : 0.8, kind === 'cell' ? 5.8 : 7.2);
       manager.active.controls.target.set(0, 0.2, 0);
       manager.active.controls.update();
       lastVisualState = state;
@@ -119,6 +133,10 @@ import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.m
     return true;
   }
 
+  // app.js historically supports this post-render hook. Keep it registered so
+  // the canonical renderer can explicitly ask the spatial layer to resync.
+  window.testhpViewportPostRender = rebuild;
+
   function publish(reason) {
     const manager = window.spatialViewportManager;
     if (!managerReady()) return;
@@ -135,12 +153,9 @@ import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.m
     if (!managerReady() || managerHooked) return !!manager;
     const originalRender = manager.render.bind(manager);
     manager.render = () => {
-      // The canonical manager refreshes `active` on every render. Rebuild the
-      // navigation layer after that refresh so deep geometry and activeKey do
-      // not silently fall back to macro|palm.
       const result = originalRender();
       rebuild();
-      manager.active.scene && manager.active.renderer?.render?.(manager.active.scene, manager.active.camera);
+      manager.active.renderer?.render?.(manager.active.scene, manager.active.camera);
       return result;
     };
     managerHooked = true;
@@ -169,7 +184,9 @@ import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.m
     if (!hit) return false;
     const label = hit.object.userData.navigationLabel;
     const navigated = clickSpatialTarget(label);
-    window.dispatchEvent(new CustomEvent('testhp:viewport-deep-click', { detail: { level: level(), target: target(), path: path(), child: label, navigated } }));
+    window.dispatchEvent(new CustomEvent('testhp:viewport-deep-click', {
+      detail: { level: level(), target: target(), path: path(), child: label, navigated }
+    }));
     return navigated;
   }
 
