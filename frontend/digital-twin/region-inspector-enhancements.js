@@ -23,7 +23,6 @@
   document.head.appendChild(style);
 
   const get = id => document.getElementById(id);
-  const text = (id, value) => { const el = get(id); if (el) el.textContent = value; };
 
   function ensureTools() {
     const inspector = document.querySelector('.inspector');
@@ -49,7 +48,7 @@
     const summary = document.createElement('div');
     summary.id = 'ri-evidence-summary';
     summary.className = 'ri-evidence-summary';
-    summary.innerHTML = ['Macro','Tissue','Cellular','Molecular'].map((label, i) => `<div class="ri-evidence-chip" data-ri-chip="${label.toLowerCase()}"><strong>—</strong><span>${label}</span></div>`).join('');
+    summary.innerHTML = ['Macro','Tissue','Cellular','Molecular'].map(label => `<div class="ri-evidence-chip" data-ri-chip="${label.toLowerCase()}"><strong>—</strong><span>${label}</span></div>`).join('');
     help.after(summary);
 
     const workflow = document.createElement('div');
@@ -86,22 +85,41 @@
     Object.entries(values).forEach(([key, value]) => {
       const chip = document.querySelector(`[data-ri-chip="${key}"]`);
       if (!chip) return;
-      chip.querySelector('strong').textContent = value;
+      const strong = chip.querySelector('strong');
+      if (strong && strong.textContent !== value) strong.textContent = value;
       const available = !/unavailable|no evidence|not shown|navigation only|—/i.test(value);
       chip.classList.toggle('available', available);
     });
   }
 
-  function observe() {
+  let scheduled = false;
+  let running = false;
+  const observer = new MutationObserver(() => {
+    if (running || scheduled) return;
+    scheduled = true;
+    queueMicrotask(() => {
+      scheduled = false;
+      if (running) return;
+      running = true;
+      observer.disconnect();
+      try {
+        ensureTools();
+        updateSummary();
+      } finally {
+        const inspector = document.querySelector('.inspector');
+        if (inspector) observer.observe(inspector, {subtree:true, childList:true, characterData:true});
+        running = false;
+      }
+    });
+  });
+
+  const start = () => {
     ensureTools();
     updateSummary();
-  }
-
-  const observer = new MutationObserver(observe);
-  const start = () => {
-    observe();
     const inspector = document.querySelector('.inspector');
-    if (inspector) observer.observe(inspector, {subtree:true, childList:true, characterData:true, attributes:true});
+    if (inspector) observer.observe(inspector, {subtree:true, childList:true, characterData:true});
   };
-  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start, {once:true}); else start();
+
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start, {once:true});
+  else start();
 })();
