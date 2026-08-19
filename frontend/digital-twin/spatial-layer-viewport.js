@@ -1,6 +1,6 @@
 (() => {
-  // Observe the canonical Three.js viewport owned by app.js.
-  // This module must never create a fake renderer/manager.
+  // Passive bridge around the canonical Three.js viewport owned by app.js.
+  // This module never creates, resizes, or renders a renderer.
   const viewport = document.getElementById('twin-viewport');
   const canvas = document.getElementById('twin-canvas');
   if (!viewport || !canvas) return;
@@ -15,12 +15,7 @@
     return !!(manager && manager.version === 'canonical-three-1' && manager.active?.scene && manager.active?.camera && manager.deepRenderer);
   };
 
-  // DOM mutations are produced by the canonical renderer itself. Calling
-  // manager.render() from the MutationObserver therefore creates a render ->
-  // DOM mutation -> observer -> render loop and can lock the browser main
-  // thread. State publication and rendering are deliberately separated.
   let lastSignature = '';
-  let renderScheduled = false;
 
   function publish(reason = 'state-change') {
     const manager = window.spatialViewportManager;
@@ -49,28 +44,11 @@
     return true;
   }
 
-  function renderOnce() {
-    if (renderScheduled) return;
-    renderScheduled = true;
-    requestAnimationFrame(() => {
-      renderScheduled = false;
-      const manager = window.spatialViewportManager;
-      if (!canonical()) return;
-      manager.render?.();
-      publish('manager-render');
-    });
-  }
-
-  // The macro renderer owns the hand meshes and app.js historically raycasted
-  // against those meshes on every canvas click. That meant a click made while
-  // drilling into tissue/cellular/cell could jump back to Thumb/Palm/etc.
-  // Gate the legacy macro click handler at the capture phase. Deeper layers
-  // must be handled by their own renderer/interaction path, never by the
-  // macro-region selector.
+  // The macro renderer historically handled canvas clicks globally. Deeper
+  // layers must not fall through to that handler.
   canvas.addEventListener('click', event => {
     const currentLevel = level();
     if (currentLevel === 'macro' || currentLevel === 'macro anatomy') return;
-
     event.preventDefault();
     event.stopImmediatePropagation();
     window.dispatchEvent(new CustomEvent('testhp:viewport-deep-click', {
@@ -86,19 +64,13 @@
     }));
   }, true);
 
-  const observer = new MutationObserver(() => {
-    // Publish the new spatial state only. Never render from this callback.
-    publish('dom-mutation');
-  });
+  const observer = new MutationObserver(() => publish('dom-mutation'));
   ['spatial-level-badge', 'spatial-breadcrumb', 'spatial-node', 'spatial-children'].forEach(id => {
     const el = document.getElementById(id);
     if (el) observer.observe(el, { childList: true, subtree: true, characterData: true });
   });
 
-  window.addEventListener('testhp:viewport-manager-ready', () => {
-    if (publish('manager-ready')) renderOnce();
-  });
-  window.addEventListener('resize', () => window.spatialViewportManager?.resize?.(), { passive: true });
+  window.addEventListener('testhp:viewport-manager-ready', () => publish('manager-ready'));
   window.addEventListener('beforeunload', () => observer.disconnect(), { once: true });
 
   publish('initial');
