@@ -14,7 +14,6 @@
       'Spatial stages 2–4': 'Etapy przestrzenne 2–4',
       'Stages 5–8': 'Etapy 5–8',
       'Evidence UX': 'Obsługa danych',
-      'Deep drill': 'Analiza pogłębiona',
       'Viewport boot verifier': 'Weryfikator uruchomienia widoku',
       'Hand surface stages 11–15': 'Etapy powierzchni dłoni 11–15',
       'Hand surface edit bridge': 'Most edycji powierzchni dłoni',
@@ -96,16 +95,20 @@
       await withTimeout(import('./app.js?v=progressive-inspector-25'), 15000, 'Kanoniczny widok');
       mark('Three.js + canonical viewport', true, 'app.js załadowano');
 
-      await loadClassic('/digital-twin/spatial-layer-viewport.js?v=canonical-11', 'Spatial bridge');
+      await loadClassic('/digital-twin/spatial-layer-viewport.js?v=canonical-12', 'Spatial bridge');
       await loadClassic('/digital-twin/spatial-evidence-renderer.js?v=evidence-5', 'Evidence renderer');
-      await loadClassic('/digital-twin/spatial-viewport-debug.js?v=twin-debug-10', 'Viewport debug');
+      await loadClassic('/digital-twin/spatial-viewport-debug.js?v=twin-debug-11', 'Viewport debug');
       await loadClassic('/digital-twin/evidence-registry-bridge.js?v=registry-bridge-5', 'Evidence registry');
       await loadClassic('/digital-twin/stages-2-4.js?v=stage-2-4-9', 'Spatial stages 2–4');
 
       loadStages58NonBlocking();
 
       await loadClassic('/digital-twin/evidence-ux.js?v=evidence-ux-7', 'Evidence UX');
-      await loadClassic('/digital-twin/deep-drill-visualization.js?v=deep-drill-3', 'Deep drill');
+
+      // Deep layers are rendered by the canonical Three.js spatial bridge.
+      // Do not load the legacy CSS/HTML deep-drill overlay: it created a
+      // second visualization path and could hide the real canvas or steal
+      // pointer events after the Polish i18n layer changed the level labels.
 
       log('Viewport boot verifier');
       await withTimeout(import('./twin-viewport-boot.js?v=boot-4'), 10000, 'Weryfikator uruchomienia widoku');
