@@ -43,10 +43,13 @@
   };
   const target = () => node.querySelector('strong')?.textContent?.trim() || 'Spatial target';
 
-  function isolateMacroCanvas(deep) {
-    baseCanvas.style.display = deep ? 'none' : 'block';
-    baseCanvas.style.visibility = deep ? 'hidden' : 'visible';
-    baseCanvas.style.pointerEvents = deep ? 'none' : 'auto';
+  function syncCanvasOwnership(deep) {
+    // Deep drill is rendered as a non-interactive overlay. The canonical
+    // Three.js canvas must stay mounted, visible and interactive so
+    // spatial-layer-viewport can raycast the current deep navigation targets.
+    baseCanvas.style.display = 'block';
+    baseCanvas.style.visibility = 'visible';
+    baseCanvas.style.pointerEvents = 'auto';
     if (hint) hint.style.visibility = deep ? 'hidden' : 'visible';
     if (controls) controls.style.visibility = deep ? 'hidden' : 'visible';
     viewport.dataset.activeVisualization = deep ? `deep:${level()}` : 'macro';
@@ -55,27 +58,40 @@
   function render() {
     const current = level();
     const deep = current !== 'macro';
-    isolateMacroCanvas(deep);
+    syncCanvasOwnership(deep);
     panel.replaceChildren();
-    if (!deep) { panel.style.display = 'none'; return; }
+    if (!deep) {
+      panel.style.display = 'none';
+      return;
+    }
     panel.style.display = 'block';
 
-    const shell = document.createElement('div'); shell.className = 'ddv-shell';
-    const label = document.createElement('div'); label.className = 'ddv-label';
+    const shell = document.createElement('div');
+    shell.className = 'ddv-shell';
+    const label = document.createElement('div');
+    label.className = 'ddv-label';
     label.textContent = `DEEP DRILL · ${current.toUpperCase()}`;
-    const title = document.createElement('div'); title.className = 'ddv-title'; title.textContent = target();
-    const note = document.createElement('div'); note.className = 'ddv-note';
+    const title = document.createElement('div');
+    title.className = 'ddv-title';
+    title.textContent = target();
+    const note = document.createElement('div');
+    note.className = 'ddv-note';
     note.textContent = `${current === 'tissue' ? 'Tissue-level navigation visualization.' : current === 'cellular' ? 'Cellular-field navigation visualization.' : 'Single-cell navigation visualization.'} This is a spatial navigation model, not biological evidence. Linked evidence is rendered separately when available.`;
     shell.append(label, title);
 
     if (current === 'tissue') {
-      const slab = document.createElement('div'); slab.className = 'tissue-slab'; shell.appendChild(slab);
+      const slab = document.createElement('div');
+      slab.className = 'tissue-slab';
+      shell.appendChild(slab);
     } else if (current === 'cellular') {
-      const grid = document.createElement('div'); grid.className = 'field-grid';
+      const grid = document.createElement('div');
+      grid.className = 'field-grid';
       for (let i = 0; i < 20; i++) grid.appendChild(document.createElement('span'));
       shell.appendChild(grid);
     } else {
-      const cell = document.createElement('div'); cell.className = 'cell-model'; shell.appendChild(cell);
+      const cell = document.createElement('div');
+      cell.className = 'cell-model';
+      shell.appendChild(cell);
     }
     shell.appendChild(note);
     panel.appendChild(shell);
