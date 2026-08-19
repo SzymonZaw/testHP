@@ -199,50 +199,77 @@ import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.m
   }
 
   function hitDeepTarget(event) {
-    if (level() === 'macro' || level() === 'macro anatomy' || !deepGroup?.visible) return null;
+    const currentLevel = level();
     const manager = window.spatialViewportManager;
-    if (!managerReady()) return null;
+    const deepVisible = !!deepGroup?.visible;
+    if (currentLevel === 'macro' || currentLevel === 'macro anatomy' || !deepVisible) {
+      window.dispatchEvent(new CustomEvent('testhp:viewport-deep-raycast', { detail: {
+        phase: 'skipped', reason: currentLevel === 'macro' || currentLevel === 'macro anatomy' ? 'macro-layer-active' : 'deep-group-hidden',
+        level: currentLevel, target: target(), clickable: manager?.active?.deepClickable?.length || 0,
+        deepVisible, managerReady: managerReady()
+      }}));
+      return null;
+    }
+    if (!managerReady()) {
+      window.dispatchEvent(new CustomEvent('testhp:viewport-deep-raycast', { detail: { phase: 'skipped', reason: 'manager-not-ready', level: currentLevel, managerReady: false } }));
+      return null;
+    }
     const rect = canvas.getBoundingClientRect();
-    if (!rect.width || !rect.height) return null;
+    if (!rect.width || !rect.height) {
+      window.dispatchEvent(new CustomEvent('testhp:viewport-deep-raycast', { detail: { phase: 'skipped', reason: 'zero-canvas-rect', level: currentLevel, rectWidth: rect.width, rectHeight: rect.height } }));
+      return null;
+    }
 
-    pointer.x = Math.max(-1, Math.min(1, ((event.clientX - rect.left) / rect.width) * 2 - 1));
-    pointer.y = Math.max(-1, Math.min(1, -(((event.clientY - rect.top) / rect.height) * 2 - 1)));
+    pointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+    pointer.y = -(((event.clientY - rect.top) / rect.height) * 2 - 1);
     raycaster.setFromCamera(pointer, manager.active.camera);
-
-    return raycaster.intersectObjects(deepGroup.children, true).find(x => x.object?.userData);
+    const intersections = raycaster.intersectObjects(deepGroup.children, true);
+    const hit = intersections.find(x => x.object?.userData);
+    const candidates = intersections.slice(0, 6).map(x => ({
+      object: x.object?.name || '?',
+      distance: Number.isFinite(x.distance) ? Number(x.distance.toFixed(3)) : null,
+      index: Number.isInteger(x.object?.userData?.navigationIndex) ? x.object.userData.navigationIndex : null,
+      label: x.object?.userData?.navigationLabel || x.object?.userData?.navigationId || null,
+      leaf: !!x.object?.userData?.navigationLeaf
+    }));
+    window.dispatchEvent(new CustomEvent('testhp:viewport-deep-raycast', { detail: {
+      phase: 'complete', level: currentLevel, target: target(),
+      clientX: event.clientX, clientY: event.clientY, localX: Number((event.clientX - rect.left).toFixed(1)), localY: Number((event.clientY - rect.top).toFixed(1)),
+      ndcX: Number(pointer.x.toFixed(3)), ndcY: Number(pointer.y.toFixed(3)),
+      camera: { x: Number(manager.active.camera.position.x.toFixed(2)), y: Number(manager.active.camera.position.y.toFixed(2)), z: Number(manager.active.camera.position.z.toFixed(2)) },
+      deepVisible, deepChildren: deepGroup.children.length, clickable: manager.active.deepClickable?.length || 0,
+      intersections: intersections.length, hit: !!hit, candidates
+    }}));
+    return hit;
   }
 
   function handleDeepClick(event) {
     const hit = hitDeepTarget(event);
-    if (!hit) return false;
+    if (!hit) {
+      window.dispatchEvent(new CustomEvent('testhp:viewport-deep-click', { detail: { navigated: false, reason: 'no-deep-raycast-hit', level: level(), target: target(), path: path() } }));
+      return false;
+    }
 
     const data = hit.object.userData;
     const index = Number.isInteger(data.navigationIndex) ? data.navigationIndex : null;
+    const buttonCount = childButtons().length;
     const navigated = index === null ? false : clickSpatialTargetByIndex(index);
     window.dispatchEvent(new CustomEvent('testhp:viewport-deep-click', {
       detail: {
-        level: level(),
-        target: target(),
-        path: path(),
-        child: data.navigationLabel || data.navigationId || target(),
-        index,
-        navigated,
-        leaf: !!data.navigationLeaf
+        level: level(), target: target(), path: path(), child: data.navigationLabel || data.navigationId || target(), index,
+        buttonCount, indexInRange: index !== null && index >= 0 && index < buttonCount, navigated,
+        leaf: !!data.navigationLeaf, reason: index === null ? 'hit-without-navigation-index' : navigated ? 'child-button-clicked' : 'child-button-missing-or-rejected'
       }
     }));
     return navigated;
   }
 
-  // app.js owns the canonical canvas click handler and raycasts the seven
-  // macro meshes. Those meshes remain registered even when visually hidden,
-  // so a click on a deep 3D target can otherwise fall through and reset the
-  // spatial path back to the macro region. Capture the click here and make
-  // the deep layer the sole owner of selection while it is active.
   canvas.addEventListener('click', event => {
     if (level() === 'macro' || level() === 'macro anatomy' || !deepGroup?.visible) return;
-    handleDeepClick(event);
+    const navigated = handleDeepClick(event);
     event.preventDefault();
     event.stopImmediatePropagation();
+    window.dispatchEvent(new CustomEvent('testhp:viewport-deep-event-owner', { detail: { event: 'click', owner: 'deep', navigated, propagationStopped: true } }));
   }, true);
 
   canvas.addEventListener('pointerdown', event => {
@@ -251,24 +278,29 @@ import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.m
       return;
     }
     pointerDown = { x: event.clientX, y: event.clientY, pointerId: event.pointerId };
+    window.dispatchEvent(new CustomEvent('testhp:viewport-deep-event-owner', { detail: { event: 'pointerdown', owner: 'deep', clientX: event.clientX, clientY: event.clientY } }));
   }, true);
 
   canvas.addEventListener('pointerup', event => {
     if (!pointerDown || pointerDown.pointerId !== event.pointerId) return;
     const moved = Math.hypot(event.clientX - pointerDown.x, event.clientY - pointerDown.y);
     pointerDown = null;
-    if (moved > 7) return;
+    if (moved > 7) {
+      window.dispatchEvent(new CustomEvent('testhp:viewport-deep-event-owner', { detail: { event: 'pointerup', owner: 'controls', moved: Number(moved.toFixed(1)), navigationAttempted: false } }));
+      return;
+    }
     const navigated = handleDeepClick(event);
     if (navigated) {
       event.preventDefault();
       event.stopImmediatePropagation();
     }
+    window.dispatchEvent(new CustomEvent('testhp:viewport-deep-event-owner', { detail: { event: 'pointerup', owner: navigated ? 'deep' : 'deep-no-hit', moved: Number(moved.toFixed(1)), navigated, propagationStopped: navigated } }));
   }, true);
 
   window.addEventListener('testhp:viewport-rendered', () => {
     if (!managerReady()) return;
     rebuild();
-    window.spatialViewportManager.active.renderer?.render?.(window.spatialViewportManager.active.scene, window.spatialViewportManager.active.camera);
+    window.spatialViewportManager.active.renderer?.render?.(window.spatialViewportManager.active.scene, window.spatialViewportManagerManager?.active?.camera || window.spatialViewportManager.active.camera);
   }, true);
 
   window.addEventListener('testhp:spatial-layer-changed', event => {
@@ -309,7 +341,6 @@ import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.m
 
   const timer = setInterval(() => { if (hookManager()) rebuild(); }, 100);
   window.addEventListener('beforeunload', () => { clearInterval(timer); observer.disconnect(); }, { once: true });
-  window.addEventListener('testhp:viewport-manager-ready', () => { hookManager(); rebuild(); publish('manager-ready'); });
 
   hookManager();
   rebuild();
