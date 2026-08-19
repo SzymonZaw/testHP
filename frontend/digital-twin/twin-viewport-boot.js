@@ -11,6 +11,8 @@
   const hideLoading = (message = 'Digital Twin ready') => {
     loading.hidden = true;
     loading.setAttribute('aria-hidden', 'true');
+    loading.style.display = 'none';
+    loading.classList.remove('viewer-loading-error');
     if (status && (!status.textContent || /starting|building/i.test(status.textContent))) status.textContent = message;
     window.__testhpTwinReady = true;
     window.dispatchEvent(new CustomEvent('testhp:twin-ready', { detail: { width: canvas.width, height: canvas.height, renderer: 'WebGL' } }));
@@ -18,6 +20,7 @@
 
   const showFailure = (message) => {
     loading.hidden = false;
+    loading.style.display = 'grid';
     loading.textContent = message;
     loading.classList.add('viewer-loading-error');
     if (status) status.textContent = 'Twin Viewport error';
@@ -28,8 +31,16 @@
     try {
       progress('canvas-check');
       if (!canvas.isConnected) throw new Error('Twin canvas is not connected to the DOM');
-      window.dispatchEvent(new Event('resize'));
 
+      // app.js is the primary Three.js owner. If it already completed, do not
+      // require the optional spatial manager just to dismiss the loading layer.
+      if (window.__testhpTwinReady) {
+        progress('already-ready');
+        hideLoading();
+        return true;
+      }
+
+      window.dispatchEvent(new Event('resize'));
       progress('manager-check');
       const manager = window.spatialViewportManager;
       if (!manager) return false;
