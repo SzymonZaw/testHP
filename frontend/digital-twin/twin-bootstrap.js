@@ -3,7 +3,6 @@
   const log = (step, detail = '') => {
     const line = document.createElement('div');
     line.className = 'twin-boot-line';
-    // Keep a stable machine-readable identifier separate from the visible label.
     line.dataset.stepId = step;
     const labels = {
       'DOM': 'DOM',
@@ -68,7 +67,6 @@
     mark(label, true, 'załadowano');
   }
 
-  // Etapy 5–8 są warstwą informacyjną. Nie mogą blokować uruchomienia widoku.
   function loadStages58NonBlocking() {
     log('Stages 5–8', 'ładowanie w tle');
     const script = document.createElement('script');
@@ -85,10 +83,10 @@
       mark('DOM', true, 'gotowe');
 
       log('Three.js + canonical viewport');
-      await withTimeout(import('./app.js?v=progressive-inspector-24'), 15000, 'Kanoniczny widok');
+      await withTimeout(import('./app.js?v=progressive-inspector-25'), 15000, 'Kanoniczny widok');
       mark('Three.js + canonical viewport', true, 'app.js załadowano');
 
-      await loadClassic('/digital-twin/spatial-layer-viewport.js?v=canonical-8', 'Spatial bridge');
+      await loadClassic('/digital-twin/spatial-layer-viewport.js?v=canonical-9', 'Spatial bridge');
       await loadClassic('/digital-twin/spatial-evidence-renderer.js?v=evidence-5', 'Evidence renderer');
       await loadClassic('/digital-twin/spatial-viewport-debug.js?v=twin-debug-10', 'Viewport debug');
       await loadClassic('/digital-twin/evidence-registry-bridge.js?v=registry-bridge-5', 'Evidence registry');
