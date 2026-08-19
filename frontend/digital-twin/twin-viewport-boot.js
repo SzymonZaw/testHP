@@ -1,11 +1,19 @@
 (() => {
   const loading = document.getElementById('viewer-loading');
   const canvas = document.getElementById('twin-canvas');
+  const viewport = document.getElementById('twin-viewport');
   const status = document.getElementById('twin-status');
-  if (!loading || !canvas) return;
+  if (!loading || !canvas || !viewport) return;
 
   const progress = (step, detail = '') => {
     window.dispatchEvent(new CustomEvent('testhp:twin-progress', { detail: { step, detail } }));
+  };
+
+  const syncSize = () => {
+    // app.js owns the renderer and listens for resize. This guarantees that
+    // CSS/layout changes are also propagated to the Three.js drawing buffer.
+    window.dispatchEvent(new Event('resize'));
+    progress('viewport-size-sync', `${Math.round(viewport.clientWidth)}x${Math.round(viewport.clientHeight)} css / ${canvas.width}x${canvas.height} buffer`);
   };
 
   const hideLoading = (message = 'Digital Twin ready') => {
@@ -32,15 +40,14 @@
       progress('canvas-check');
       if (!canvas.isConnected) throw new Error('Twin canvas is not connected to the DOM');
 
-      // app.js is the primary Three.js owner. If it already completed, do not
-      // require the optional spatial manager just to dismiss the loading layer.
       if (window.__testhpTwinReady) {
         progress('already-ready');
+        syncSize();
         hideLoading();
         return true;
       }
 
-      window.dispatchEvent(new Event('resize'));
+      syncSize();
       progress('manager-check');
       const manager = window.spatialViewportManager;
       if (!manager) return false;
@@ -80,5 +87,10 @@
     }
   }, 250);
 
-  window.addEventListener('beforeunload', () => clearInterval(timer), { once: true });
+  const resizeObserver = new ResizeObserver(() => syncSize());
+  resizeObserver.observe(viewport);
+  window.addEventListener('beforeunload', () => {
+    clearInterval(timer);
+    resizeObserver.disconnect();
+  }, { once: true });
 })();
