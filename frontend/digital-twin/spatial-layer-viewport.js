@@ -22,6 +22,7 @@ import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.m
   let attachedScene = null;
   let lastVisualState = '';
   let managerHooked = false;
+  let pointerDown = null;
   const raycaster = new THREE.Raycaster();
   const pointer = new THREE.Vector2();
 
@@ -98,6 +99,15 @@ import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.m
     deepGroup.add(mesh);
   }
 
+  function setClickable(manager, objects) {
+    const clickable = [...objects];
+    manager.active.deepClickable = clickable;
+    // Keep the canonical manager's public clickable pool aligned with the
+    // currently displayed layer. The deep pool is also kept separately so
+    // diagnostics cannot mistake the macro meshes for deep targets.
+    manager.active.clickable = clickable;
+  }
+
   function rebuild() {
     const manager = window.spatialViewportManager;
     if (!managerReady()) return false;
@@ -113,10 +123,12 @@ import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.m
     group.visible = !isMacro;
     manager.active.root.visible = isMacro;
     clearGroup();
+    manager.active.activeLayer = isMacro ? 'macro' : 'deep';
     manager.activeKey = `${currentLevel}|${currentTarget}`;
 
     if (isMacro) {
-      manager.active.clickable = [...(manager.active.clickable || [])];
+      manager.active.deepClickable = [];
+      manager.active.clickable = [...(manager.active.root?.children || [])];
       lastVisualState = '';
       return true;
     }
@@ -134,7 +146,7 @@ import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.m
 
     if (!currentChildren.length) {
       addLeaf(kind, currentTarget);
-      manager.active.clickable = [...deepGroup.children];
+      setClickable(manager, deepGroup.children);
       group.position.set(0, 0.25, 0);
       return true;
     }
@@ -151,13 +163,14 @@ import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.m
       mesh.name = `navigation-target-${index}`;
       mesh.userData.navigationIndex = index;
       mesh.userData.navigationLabel = label;
+      mesh.userData.navigationPath = currentPath;
       mesh.position.set((index - (currentChildren.length - 1) / 2) * spacing, 0.15, 0);
       if (kind === 'tissue') mesh.scale.set(1.15, 0.82, 0.78);
       if (kind === 'cellular') mesh.rotation.y = (index - 1) * 0.22;
       group.add(mesh);
     });
 
-    manager.active.clickable = [...group.children];
+    setClickable(manager, group.children);
     group.position.set(0, 0.25, 0);
     return true;
   }
@@ -168,7 +181,16 @@ import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.m
     const manager = window.spatialViewportManager;
     if (!managerReady()) return;
     window.dispatchEvent(new CustomEvent('testhp:viewport-rendered', {
-      detail: { level: level(), target: target(), path: path(), children: children(), renderer: 'ThreeCanvasRenderer', reason }
+      detail: {
+        level: level(),
+        target: target(),
+        path: path(),
+        children: children(),
+        renderer: 'ThreeCanvasRenderer',
+        reason,
+        activeLayer: manager.active?.activeLayer || 'unknown',
+        deepClickable: manager.active?.deepClickable?.length || 0
+      }
     }));
   }
 
@@ -179,34 +201,60 @@ import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.m
     return true;
   }
 
-  function handleDeepClick(event) {
-    if (level() === 'macro' || level() === 'macro anatomy' || !deepGroup?.visible) return false;
+  function hitDeepTarget(event) {
+    if (level() === 'macro' || level() === 'macro anatomy' || !deepGroup?.visible) return null;
     const manager = window.spatialViewportManager;
-    if (!managerReady()) return false;
+    if (!managerReady()) return null;
     const rect = canvas.getBoundingClientRect();
-    if (!rect.width || !rect.height) return false;
+    if (!rect.width || !rect.height) return null;
 
     pointer.x = Math.max(-1, Math.min(1, ((event.clientX - rect.left) / rect.width) * 2 - 1));
     pointer.y = Math.max(-1, Math.min(1, -(((event.clientY - rect.top) / rect.height) * 2 - 1)));
     raycaster.setFromCamera(pointer, manager.active.camera);
 
-    const hit = raycaster.intersectObjects(deepGroup.children, true).find(x => x.object?.userData);
+    return raycaster.intersectObjects(deepGroup.children, true).find(x => x.object?.userData);
+  }
+
+  function handleDeepClick(event) {
+    const hit = hitDeepTarget(event);
     if (!hit) return false;
 
     const data = hit.object.userData;
     const index = Number.isInteger(data.navigationIndex) ? data.navigationIndex : null;
     const navigated = index === null ? false : clickSpatialTargetByIndex(index);
     window.dispatchEvent(new CustomEvent('testhp:viewport-deep-click', {
-      detail: { level: level(), target: target(), path: path(), child: data.navigationLabel || data.navigationId || target(), index, navigated, leaf: !!data.navigationLeaf }
+      detail: {
+        level: level(),
+        target: target(),
+        path: path(),
+        child: data.navigationLabel || data.navigationId || target(),
+        index,
+        navigated,
+        leaf: !!data.navigationLeaf
+      }
     }));
     return navigated;
   }
 
-  canvas.addEventListener('click', event => {
-    if (level() === 'macro' || level() === 'macro anatomy') return;
-    handleDeepClick(event);
-    event.preventDefault();
-    event.stopImmediatePropagation();
+  canvas.addEventListener('pointerdown', event => {
+    if (level() === 'macro' || level() === 'macro anatomy' || !deepGroup?.visible) {
+      pointerDown = null;
+      return;
+    }
+    pointerDown = { x: event.clientX, y: event.clientY, pointerId: event.pointerId };
+  }, true);
+
+  canvas.addEventListener('pointerup', event => {
+    if (!pointerDown || pointerDown.pointerId !== event.pointerId) return;
+    const moved = Math.hypot(event.clientX - pointerDown.x, event.clientY - pointerDown.y);
+    pointerDown = null;
+    // Let OrbitControls own real drags. A short press is treated as selection.
+    if (moved > 7) return;
+    const navigated = handleDeepClick(event);
+    if (navigated) {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+    }
   }, true);
 
   window.addEventListener('testhp:viewport-rendered', () => {
@@ -222,6 +270,7 @@ import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.m
     manager.activeKey = `${String(detail.level).toLowerCase()}|${detail.target || 'spatial-target'}`;
     lastVisualState = '';
     rebuild();
+    publish('spatial-layer-changed');
   });
 
   const observer = new MutationObserver(() => {
