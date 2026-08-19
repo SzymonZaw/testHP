@@ -44,14 +44,24 @@
     const style = document.createElement('style');
     style.id = 'twin-boot-diagnostics-css';
     style.textContent = `
-      #twin-boot-diagnostics{position:absolute;inset:16px auto auto 16px;z-index:50;width:min(520px,calc(100% - 32px));padding:14px 16px;border:1px solid rgba(130,145,165,.35);border-radius:12px;background:rgba(13,17,23,.94);color:#e6edf3;font:12px/1.45 ui-monospace,SFMono-Regular,Menlo,monospace;box-shadow:0 12px 40px rgba(0,0,0,.25)}
-      #twin-boot-diagnostics h3{margin:0 0 8px;font:700 13px/1.2 system-ui,sans-serif;letter-spacing:.06em;text-transform:uppercase}
+      #twin-boot-diagnostics{position:absolute;inset:16px auto auto 16px;z-index:50;width:min(520px,calc(100% - 32px));padding:14px 16px;border:1px solid rgba(130,145,165,.35);border-radius:12px;background:rgba(13,17,23,.94);color:#e6edf3;font:12px/1.45 ui-monospace,SFMono-Regular,Menlo,monospace;box-shadow:0 12px 40px rgba(0,0,0,.25);transition:padding .15s ease,width .15s ease}
+      #twin-boot-diagnostics.twin-boot-minimized{width:auto;padding:8px 10px}
+      #twin-boot-diagnostics h3{margin:0;font:700 13px/1.2 system-ui,sans-serif;letter-spacing:.06em;text-transform:uppercase}
+      #twin-boot-diagnostics .twin-boot-toggle{margin-left:10px;border:1px solid rgba(130,145,165,.45);border-radius:6px;background:rgba(255,255,255,.06);color:#d8dee4;padding:3px 7px;cursor:pointer;font:600 10px/1 system-ui,sans-serif}
+      #twin-boot-diagnostics .twin-boot-toggle:hover{background:rgba(255,255,255,.12)}
       .twin-boot-line{display:grid;grid-template-columns:18px 190px 1fr;gap:6px;align-items:start;padding:3px 0;color:#9da7b3}.twin-boot-line strong{color:#d8dee4}.twin-boot-line.ok .twin-boot-mark{color:#56d364}.twin-boot-line.ok strong{color:#e6edf3}.twin-boot-line.error .twin-boot-mark,.twin-boot-line.error strong{color:#ff7b72}.twin-boot-summary{margin-top:8px;color:#8b949e}
+      #twin-boot-diagnostics.twin-boot-minimized #twin-boot-lines,#twin-boot-diagnostics.twin-boot-minimized .twin-boot-summary{display:none}
     `;
     document.head.appendChild(style);
     const box = document.createElement('section');
     box.id = 'twin-boot-diagnostics';
-    box.innerHTML = '<h3>Cyfrowy bliźniak · diagnostyka uruchomienia</h3><div id="twin-boot-lines"></div><div class="twin-boot-summary">Ciężkie moduły są ładowane dopiero po przygotowaniu kanonicznego widoku.</div>';
+    box.innerHTML = '<div class="twin-boot-heading"><h3 style="display:inline">Cyfrowy bliźniak · diagnostyka uruchomienia</h3><button type="button" class="twin-boot-toggle" aria-expanded="true">MINIMIZUJ</button></div><div id="twin-boot-lines"></div><div class="twin-boot-summary">Ciężkie moduły są ładowane dopiero po przygotowaniu kanonicznego widoku.</div>';
+    const toggle = box.querySelector('.twin-boot-toggle');
+    toggle.addEventListener('click', () => {
+      const minimized = box.classList.toggle('twin-boot-minimized');
+      toggle.textContent = minimized ? 'ROZWIŃ' : 'MINIMIZUJ';
+      toggle.setAttribute('aria-expanded', String(!minimized));
+    });
     document.getElementById('twin-viewport')?.appendChild(box);
   }
 
