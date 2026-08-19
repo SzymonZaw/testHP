@@ -1,43 +1,189 @@
 (() => {
   const viewport = document.getElementById('twin-viewport');
-  if (!viewport) return;
-  const panel=document.createElement('section'); panel.id='spatial-viewport-debug';
-  Object.assign(panel.style,{position:'absolute',right:'12px',top:'12px',width:'430px',maxWidth:'calc(100% - 24px)',maxHeight:'calc(100% - 24px)',overflow:'hidden',zIndex:'200',display:'none',padding:'10px',borderRadius:'10px',background:'rgba(5,12,13,.97)',border:'1px solid #4b746b',color:'#dcece6',font:'11px/1.35 ui-monospace,SFMono-Regular,Consolas,monospace',boxShadow:'0 12px 35px rgba(0,0,0,.45)',pointerEvents:'auto',boxSizing:'border-box'});
-  const head=document.createElement('div'); Object.assign(head.style,{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'7px'});
-  const title=document.createElement('strong'); title.textContent='TWIN VIEWPORT · DEBUG';
-  const actions=document.createElement('div'); Object.assign(actions.style,{display:'flex',gap:'5px'});
-  const clear=document.createElement('button'); clear.type='button'; clear.textContent='CLEAR';
-  const close=document.createElement('button'); close.type='button'; close.textContent='CLOSE';
-  [clear,close].forEach(b=>Object.assign(b.style,{background:'#152723',color:'#cfe8df',border:'1px solid #36544e',borderRadius:'6px',padding:'3px 6px',font:'700 9px ui-monospace,monospace',cursor:'pointer'}));
-  actions.append(clear,close); head.append(title,actions);
-  const body=document.createElement('div'); Object.assign(body.style,{maxHeight:'calc(100vh - 170px)',overflow:'auto',paddingRight:'2px'});
-  const runtime=document.createElement('pre'),spatial=document.createElement('pre'),renderer=document.createElement('pre'),evidence=document.createElement('pre'),log=document.createElement('pre');
-  [runtime,spatial,renderer,evidence,log].forEach(el=>Object.assign(el.style,{margin:'0 0 8px',whiteSpace:'pre-wrap',wordBreak:'break-word'}));
-  runtime.style.color='#f1d99a'; spatial.style.color='#9bd8c4'; renderer.style.color='#b9e1d2'; evidence.style.color='#d3dfdb'; log.style.color='#9aaea8';
-  body.append(runtime,spatial,renderer,evidence,log); panel.append(head,body); viewport.appendChild(panel);
-  const toggle=document.createElement('button'); toggle.type='button'; toggle.textContent='DEBUG'; toggle.title='Toggle Twin Viewport debug view';
-  Object.assign(toggle.style,{position:'absolute',right:'12px',top:'12px',zIndex:'201',padding:'5px 8px',borderRadius:'7px',border:'1px solid #36544e',background:'#101b1a',color:'#9bd8c4',font:'800 9px ui-monospace,monospace',cursor:'pointer',pointerEvents:'auto'}); viewport.appendChild(toggle);
-  const STORAGE='digitalTwinEvidenceUX.v2'; const lines=[]; const MAX=120; let canonicalItems=[]; let wrapped=false; let tickCount=0; let lastTick=0;
-  function readSpatial(){const m=window.spatialViewportManager,b=document.getElementById('spatial-level-badge'),n=document.getElementById('spatial-node');const crumbs=[...document.querySelectorAll('#spatial-breadcrumb button')].map(x=>x.textContent.trim()).filter(Boolean);const children=[...document.querySelectorAll('#spatial-children .spatial-target strong')].map(x=>x.textContent.trim()).filter(Boolean);return{manager:m,level:b?.textContent?.trim()||'?',target:n?.querySelector('strong')?.textContent?.trim()||'?',targetId:window.spatialEvidenceTarget||m?.activeKey||'?',crumbs,children,renderer:m?.active?.constructor?.name||'none',key:m?.activeKey||'none'};}
-  function readEvidence(){try{const x=JSON.parse(localStorage.getItem(STORAGE)||'{}').evidence||[];return Array.isArray(x)?x:[]}catch{return[]}}
-  function normalizeTarget(v){return String(v||'').replace(/^\/+|\/+$/g,'').toLowerCase()}
-  function readViewportRuntime(){const canvas=document.getElementById('twin-canvas'),deep=window.spatialViewportManager?.deepCanvas,rect=viewport.getBoundingClientRect(),cr=canvas?.getBoundingClientRect();let gl='—';try{gl=canvas?.getContext('webgl2')?'WebGL2':canvas?.getContext('webgl')?'WebGL':'none'}catch{gl='error'}return{viewport:`${Math.round(rect.width)}×${Math.round(rect.height)}`,canvas:canvas?`${Math.round(cr.width)}×${Math.round(cr.height)} (${canvas.width}×${canvas.height})`:'MISSING',display:canvas?getComputedStyle(canvas).display:'MISSING',visibility:canvas?getComputedStyle(canvas).visibility:'MISSING',z:canvas?getComputedStyle(canvas).zIndex:'MISSING',graphics:gl,deep:deep?'present':'missing',ticks:tickCount,heartbeat:lastTick?`${Date.now()-lastTick} ms ago`:'not observed'};}
-  function readRenderer(){const m=window.spatialViewportManager,a=m?.active,r=m?.deepRenderer,s=a?.scene,c=a?.camera,root=a?.root;return{manager:m?'present':'missing',active:a?.constructor?.name||'none',deep:r?'present':'missing',three:r?.constructor?.name||'none',scene:s?.children?.length??'—',root:root?.children?.length??'—',clickable:a?.clickable?.length??'—',camera:c?`z=${c.position.z.toFixed(2)} aspect=${c.aspect.toFixed(3)}`:'—'};}
-  function renderDebug(){const s=readSpatial(),items=canonicalItems.length?canonicalItems:readEvidence(),target=normalizeTarget(s.targetId==='?'?s.crumbs.join('/'):s.targetId)||'hand',local=items.filter(i=>normalizeTarget(i.spatial_node_id||i.target)===target),ancestors=target==='hand'?[]:items.filter(i=>{const t=normalizeTarget(i.spatial_node_id||i.target);return t&&target.startsWith(t+'/')}),root=items.filter(i=>normalizeTarget(i.spatial_node_id||i.target)==='hand'),v=readViewportRuntime(),r=readRenderer();
-    runtime.textContent=['RUNTIME',`viewport:          ${v.viewport}`,`canvas:            ${v.canvas}`,`canvas display:    ${v.display}`,`canvas visibility: ${v.visibility}`,`canvas z-index:    ${v.z}`,`graphics:          ${v.graphics}`,`deep canvas:       ${v.deep}`,`debug heartbeat:   ${v.heartbeat}`].join('\n');
-    spatial.textContent=['SPATIAL STATE',`level:       ${s.level}`,`target:      ${s.target}`,`spatial_id:  ${target}`,`path:        ${s.crumbs.join(' > ')||'(root)'}`,`children:    ${s.children.join(' | ')||'(none)'}`,`renderer:    ${s.renderer}`,`active_key:  ${s.key}`,'',`LOCAL EVIDENCE:  ${local.length}`,`ROOT/HAND:       ${root.length}`,`PARENT/ANCESTOR: ${ancestors.length}`].join('\n');
-    renderer.textContent=['RENDERER',`manager:       ${r.manager}`,`active:        ${r.active}`,`deep renderer: ${r.deep}`,`three:         ${r.three}`,`scene children:${r.scene}`,`root children: ${r.root}`,`clickable:     ${r.clickable}`,`camera:        ${r.camera}`].join('\n');
-    const cache=readEvidence().length,shown=(local.length?local:(target!=='hand'?root:items)).slice(0,20),ev=['EVIDENCE',`canonical: ${canonicalItems.length}`,`cache:     ${cache}`,`selected:  ${local.length}`,''];
-    if(shown.length){shown.forEach(i=>{const t=normalizeTarget(i.spatial_node_id||i.target)||'hand',localized=i.spatially_localized===false?'NO':'YES';ev.push(`${i.filename||i.asset_id||i.id||'unnamed'}`,`  modality: ${i.modality||i.type||'—'}`,`  target:   ${t}`,`  localized:${localized}`,`  status:   ${i.attachment_status||(localized==='YES'?'attached':'registered')}`,'')});}else ev.push('  (no evidence)');
-    evidence.textContent=ev.join('\n');
-  }
-  function event(message){const now=new Date().toLocaleTimeString();lines.push(`[${now}] ${message}`);while(lines.length>MAX)lines.shift();log.textContent=lines.join('\n');log.scrollTop=log.scrollHeight;renderDebug();}
-  async function loadCanonical(){try{const r=await fetch('/api/spatial/registry?subject_id=own_cohort&timepoint=T0',{cache:'no-store'});if(!r.ok)throw new Error(`HTTP ${r.status}`);const p=await r.json();canonicalItems=Array.isArray(p.items)?p.items:[];event(`canonical registry loaded | ${canonicalItems.length} item(s)`)}catch(e){event(`canonical registry unavailable | ${e.message}`)}}
-  function attach(){const m=window.spatialViewportManager;if(!m||wrapped)return!!m;const original=m.render.bind(m);m.render=()=>{const before=readSpatial();event(`render() BEFORE | ${before.level} ${before.target} ${before.key}`);const result=original();const after=readSpatial();event(`render() AFTER  | ${after.level} ${after.target} ${after.key}`);return result};wrapped=true;event(`debug attached to SpatialViewportManager (${m.active?.constructor?.name||'no renderer'})`);return true;}
-  function setOpen(open){panel.style.display=open?'block':'none';toggle.style.display=open?'none':'block';if(open){renderDebug();loadCanonical()}}
-  toggle.onclick=()=>setOpen(true);close.onclick=()=>setOpen(false);clear.onclick=()=>{lines.length=0;log.textContent='';event('log cleared')};
-  const observer=new MutationObserver(()=>event('spatial navigation DOM mutation detected'));['spatial-level-badge','spatial-breadcrumb','spatial-node','spatial-children'].forEach(id=>{const el=document.getElementById(id);if(el)observer.observe(el,{childList:true,subtree:true,characterData:true,attributes:true})});
-  window.addEventListener('error',e=>event(`WINDOW ERROR | ${e.message||'unknown error'} | ${e.filename||''}:${e.lineno||''}`));window.addEventListener('unhandledrejection',e=>event(`UNHANDLED PROMISE | ${e.reason?.message||e.reason||'unknown rejection'}`));window.addEventListener('resize',()=>event('viewport/window resize observed'),{passive:true});window.addEventListener('testhp:evidence-registry-synced',()=>{event('evidence registry sync event received');loadCanonical()},{passive:true});
-  const canvas=document.getElementById('twin-canvas');if(canvas){['pointerdown','pointerup','click','wheel'].forEach(type=>canvas.addEventListener(type,()=>event(`canvas ${type}`),{passive:type==='wheel'}));}
-  const timer=setInterval(()=>{attach();tickCount++;lastTick=Date.now();if(panel.style.display!=='none')renderDebug()},500);window.addEventListener('beforeunload',()=>{clearInterval(timer);observer.disconnect()},{once:true});event('Twin Viewport debug panel initialized');
+  const host = document.getElementById('twin-viewport-debug-host');
+  if (!viewport || !host) return;
+
+  const panel = document.getElementById('twin-debug-panel');
+  const toggle = document.getElementById('twin-debug-toggle');
+  const refresh = document.getElementById('twin-debug-refresh');
+  const clear = document.getElementById('twin-debug-clear');
+  const close = document.getElementById('twin-debug-close');
+  const runtime = document.getElementById('twin-debug-runtime');
+  const state = document.getElementById('twin-debug-state');
+  const log = document.getElementById('twin-debug-log');
+  if (!panel || !toggle || !runtime || !state || !log) return;
+
+  const lines = [];
+  const MAX = 160;
+  let wrapped = false;
+  let ticks = 0;
+  let lastTick = 0;
+  let initStarted = Date.now();
+  let lastProgress = 'debug panel initialized';
+
+  const now = () => new Date().toLocaleTimeString();
+  const writeLog = (message) => {
+    lines.push(`[${now()}] ${message}`);
+    while (lines.length > MAX) lines.shift();
+    log.textContent = lines.join('\n');
+    log.scrollTop = log.scrollHeight;
+  };
+
+  const spatial = () => {
+    const m = window.spatialViewportManager;
+    const badge = document.getElementById('spatial-level-badge');
+    const node = document.getElementById('spatial-node');
+    const crumbs = [...document.querySelectorAll('#spatial-breadcrumb button')].map(x => x.textContent.trim()).filter(Boolean);
+    const children = [...document.querySelectorAll('#spatial-children .spatial-target strong')].map(x => x.textContent.trim()).filter(Boolean);
+    return {
+      manager: !!m,
+      level: badge?.textContent?.trim() || '?',
+      target: node?.querySelector('strong')?.textContent?.trim() || '?',
+      targetId: window.spatialEvidenceTarget || m?.activeKey || '?',
+      path: crumbs.join(' > ') || '(root)',
+      children: children.join(' | ') || '(none)',
+      renderer: m?.active?.constructor?.name || 'none',
+      key: m?.activeKey || 'none'
+    };
+  };
+
+  const rendererInfo = () => {
+    const m = window.spatialViewportManager;
+    const a = m?.active;
+    const camera = a?.camera;
+    let three = 'not exposed';
+    try { three = window.THREE?.REVISION || 'module-scoped / not global'; } catch (_) {}
+    return {
+      manager: m ? 'present' : 'MISSING',
+      active: a?.constructor?.name || 'none',
+      deep: m?.deepRenderer ? 'present' : 'missing',
+      three,
+      scene: a?.scene?.children?.length ?? '—',
+      root: a?.root?.children?.length ?? '—',
+      clickable: a?.clickable?.length ?? '—',
+      camera: camera ? `z=${Number(camera.position.z).toFixed(2)} aspect=${Number(camera.aspect).toFixed(3)}` : '—'
+    };
+  };
+
+  const runtimeInfo = () => {
+    const canvas = document.getElementById('twin-canvas');
+    const rect = viewport.getBoundingClientRect();
+    const cr = canvas?.getBoundingClientRect();
+    let graphics = 'MISSING';
+    try { graphics = canvas?.getContext('webgl2') ? 'WebGL2' : canvas?.getContext('webgl') ? 'WebGL' : 'NONE'; } catch (e) { graphics = `ERROR: ${e.message}`; }
+    const age = Date.now() - initStarted;
+    return {
+      viewport: `${Math.round(rect.width)}×${Math.round(rect.height)}`,
+      canvas: canvas ? `${Math.round(cr.width)}×${Math.round(cr.height)} (${canvas.width}×${canvas.height})` : 'MISSING',
+      display: canvas ? getComputedStyle(canvas).display : 'MISSING',
+      visibility: canvas ? getComputedStyle(canvas).visibility : 'MISSING',
+      graphics,
+      manager: window.spatialViewportManager ? 'present' : 'MISSING',
+      heartbeat: lastTick ? `${Date.now() - lastTick} ms ago` : 'not observed',
+      initAge: `${age} ms`,
+      lastProgress
+    };
+  };
+
+  const render = () => {
+    const s = spatial();
+    const v = runtimeInfo();
+    const r = rendererInfo();
+    const timeout = !window.__testhpTwinReady && Date.now() - initStarted > 5000;
+    runtime.textContent = [
+      'RUNTIME',
+      `status:       ${window.__testhpTwinReady ? 'READY' : timeout ? 'INIT TIMEOUT' : 'INITIALIZING'}`,
+      `viewport:     ${v.viewport}`,
+      `canvas:       ${v.canvas}`,
+      `display:      ${v.display}`,
+      `visibility:   ${v.visibility}`,
+      `graphics:     ${v.graphics}`,
+      `manager:      ${v.manager}`,
+      `heartbeat:    ${v.heartbeat}`,
+      `init age:     ${v.initAge}`,
+      `last progress:${v.lastProgress}`
+    ].join('\n');
+    state.textContent = [
+      '',
+      'SPATIAL STATE',
+      `level:        ${s.level}`,
+      `target:       ${s.target}`,
+      `spatial_id:   ${s.targetId}`,
+      `path:         ${s.path}`,
+      `children:     ${s.children}`,
+      `renderer:     ${s.renderer}`,
+      `active_key:   ${s.key}`,
+      '',
+      'RENDERER',
+      `manager:      ${r.manager}`,
+      `active:       ${r.active}`,
+      `deep:         ${r.deep}`,
+      `three:        ${r.three}`,
+      `scene:        ${r.scene}`,
+      `root:         ${r.root}`,
+      `clickable:    ${r.clickable}`,
+      `camera:       ${r.camera}`
+    ].join('\n');
+  };
+
+  const event = (message) => { lastProgress = message; writeLog(message); render(); };
+
+  const attachManager = () => {
+    const m = window.spatialViewportManager;
+    if (!m || wrapped) return !!m;
+    if (typeof m.render === 'function') {
+      const original = m.render.bind(m);
+      m.render = (...args) => {
+        const before = spatial();
+        event(`render BEFORE | ${before.level} ${before.target} ${before.key}`);
+        try {
+          const result = original(...args);
+          const after = spatial();
+          event(`render AFTER | ${after.level} ${after.target} ${after.key}`);
+          return result;
+        } catch (error) {
+          event(`render ERROR | ${error?.stack || error}`);
+          throw error;
+        }
+      };
+    }
+    wrapped = true;
+    event(`debug attached to SpatialViewportManager | renderer=${m.active?.constructor?.name || 'none'}`);
+    return true;
+  };
+
+  toggle.onclick = () => { panel.hidden = false; toggle.hidden = true; render(); };
+  close.onclick = () => { panel.hidden = true; toggle.hidden = false; };
+  refresh.onclick = () => { event('manual refresh'); try { window.spatialViewportManager?.render?.(); } catch (e) { event(`manual render ERROR | ${e?.stack || e}`); } };
+  clear.onclick = () => { lines.length = 0; event('log cleared'); };
+
+  window.addEventListener('error', e => event(`WINDOW ERROR | ${e.message || 'unknown'} | ${e.filename || ''}:${e.lineno || ''}`));
+  window.addEventListener('unhandledrejection', e => event(`UNHANDLED PROMISE | ${e.reason?.stack || e.reason || 'unknown'}`));
+  window.addEventListener('testhp:twin-ready', e => { window.__testhpTwinReady = true; lastProgress = 'twin-ready event received'; event(`TWIN READY | ${JSON.stringify(e.detail || {})}`); });
+  window.addEventListener('testhp:twin-error', e => { lastProgress = 'twin-error event received'; event(`TWIN ERROR | ${e.detail?.error?.stack || e.detail?.error || 'unknown'}`); });
+  window.addEventListener('testhp:twin-progress', e => event(`INIT | ${e.detail?.step || e.detail?.message || 'progress'}`));
+  window.addEventListener('resize', () => event('viewport/window resize observed'), { passive: true });
+
+  const canvas = document.getElementById('twin-canvas');
+  if (canvas) ['pointerdown','pointerup','click','wheel'].forEach(type => canvas.addEventListener(type, () => event(`canvas ${type}`), { passive: type === 'wheel' }));
+
+  const observer = new MutationObserver(() => event('spatial navigation DOM mutation detected'));
+  ['spatial-level-badge','spatial-breadcrumb','spatial-node','spatial-children'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) observer.observe(el, { childList: true, subtree: true, characterData: true });
+  });
+
+  const timer = setInterval(() => {
+    ticks += 1;
+    lastTick = Date.now();
+    attachManager();
+    if (!window.__testhpTwinReady && Date.now() - initStarted > 5000 && !window.__testhpTwinTimeoutLogged) {
+      window.__testhpTwinTimeoutLogged = true;
+      event('INIT TIMEOUT | Twin Viewport has not reported ready after 5s');
+    }
+    if (!panel.hidden) render();
+  }, 500);
+
+  window.addEventListener('beforeunload', () => { clearInterval(timer); observer.disconnect(); }, { once: true });
+  event('Twin Viewport debug initialized');
 })();
