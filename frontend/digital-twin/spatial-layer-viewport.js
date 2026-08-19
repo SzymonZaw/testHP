@@ -15,26 +15,50 @@
     return !!(manager && manager.version === 'canonical-three-1' && manager.active?.scene && manager.active?.camera && manager.deepRenderer);
   };
 
-  function report() {
+  // DOM mutations are produced by the canonical renderer itself. Calling
+  // manager.render() from the MutationObserver therefore creates a render ->
+  // DOM mutation -> observer -> render loop and can lock the browser main
+  // thread. State publication and rendering are deliberately separated.
+  let lastSignature = '';
+  let renderScheduled = false;
+
+  function publish(reason = 'state-change') {
     const manager = window.spatialViewportManager;
     if (!manager) {
       window.dispatchEvent(new CustomEvent('testhp:viewport-waiting', { detail: { reason: 'canonical manager not published yet' } }));
-      return;
+      return false;
     }
     if (!canonical()) {
       window.dispatchEvent(new CustomEvent('testhp:viewport-error', { detail: { error: new Error('Non-canonical viewport manager detected; refusing to replace the real renderer') } }));
-      return;
+      return false;
     }
-    manager.render?.();
-    window.dispatchEvent(new CustomEvent('testhp:viewport-rendered', {
-      detail: {
-        level: level(),
-        target: target(),
-        path: crumbs(),
-        children: children(),
-        renderer: manager.active?.constructor?.name || 'ThreeCanvasRenderer'
-      }
-    }));
+
+    const detail = {
+      level: level(),
+      target: target(),
+      path: crumbs(),
+      children: children(),
+      renderer: manager.active?.constructor?.name || 'ThreeCanvasRenderer',
+      reason
+    };
+    const signature = JSON.stringify(detail);
+    if (signature !== lastSignature) {
+      lastSignature = signature;
+      window.dispatchEvent(new CustomEvent('testhp:viewport-rendered', { detail }));
+    }
+    return true;
+  }
+
+  function renderOnce() {
+    if (renderScheduled) return;
+    renderScheduled = true;
+    requestAnimationFrame(() => {
+      renderScheduled = false;
+      const manager = window.spatialViewportManager;
+      if (!canonical()) return;
+      manager.render?.();
+      publish('manager-render');
+    });
   }
 
   // The macro renderer owns the hand meshes and app.js historically raycasted
@@ -62,15 +86,20 @@
     }));
   }, true);
 
-  const observer = new MutationObserver(report);
+  const observer = new MutationObserver(() => {
+    // Publish the new spatial state only. Never render from this callback.
+    publish('dom-mutation');
+  });
   ['spatial-level-badge', 'spatial-breadcrumb', 'spatial-node', 'spatial-children'].forEach(id => {
     const el = document.getElementById(id);
     if (el) observer.observe(el, { childList: true, subtree: true, characterData: true });
   });
 
-  window.addEventListener('testhp:viewport-manager-ready', report);
+  window.addEventListener('testhp:viewport-manager-ready', () => {
+    if (publish('manager-ready')) renderOnce();
+  });
   window.addEventListener('resize', () => window.spatialViewportManager?.resize?.(), { passive: true });
   window.addEventListener('beforeunload', () => observer.disconnect(), { once: true });
 
-  report();
+  publish('initial');
 })();
