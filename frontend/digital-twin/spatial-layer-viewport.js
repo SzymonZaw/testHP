@@ -120,12 +120,11 @@ import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.m
     clearDeepGroup();
 
     manager.activeKey = `${currentLevel}|${currentTarget}`;
-    manager.active = {
-      ...manager.active,
-      clickable: group.visible ? group.children : manager.active.clickable
-    };
 
-    if (isMacro || !currentChildren.length) return;
+    if (isMacro || !currentChildren.length) {
+      manager.active = { ...manager.active, clickable: isMacro ? [...(manager.active.clickable || [])] : [] };
+      return;
+    }
 
     const isTissue = currentLevel.includes('tissue');
     const isCellular = currentLevel.includes('cellular');
@@ -150,6 +149,8 @@ import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.m
       if (isCellular) mesh.rotation.y = (index - 1) * 0.22;
       group.add(mesh);
     });
+
+    manager.active = { ...manager.active, clickable: [...group.children] };
 
     // Schematic navigation geometry only. It represents a spatial target,
     // never fabricated biological evidence.
