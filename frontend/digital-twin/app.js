@@ -129,9 +129,35 @@ if(registerObservation){registerObservation.onclick=async e=>{e.preventDefault()
 function resize(){const w=Math.max(1,viewport.clientWidth),h=Math.max(1,viewport.clientHeight);renderer.setSize(w,h,false);camera.aspect=w/h;camera.updateProjectionMatrix();}
 window.addEventListener('resize',resize);
 function animate(){requestAnimationFrame(animate);controls.update();renderer.render(scene,camera);}
+
+// Expose the canonical renderer to the Twin Viewport diagnostics. This is the
+// real Three.js scene, camera, controls and mesh registry owned by this module;
+// no second renderer or fake scene is created.
+function publishViewportManager(){
+  window.spatialViewportManager={
+    version:'canonical-three-1',
+    activeKey:`macro|${selectedRegion}`,
+    active:{constructor:{name:'ThreeCanvasRenderer'},renderer,scene,root,camera,controls,clickable:[...regionMeshes.values()]},
+    deepRenderer:renderer,
+    get deep(){return renderer;},
+    render(){
+      const current=currentSpatial();
+      this.activeKey=`${current.level}|${current.id||current.label||'spatial-target'}`;
+      this.active={constructor:{name:'ThreeCanvasRenderer'},renderer,scene,root,camera,controls,clickable:[...regionMeshes.values()]};
+      resize();
+      renderer.render(scene,camera);
+      window.dispatchEvent(new CustomEvent('testhp:viewport-rendered',{detail:{level:current.level,target:current.label,path:spatialPath.map(x=>x.label),children:childTargets(current).map(x=>x.label),renderer:'ThreeCanvasRenderer'}}));
+    },
+    resize,
+    get state(){const current=currentSpatial();return{level:current.level,target:current.label,spatial_id:current.regionId||current.id,path:spatialPath.map(x=>x.label),children:childTargets(current).map(x=>x.label)};}
+  };
+  window.dispatchEvent(new CustomEvent('testhp:viewport-manager-ready',{detail:{renderer:'ThreeCanvasRenderer',sceneChildren:scene.children.length,meshCount:regionMeshes.size}}));
+}
+
 resize();
 animate();
 selectRegion('palm',false);
+publishViewportManager();
 window.dispatchEvent(new CustomEvent('testhp:twin-progress',{detail:{step:'renderer-ready',detail:'Three.js scene, camera, controls and mesh hierarchy initialized'}}));
 window.__testhpTwinReady=true;
 window.dispatchEvent(new CustomEvent('testhp:twin-ready',{detail:{renderer:'Three.js',sceneChildren:scene.children.length,meshCount:regionMeshes.size}}));
