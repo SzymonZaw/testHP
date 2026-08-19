@@ -1,14 +1,14 @@
 (() => {
+  const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const log = (step, detail = '') => {
     const line = document.createElement('div');
     line.className = 'twin-boot-line';
     line.innerHTML = `<span class="twin-boot-mark">…</span><strong>${escapeHtml(step)}</strong><span>${escapeHtml(detail)}</span>`;
-    document.getElementById('twin-boot-diagnostics')?.appendChild(line);
+    document.getElementById('twin-boot-lines')?.appendChild(line);
     window.dispatchEvent(new CustomEvent('testhp:twin-progress', { detail: { step, detail } }));
   };
-  const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const mark = (step, ok = true, detail = '') => {
-    const rows = [...document.querySelectorAll('.twin-boot-line')];
+    const rows = [...document.querySelectorAll('#twin-boot-lines .twin-boot-line')];
     const row = rows.find(x => x.querySelector('strong')?.textContent === step);
     if (!row) return;
     row.querySelector('.twin-boot-mark').textContent = ok ? '✓' : '✕';
@@ -16,7 +16,6 @@
     row.classList.toggle('error', !ok);
     if (detail) row.querySelector('span:last-child').textContent = detail;
   };
-  const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
   const withTimeout = (promise, ms, label) => Promise.race([
     promise,
     new Promise((_, reject) => setTimeout(() => reject(new Error(`${label} timed out after ${ms / 1000}s`)), ms))
@@ -35,9 +34,7 @@
     const box = document.createElement('section');
     box.id = 'twin-boot-diagnostics';
     box.innerHTML = '<h3>Digital Twin · boot diagnostics</h3><div id="twin-boot-lines"></div><div class="twin-boot-summary">Heavy modules are loaded only after the canonical viewport is ready.</div>';
-    box.querySelector('#twin-boot-lines').id = 'twin-boot-diagnostics';
-    const host = document.getElementById('twin-viewport');
-    host?.appendChild(box);
+    document.getElementById('twin-viewport')?.appendChild(box);
   }
 
   async function loadClassic(src, label, timeout = 10000) {
@@ -55,43 +52,34 @@
   async function boot() {
     showBootUi();
     try {
-      log('DOM', 'ready'); mark('DOM', true, 'ready');
+      log('DOM', 'ready');
+      mark('DOM', true, 'ready');
+
       log('Three.js + canonical viewport');
       await withTimeout(import('./app.js?v=progressive-inspector-24'), 15000, 'Canonical viewport');
       mark('Three.js + canonical viewport', true, 'app.js loaded');
 
-      log('Spatial bridge');
       await loadClassic('/digital-twin/spatial-layer-viewport.js?v=canonical-8', 'Spatial bridge');
-      log('Evidence renderer');
       await loadClassic('/digital-twin/spatial-evidence-renderer.js?v=evidence-5', 'Evidence renderer');
-      log('Viewport debug');
       await loadClassic('/digital-twin/spatial-viewport-debug.js?v=twin-debug-10', 'Viewport debug');
-      log('Evidence registry');
       await loadClassic('/digital-twin/evidence-registry-bridge.js?v=registry-bridge-5', 'Evidence registry');
-      log('Spatial stages 2–4');
       await loadClassic('/digital-twin/stages-2-4.js?v=stage-2-4-9', 'Spatial stages 2–4');
-      log('Stages 5–8');
       await loadClassic('/digital-twin/assets/stages-5-8.js?v=stage-5-8-3', 'Stages 5–8');
-      log('Evidence UX');
       await loadClassic('/digital-twin/evidence-ux.js?v=evidence-ux-7', 'Evidence UX');
-      log('Deep drill');
       await loadClassic('/digital-twin/deep-drill-visualization.js?v=deep-drill-3', 'Deep drill');
+
       log('Viewport boot verifier');
-      await import('./twin-viewport-boot.js?v=boot-4');
+      await withTimeout(import('./twin-viewport-boot.js?v=boot-4'), 10000, 'Viewport boot verifier');
       mark('Viewport boot verifier', true, 'active');
 
-      log('Hand surface stages 11–15');
       await loadClassic('/digital-twin/hand-surface-stages-11-15.js?v=stages-11-15-2', 'Hand surface stages 11–15');
-      log('Hand surface edit bridge');
       await loadClassic('/digital-twin/hand-surface-edit-bridge.js?v=edit-bridge-2', 'Hand surface edit bridge');
-      log('Hand surface stages 20–22');
       await loadClassic('/digital-twin/hand-surface-stages-20-22.js?v=stages-20-22-2', 'Hand surface stages 20–22');
 
-      // Photo reconstruction imports Three.js again and creates a panel on boot.
-      // It is intentionally lazy: importing it must not be part of the critical path.
+      // Photo reconstruction is deliberately outside the critical path.
       const loadPhoto = async () => {
         log('Photo reconstruction');
-        await import('./hand-surface-photo-reconstruction.js?v=photo-reconstruction-2');
+        await withTimeout(import('./hand-surface-photo-reconstruction.js?v=photo-reconstruction-2'), 15000, 'Photo reconstruction');
         mark('Photo reconstruction', true, 'available on demand');
       };
       window.testhpLoadPhotoReconstruction = loadPhoto;
@@ -113,7 +101,7 @@
       window.dispatchEvent(new CustomEvent('testhp:twin-progress', { detail: { step: 'BOOT COMPLETE', detail: 'critical path loaded; photo reconstruction is lazy' } }));
     } catch (error) {
       console.error('[Twin Bootstrap]', error);
-      const current = document.querySelector('#twin-boot-diagnostics .twin-boot-line:not(.ok):last-of-type strong')?.textContent;
+      const current = [...document.querySelectorAll('#twin-boot-lines .twin-boot-line')].reverse().find(x => !x.classList.contains('ok'))?.querySelector('strong')?.textContent;
       if (current) mark(current, false, error.message);
       const loading = document.getElementById('viewer-loading');
       if (loading) { loading.hidden = false; loading.style.display = 'grid'; loading.textContent = `Digital Twin boot failed: ${error.message}`; loading.classList.add('viewer-loading-error'); }
