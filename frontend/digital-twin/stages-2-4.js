@@ -26,15 +26,49 @@
   };
   const currentLevel = () => (document.getElementById('spatial-level-badge')?.textContent || 'MACRO').toLowerCase().replace(' ', '');
 
-  // Stage 2 is now exposed through the unified Evidence Workspace.
-  // Keep only the data refresh/aggregation engine here; the legacy upload form is intentionally removed.
   const hierarchyPanel = document.createElement('section');
   hierarchyPanel.className = 'panel';
   hierarchyPanel.innerHTML = `<div class="panel-title"><div><span class="section-kicker">HIERARCHICAL SUMMARY</span><strong>MACRO → TISSUE → CELLULAR → CELL</strong></div><span class="research-badge">STAGE 4</span></div><div id="stage24-hierarchy" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px"></div><p class="muted" style="margin-top:12px">Parent summaries aggregate only explicitly attached descendant evidence. They never create evidence where none exists.</p>`;
   root.querySelector('.state-panel')?.after(hierarchyPanel);
 
-  async function refreshState() {
+  function syncCanonicalTarget() {
     const nodeId = nodeIdFromBreadcrumb();
+    const label = [...document.querySelectorAll('#spatial-breadcrumb button')].map((b) => b.textContent.trim()).filter(Boolean).join(' > ') || 'Hand';
+    window.spatialEvidenceTarget = nodeId;
+    window.selectedSpatialNode = nodeId;
+    document.body.dataset.spatialTarget = nodeId;
+    const targetLabel = document.getElementById('evidence-target-label');
+    if (targetLabel) targetLabel.textContent = label;
+    window.dispatchEvent(new CustomEvent('testhp:spatial-target-changed', { detail: { spatial_target_id: nodeId, label } }));
+    return nodeId;
+  }
+
+  function ensureInitialSpatialTarget() {
+    const breadcrumb = document.getElementById('spatial-breadcrumb');
+    if (!breadcrumb) return;
+    const buttons = [...breadcrumb.querySelectorAll('button')];
+    if (buttons.length === 1 && buttons[0].textContent.trim().toLowerCase() === 'hand') {
+      const palm = [...document.querySelectorAll('#spatial-children button')].find((b) => b.textContent.trim().toLowerCase().startsWith('palm'));
+      if (palm) palm.click();
+    }
+    syncCanonicalTarget();
+  }
+
+  function cleanupLegacyEvidenceActions() {
+    document.querySelectorAll('#evidence-workspace').forEach((panel) => {
+      panel.querySelectorAll('button').forEach((button) => {
+        if (/^\s*[＋+]\s*Add observation\s*$/i.test(button.textContent || '')) button.textContent = '＋ Add biological observation';
+      });
+    });
+    document.querySelectorAll('button').forEach((button) => {
+      if (button.closest('#evidence-workspace')) return;
+      const text = (button.textContent || '').trim();
+      if (/^\s*[＋+]\s*Add observation\s*$/i.test(text)) button.remove();
+    });
+  }
+
+  async function refreshState() {
+    const nodeId = syncCanonicalTarget();
     try {
       const [stateResponse, summaryResponse] = await Promise.all([
         fetch(`/api/spatial/state?subject_id=${encodeURIComponent(subjectId)}&timepoint=${encodeURIComponent(timepoint)}&spatial_node_id=${encodeURIComponent(nodeId)}`),
@@ -76,9 +110,14 @@
     if (!nodes.length) container.innerHTML = '<div class="state-card"><span>Hierarchy</span><strong>Not established</strong><small>Attach evidence to begin aggregation.</small></div>';
   }
 
-  const observer = new MutationObserver(() => refreshState());
+  const observer = new MutationObserver(() => { syncCanonicalTarget(); cleanupLegacyEvidenceActions(); });
   const breadcrumb = document.getElementById('spatial-breadcrumb');
   if (breadcrumb) observer.observe(breadcrumb, {childList: true, subtree: true});
+  const shellObserver = new MutationObserver(() => cleanupLegacyEvidenceActions());
+  shellObserver.observe(root, {childList: true, subtree: true});
   window.addEventListener('testhp:evidence-attached', () => refreshState());
+  window.addEventListener('testhp:spatial-target-changed', () => { cleanupLegacyEvidenceActions(); refreshState(); });
+  ensureInitialSpatialTarget();
+  cleanupLegacyEvidenceActions();
   refreshState();
 })();
