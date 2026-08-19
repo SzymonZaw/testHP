@@ -15,9 +15,17 @@
     .ri-workflow{margin-top:10px;padding:9px 10px;border:1px dashed #cfd8de;border-radius:9px;background:#fff;color:#788690;font-size:8px;line-height:1.5}.ri-workflow strong{color:#53616c}
     .ri-action-row{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:8px}.ri-action-row button{border:1px solid #d5dde2;background:#fff;color:#45525d;border-radius:8px;padding:7px 8px;font-size:9px;font-weight:700;cursor:pointer}.ri-action-row button:hover{border-color:#9fc5b8;background:#e9f4f0;color:#146b55}
     .ri-photo-tools{display:flex;justify-content:space-between;align-items:center;gap:6px;margin-top:8px}.ri-photo-tools button,.ri-photo-card button{border:1px solid #d5dde2;background:#fff;color:#53616c;border-radius:7px;padding:5px 7px;font-size:8px;font-weight:700;cursor:pointer}.ri-photo-tools button:hover,.ri-photo-card button:hover{border-color:#9fc5b8;background:#e9f4f0;color:#146b55}
-    .ri-photo-gallery{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px;margin-top:8px}.ri-photo-card{position:relative;border:1px solid #e1e6ea;border-radius:8px;background:#fff;overflow:hidden}.ri-photo-card img{display:block;width:100%;height:92px;object-fit:cover;background:#f1f4f5}.ri-photo-card-body{padding:6px}.ri-photo-name{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:8px;font-weight:750;color:#34424c}.ri-photo-meta{display:block;margin-top:2px;font-size:7px;color:#8a969f}.ri-photo-actions{display:flex;gap:4px;margin-top:5px}.ri-photo-actions button{flex:1}.ri-photo-empty{grid-column:1/-1;padding:12px;text-align:center;border:1px dashed #d5dde2;border-radius:8px;color:#8a969f;font-size:8px}
+    .ri-photo-gallery{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px;margin-top:8px}.ri-photo-card{position:relative;border:1px solid #e1e6ea;border-radius:8px;background:#fff;overflow:hidden}.ri-photo-card img{display:block;width:100%;height:92px;object-fit:cover;background:#f1f4f5;cursor:zoom-in}.ri-photo-card img:hover{opacity:.9}.ri-photo-card-body{padding:6px}.ri-photo-name{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:8px;font-weight:750;color:#34424c}.ri-photo-meta{display:block;margin-top:2px;font-size:7px;color:#8a969f}.ri-photo-actions{display:flex;gap:4px;margin-top:5px}.ri-photo-actions button{flex:1}.ri-photo-empty{grid-column:1/-1;padding:12px;text-align:center;border:1px dashed #d5dde2;border-radius:8px;color:#8a969f;font-size:8px}
     .ri-photo-dialog{width:min(430px,calc(100vw - 28px));border:1px solid #d5dde2;border-radius:12px;padding:0;box-shadow:0 18px 60px rgba(24,38,48,.2)}.ri-photo-dialog::backdrop{background:rgba(20,30,35,.28)}.ri-photo-form{padding:15px}.ri-photo-form h3{margin:0 0 12px;font-size:13px;color:#26343e}.ri-photo-form label{display:block;margin:8px 0 4px;font-size:8px;font-weight:750;color:#53616c}.ri-photo-form input,.ri-photo-form select{box-sizing:border-box;width:100%;padding:8px;border:1px solid #d5dde2;border-radius:7px;background:#fff;font-size:9px}.ri-photo-form .ri-form-actions{display:flex;justify-content:flex-end;gap:6px;margin-top:12px}.ri-photo-form button{border:1px solid #d5dde2;background:#fff;border-radius:7px;padding:7px 10px;font-size:9px;font-weight:750;cursor:pointer}.ri-photo-form button.primary{background:#146b55;border-color:#146b55;color:#fff}
-    @media(max-width:700px){.ri-evidence-summary{grid-template-columns:repeat(2,1fr)}}
+    .ri-photo-viewer{width:min(1100px,calc(100vw - 28px));height:min(90vh,860px);border:1px solid #d5dde2;border-radius:12px;padding:0;overflow:hidden;background:#111;box-shadow:0 22px 80px rgba(0,0,0,.35)}
+    .ri-photo-viewer::backdrop{background:rgba(10,16,20,.72)}
+    .ri-photo-viewer-shell{height:100%;display:flex;flex-direction:column;min-height:0}
+    .ri-photo-viewer-bar{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:9px 10px;background:#fff;color:#26343e;font-size:10px}
+    .ri-photo-viewer-actions{display:flex;gap:5px;align-items:center}.ri-photo-viewer-actions button{border:1px solid #d5dde2;background:#fff;color:#45525d;border-radius:7px;padding:5px 8px;font-size:9px;font-weight:750;cursor:pointer}.ri-photo-viewer-actions button:hover{background:#f1f5f4}
+    .ri-photo-stage{position:relative;flex:1;min-height:0;overflow:hidden;display:flex;align-items:center;justify-content:center;touch-action:none;cursor:grab;background:#111}
+    .ri-photo-stage.dragging{cursor:grabbing}.ri-photo-stage img{display:block;max-width:none;max-height:none;user-select:none;-webkit-user-drag:none;transform-origin:center center;will-change:transform}
+    .ri-photo-hint{position:absolute;left:10px;bottom:10px;padding:5px 7px;border-radius:6px;background:rgba(0,0,0,.55);color:#fff;font-size:8px;pointer-events:none}
+    @media(max-width:700px){.ri-evidence-summary{grid-template-columns:repeat(2,1fr)}.ri-photo-viewer{height:86vh}}
   `;
   document.head.appendChild(style);
 
@@ -47,9 +55,40 @@
   }
 
   function openPhotoEditor(photo){ const d=ensurePhotoDialog(); get('ri-photo-dialog-title').textContent=photo?'Edytuj zdjęcie':'Dodaj zdjęcie'; get('ri-photo-id').value=photo?.id||''; get('ri-photo-name').value=photo?.name||''; get('ri-photo-view').value=photo?.view||'custom'; get('ri-photo-file').value=''; d.showModal(); }
+
+  const viewerState={photo:null,scale:1,min:0.1,max:6,x:0,y:0,dragging:false,lastX:0,lastY:0};
+  function ensurePhotoViewer(){
+    if(get('ri-photo-viewer')) return get('ri-photo-viewer');
+    const d=document.createElement('dialog'); d.id='ri-photo-viewer'; d.className='ri-photo-viewer';
+    d.innerHTML=`<div class="ri-photo-viewer-shell"><div class="ri-photo-viewer-bar"><strong id="ri-photo-viewer-title">Podgląd zdjęcia</strong><div class="ri-photo-viewer-actions"><button type="button" id="ri-photo-zoom-out">−</button><button type="button" id="ri-photo-zoom-reset">100%</button><button type="button" id="ri-photo-zoom-in">＋</button><button type="button" id="ri-photo-viewer-close">Zamknij</button></div></div><div id="ri-photo-stage" class="ri-photo-stage"><img id="ri-photo-viewer-img" alt=""><span class="ri-photo-hint">Kółko myszy: zoom · przeciągnij: przesuwanie</span></div></div>`;
+    document.body.appendChild(d);
+    get('ri-photo-viewer-close').onclick=()=>d.close();
+    get('ri-photo-zoom-in').onclick=()=>setPhotoZoom(viewerState.scale*1.25);
+    get('ri-photo-zoom-out').onclick=()=>setPhotoZoom(viewerState.scale/1.25);
+    get('ri-photo-zoom-reset').onclick=()=>resetPhotoZoom();
+    const stage=get('ri-photo-stage');
+    stage.addEventListener('wheel',e=>{e.preventDefault();setPhotoZoom(viewerState.scale*(e.deltaY<0?1.15:1/1.15));},{passive:false});
+    stage.addEventListener('pointerdown',e=>{viewerState.dragging=true;viewerState.lastX=e.clientX;viewerState.lastY=e.clientY;stage.classList.add('dragging');stage.setPointerCapture?.(e.pointerId);});
+    stage.addEventListener('pointermove',e=>{if(!viewerState.dragging)return;viewerState.x+=e.clientX-viewerState.lastX;viewerState.y+=e.clientY-viewerState.lastY;viewerState.lastX=e.clientX;viewerState.lastY=e.clientY;applyPhotoTransform();});
+    const stop=e=>{viewerState.dragging=false;stage.classList.remove('dragging');try{stage.releasePointerCapture?.(e.pointerId);}catch{}};
+    stage.addEventListener('pointerup',stop);stage.addEventListener('pointercancel',stop);
+    d.addEventListener('close',()=>{viewerState.photo=null;});
+    return d;
+  }
+  function applyPhotoTransform(){const img=get('ri-photo-viewer-img');if(img)img.style.transform=`translate(${viewerState.x}px,${viewerState.y}px) scale(${viewerState.scale})`;const b=get('ri-photo-zoom-reset');if(b)b.textContent=`${Math.round(viewerState.scale*100)}%`;}
+  function setPhotoZoom(value){viewerState.scale=Math.max(viewerState.min,Math.min(viewerState.max,value));applyPhotoTransform();}
+  function resetPhotoZoom(){viewerState.scale=1;viewerState.x=0;viewerState.y=0;applyPhotoTransform();}
+  function openPhotoViewer(photo){
+    if(!photo?.data)return;
+    const d=ensurePhotoViewer();viewerState.photo=photo;resetPhotoZoom();get('ri-photo-viewer-title').textContent=photo.name||'Podgląd zdjęcia';const img=get('ri-photo-viewer-img');img.src=photo.data;img.alt=photo.name||'Zdjęcie regionu';d.showModal();
+  }
+
   function renderPhotoGallery(){
     const host=get('ri-photo-gallery'); if(!host)return; const photos=regionPhotos();
-    host.innerHTML=photos.length?photos.map(p=>`<article class="ri-photo-card" data-photo-id="${escapeHtml(p.id)}"><img src="${p.data}" alt="${escapeHtml(p.name)}"><div class="ri-photo-card-body"><span class="ri-photo-name">${escapeHtml(p.name)}</span><span class="ri-photo-meta">${escapeHtml(p.view||'własny')}</span><div class="ri-photo-actions"><button type="button" data-photo-edit="${escapeHtml(p.id)}">Edytuj</button><button type="button" data-photo-delete="${escapeHtml(p.id)}">Usuń</button></div></div></article>`).join(''):'<div class="ri-photo-empty">Brak własnych zdjęć dla tego regionu. Dodaj pierwsze zdjęcie.</div>';
+    host.innerHTML=photos.length?photos.map(p=>`<article class="ri-photo-card" data-photo-id="${escapeHtml(p.id)}"><img src="${p.data}" alt="${escapeHtml(p.name)}" title="Kliknij, aby powiększyć"><div class="ri-photo-card-body"><span class="ri-photo-name">${escapeHtml(p.name)}</span><span class="ri-photo-meta">${escapeHtml(p.view||'własny')}</span><div class="ri-photo-actions"><button type="button" data-photo-zoom="${escapeHtml(p.id)}">Powiększ</button><button type="button" data-photo-edit="${escapeHtml(p.id)}">Edytuj</button><button type="button" data-photo-delete="${escapeHtml(p.id)}">Usuń</button></div></div></article>`).join(''):'<div class="ri-photo-empty">Brak własnych zdjęć dla tego regionu. Dodaj pierwsze zdjęcie.</div>';
+    host.querySelectorAll('img[data-noop]').forEach(()=>{});
+    host.querySelectorAll('.ri-photo-card img').forEach(img=>img.onclick=()=>{const p=readPhotos().find(x=>x.id===img.closest('.ri-photo-card')?.dataset.photoId);if(p)openPhotoViewer(p);});
+    host.querySelectorAll('[data-photo-zoom]').forEach(b=>b.onclick=()=>{const p=readPhotos().find(x=>x.id===b.dataset.photoZoom);if(p)openPhotoViewer(p);});
     host.querySelectorAll('[data-photo-edit]').forEach(b=>b.onclick=()=>{const p=readPhotos().find(x=>x.id===b.dataset.photoEdit);if(p)openPhotoEditor(p);});
     host.querySelectorAll('[data-photo-delete]').forEach(b=>b.onclick=()=>{if(!confirm('Usunąć to zdjęcie z tego regionu?'))return;writePhotos(readPhotos().filter(x=>x.id!==b.dataset.photoDelete));renderPhotoGallery();});
   }
