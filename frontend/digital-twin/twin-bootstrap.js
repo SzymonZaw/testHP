@@ -3,13 +3,16 @@
   const log = (step, detail = '') => {
     const line = document.createElement('div');
     line.className = 'twin-boot-line';
+    // Keep a stable machine-readable identifier separate from the visible
+    // label. The Polish i18n layer is allowed to translate the label without
+    // breaking subsequent mark() calls.
+    line.dataset.stepId = step;
     line.innerHTML = `<span class="twin-boot-mark">…</span><strong>${escapeHtml(step)}</strong><span>${escapeHtml(detail)}</span>`;
     document.getElementById('twin-boot-lines')?.appendChild(line);
     window.dispatchEvent(new CustomEvent('testhp:twin-progress', { detail: { step, detail } }));
   };
   const mark = (step, ok = true, detail = '') => {
-    const rows = [...document.querySelectorAll('#twin-boot-lines .twin-boot-line')];
-    const row = rows.find(x => x.querySelector('strong')?.textContent === step);
+    const row = document.querySelector(`#twin-boot-lines .twin-boot-line[data-step-id="${CSS.escape(step)}"]`);
     if (!row) return;
     row.querySelector('.twin-boot-mark').textContent = ok ? '✓' : '✕';
     row.classList.toggle('ok', ok);
