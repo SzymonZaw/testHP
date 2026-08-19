@@ -1,9 +1,20 @@
 (() => {
-  const panel=document.createElement('section');panel.className='panel';panel.id='stages-5-8-panel';panel.innerHTML=`<div class="panel-title"><div><span class="section-kicker">DIGITAL TWIN ENGINE</span><strong>STAGES 5–8</strong></div><span class="research-badge">RESEARCH ONLY</span></div><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;padding:16px"><article class="state-card"><span>Evidence layer</span><strong id="s58-evidence">Initialising</strong><small>Stage 5 · spatially attached observations</small></article><article class="state-card"><span>Anatomy</span><strong id="s58-anatomy">Skin + skeleton</strong><small>Stage 6 · depth context</small></article><article class="state-card"><span>Progressive resolution</span><strong id="s58-resolution">Macro → tissue → cell</strong><small>Stage 7 · context preserved</small></article><article class="state-card"><span>Longitudinal</span><strong id="s58-longitudinal">T0 · ready for T1</strong><small>Stage 8 · time-aware twin</small></article></div><div id="s58-findings" style="padding:0 16px 16px"></div>`;document.querySelector('.timeline')?.after(panel);
-  const findings=document.getElementById('s58-findings'),set=(id,v)=>{const e=document.getElementById(id);if(e)e.textContent=v;};
-  import('/digital-twin/hand-surface-engine.js').then(({STAGES})=>{
-    set('s58-evidence',STAGES[5]);set('s58-anatomy',STAGES[6]);set('s58-resolution',STAGES[7]);set('s58-longitudinal',STAGES[8]);findings.textContent='Canonical stage engine loaded. Evidence remains research data; navigation targets do not imply biological findings.';
-    const wire=()=>{const surface=document.getElementById('hand-surface-canvas'),base=document.getElementById('twin-canvas');if(!surface||!base)return;surface.addEventListener('click',event=>{if(base.style.pointerEvents==='none')return;const r=surface.getBoundingClientRect();base.dispatchEvent(new MouseEvent('click',{bubbles:true,clientX:event.clientX,clientY:event.clientY,button:event.button,buttons:event.buttons,detail:event.detail,screenX:event.screenX,screenY:event.screenY}));});};
-    if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',wire,{once:true});else setTimeout(wire,0);
-  }).catch(error=>{findings.textContent='Hand surface engine unavailable; legacy viewport remains active.';console.debug('Canonical hand surface engine:',error);});
+  const panel=document.createElement('section');
+  panel.className='panel';
+  panel.id='stages-5-8-panel';
+  panel.innerHTML=`<div class="panel-title"><div><span class="section-kicker">DIGITAL TWIN ENGINE</span><strong>STAGES 5–8</strong></div><span class="research-badge">RESEARCH ONLY</span></div><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;padding:16px"><article class="state-card"><span>Evidence layer</span><strong id="s58-evidence">Evidence layer</strong><small>Stage 5 · spatially attached observations</small></article><article class="state-card"><span>Anatomy</span><strong id="s58-anatomy">Anatomical structure</strong><small>Stage 6 · depth context</small></article><article class="state-card"><span>Progressive resolution</span><strong id="s58-resolution">Progressive biological resolution</strong><small>Stage 7 · context preserved</small></article><article class="state-card"><span>Longitudinal</span><strong id="s58-longitudinal">Longitudinal twin</strong><small>Stage 8 · time-aware twin</small></article></div><div id="s58-findings" style="padding:0 16px 16px"></div>`;
+
+  const mount=()=>{
+    const anchor=document.querySelector('.timeline');
+    if(anchor && !document.getElementById('stages-5-8-panel')) anchor.after(panel);
+    const findings=document.getElementById('s58-findings');
+    if(findings) findings.textContent='Stages 5–8 registered. Evidence is explicit research data; navigation targets do not imply biological findings.';
+  };
+
+  // Keep the critical boot path independent of the hand-surface engine.
+  // hand-surface-engine.js owns its own renderer, OrbitControls dependency and
+  // async evidence loading. Importing it here can block startup on a CDN/module
+  // request, so it must not be part of stages 5–8 bootstrap.
+  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',mount,{once:true});
+  else mount();
 })();
