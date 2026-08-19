@@ -94,6 +94,8 @@ import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.m
     manager.activeKey = `${currentLevel}|${currentTarget}`;
 
     if (isMacro || !currentChildren.length) {
+      // Deep levels own the interaction pool. Never leave the canonical
+      // macro-region meshes clickable after a deep render has replaced them.
       manager.active.clickable = isMacro ? [...(manager.active.clickable || [])] : [];
       return true;
     }
@@ -177,8 +179,9 @@ import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.m
     const manager = window.spatialViewportManager;
     if (!managerReady()) return false;
     const rect = canvas.getBoundingClientRect();
-    pointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
-    pointer.y = -(((event.clientY - rect.top) / rect.height) * 2 - 1);
+    if (!rect.width || !rect.height) return false;
+    pointer.x = Math.max(-1, Math.min(1, ((event.clientX - rect.left) / rect.width) * 2 - 1));
+    pointer.y = Math.max(-1, Math.min(1, -(((event.clientY - rect.top) / rect.height) * 2 - 1)));
     raycaster.setFromCamera(pointer, manager.active.camera);
     const hit = raycaster.intersectObjects(deepGroup.children, true).find(x => x.object?.userData?.navigationLabel);
     if (!hit) return false;
@@ -196,6 +199,29 @@ import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.m
     event.preventDefault();
     event.stopImmediatePropagation();
   }, true);
+
+  // The canonical manager emits this event AFTER replacing `active`. Rebuild
+  // immediately so the deep scene and clickable pool cannot be stale for a
+  // render tick (the previous 100 ms polling window was race-prone).
+  window.addEventListener('testhp:viewport-rendered', () => {
+    if (managerReady()) {
+      rebuild();
+      window.spatialViewportManager.active.renderer?.render?.(
+        window.spatialViewportManager.active.scene,
+        window.spatialViewportManager.active.camera
+      );
+    }
+  }, true);
+
+  // Navigation changes are the authoritative source of activeKey. Synchronize
+  // it immediately instead of waiting for the next renderer cycle.
+  window.addEventListener('testhp:spatial-layer-changed', event => {
+    const manager = window.spatialViewportManager;
+    const detail = event.detail || {};
+    if (!manager || !detail.level) return;
+    manager.activeKey = `${String(detail.level).toLowerCase()}|${detail.target || 'spatial-target'}`;
+    rebuild();
+  });
 
   const observer = new MutationObserver(() => {
     hookManager();
