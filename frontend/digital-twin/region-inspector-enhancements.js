@@ -38,7 +38,7 @@
     const help = document.createElement('div');
     help.id = 'ri-help';
     help.className = 'ri-help';
-    help.innerHTML = '<strong>Wybrany region</strong>Ten panel pokazuje dane przypisane bezpośrednio do zaznaczonego miejsca. Macro to fotografie powierzchni, Tissue to WSI, Cellular to mikroskopia, a Molecular to pomiary molekularne. Brak danych oznacza brak jawnie przypiętego rekordu — system nie tworzy evidence automatycznie.';
+    help.innerHTML = '<strong>Wybrany region</strong>Ten panel pokazuje dane przypisane bezpośrednio do zaznaczonego miejsca. Makro oznacza fotografie powierzchni, tkanka — dane WSI, komórkowe — mikroskopię, a molekularne — pomiary molekularne. Brak danych oznacza brak jawnie przypiętego rekordu — system nie tworzy danych automatycznie.';
     tools.after(help);
     get('ri-help-toggle').onclick = () => {
       help.classList.toggle('open');
@@ -48,19 +48,19 @@
     const summary = document.createElement('div');
     summary.id = 'ri-evidence-summary';
     summary.className = 'ri-evidence-summary';
-    summary.innerHTML = ['Macro','Tissue','Cellular','Molecular'].map(label => `<div class="ri-evidence-chip" data-ri-chip="${label.toLowerCase()}"><strong>—</strong><span>${label}</span></div>`).join('');
+    summary.innerHTML = [['macro','Makro'],['tissue','Tkanka'],['cellular','Komórkowe'],['molecular','Molekularne']].map(([key,label]) => `<div class="ri-evidence-chip" data-ri-chip="${key}"><strong>—</strong><span>${label}</span></div>`).join('');
     help.after(summary);
 
     const workflow = document.createElement('div');
     workflow.id = 'ri-workflow';
     workflow.className = 'ri-workflow';
-    workflow.innerHTML = '<strong>Evidence workflow</strong><br>attached → prepared → registered → ready for 3D projection';
+    workflow.innerHTML = '<strong>Przepływ danych</strong><br>przypisane → przygotowane → zarejestrowane → gotowe do projekcji 3D';
     summary.after(workflow);
 
     const actions = document.createElement('div');
     actions.id = 'ri-action-row';
     actions.className = 'ri-action-row';
-    actions.innerHTML = '<button type="button" id="ri-add">＋ Add observation</button><button type="button" id="ri-manage">Manage observations</button>';
+    actions.innerHTML = '<button type="button" id="ri-add">＋ Dodaj obserwację</button><button type="button" id="ri-manage">Zarządzaj obserwacjami</button>';
     workflow.after(actions);
 
     get('ri-add').onclick = () => {
@@ -82,12 +82,12 @@
       cellular: get('cellular-state')?.textContent || '—',
       molecular: get('molecular-state')?.textContent || '—'
     };
-    Object.entries(values).forEach(([key, value]) => {
+    Object.entries(values).forEach(([key,value]) => {
       const chip = document.querySelector(`[data-ri-chip="${key}"]`);
       if (!chip) return;
       const strong = chip.querySelector('strong');
       if (strong && strong.textContent !== value) strong.textContent = value;
-      const available = !/unavailable|no evidence|not shown|navigation only|—/i.test(value);
+      const available = !/niedostępne|brak danych|nie pokazano|tylko dane nadrzędne|—/i.test(value);
       chip.classList.toggle('available', available);
     });
   }
@@ -102,10 +102,8 @@
       if (running) return;
       running = true;
       observer.disconnect();
-      try {
-        ensureTools();
-        updateSummary();
-      } finally {
+      try { ensureTools(); updateSummary(); }
+      finally {
         const inspector = document.querySelector('.inspector');
         if (inspector) observer.observe(inspector, {subtree:true, childList:true, characterData:true});
         running = false;
@@ -119,7 +117,5 @@
     const inspector = document.querySelector('.inspector');
     if (inspector) observer.observe(inspector, {subtree:true, childList:true, characterData:true});
   };
-
-  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start, {once:true});
-  else start();
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start, {once:true}); else start();
 })();
