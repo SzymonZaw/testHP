@@ -5,13 +5,12 @@
   const status = document.getElementById('twin-status');
   if (!loading || !canvas || !viewport) return;
 
+  // app.js is the sole owner of the canonical Three.js renderer. This boot
+  // module only verifies readiness; it must never call render() or dispatch
+  // synthetic resize events because both can recursively trigger renderer
+  // observers during startup.
   const progress = (step, detail = '') => window.dispatchEvent(new CustomEvent('testhp:twin-progress', { detail: { step, detail } }));
   const isCanonical = manager => !!(manager && manager.version === 'canonical-three-1' && manager.active?.scene && manager.active?.camera && manager.deepRenderer);
-
-  const syncSize = () => {
-    window.dispatchEvent(new Event('resize'));
-    progress('viewport-size-sync', `${Math.round(viewport.clientWidth)}x${Math.round(viewport.clientHeight)} css / ${canvas.width}x${canvas.height} buffer`);
-  };
 
   const hideLoading = (message = 'Digital Twin ready') => {
     loading.hidden = true;
@@ -36,7 +35,6 @@
     try {
       progress('canvas-check');
       if (!canvas.isConnected) throw new Error('Twin canvas is not connected to the DOM');
-      syncSize();
       progress('manager-check');
       const manager = window.spatialViewportManager;
       if (!manager) return false;
@@ -44,8 +42,6 @@
         progress('manager-rejected', `version=${manager.version || 'unknown'}; waiting for canonical-three-1`);
         return false;
       }
-      progress('render-call');
-      manager.render?.();
       progress('webgl-check');
       const gl = canvas.getContext('webgl2') || canvas.getContext('webgl');
       if (!gl) {
@@ -77,7 +73,5 @@
     }
   }, 250);
 
-  const resizeObserver = new ResizeObserver(() => syncSize());
-  resizeObserver.observe(viewport);
-  window.addEventListener('beforeunload', () => { clearInterval(timer); resizeObserver.disconnect(); }, { once: true });
+  window.addEventListener('beforeunload', () => clearInterval(timer), { once: true });
 })();
