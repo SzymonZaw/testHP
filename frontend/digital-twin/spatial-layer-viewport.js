@@ -21,6 +21,7 @@ import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.m
 
   let lastSignature = '';
   let deepGroup = null;
+  let lastVisualState = '';
   const raycaster = new THREE.Raycaster();
   const pointer = new THREE.Vector2();
 
@@ -90,25 +91,48 @@ import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.m
     });
   }
 
+  function focusDeepView(manager, state) {
+    if (!manager?.active?.camera || !manager.active?.controls || state === lastVisualState) return;
+    const camera = manager.active.camera;
+    const controls = manager.active.controls;
+    camera.position.set(0, 0.8, 7.2);
+    controls.target.set(0, 0.2, 0);
+    controls.update();
+    lastVisualState = state;
+  }
+
   function buildDeepGeometry() {
     const manager = window.spatialViewportManager;
     if (!manager?.active?.root || !manager.active?.scene) return;
     const currentLevel = level();
+    const currentTarget = target();
+    const currentPath = crumbs().join(' > ');
     const currentChildren = children();
+    const state = `${currentLevel}|${currentPath}|${currentTarget}`;
 
     const root = manager.active.root;
-    root.visible = currentLevel === 'macro' || currentLevel === 'macro anatomy';
+    const isMacro = currentLevel === 'macro' || currentLevel === 'macro anatomy';
+    root.visible = isMacro;
 
     const group = ensureDeepGroup();
     if (!group) return;
+    group.visible = !isMacro;
     clearDeepGroup();
-    group.visible = !(currentLevel === 'macro' || currentLevel === 'macro anatomy');
-    if (!group.visible || !currentChildren.length) return;
+
+    manager.activeKey = `${currentLevel}|${currentTarget}`;
+    manager.active = {
+      ...manager.active,
+      clickable: group.visible ? group.children : manager.active.clickable
+    };
+
+    if (isMacro || !currentChildren.length) return;
 
     const isTissue = currentLevel.includes('tissue');
     const isCellular = currentLevel.includes('cellular');
     const isCell = currentLevel.includes('single') || currentLevel.includes('cell');
     if (!isTissue && !isCellular && !isCell) return;
+
+    focusDeepView(manager, state);
 
     const spacing = isCell ? 1.65 : 2.25;
     const geometry = isTissue
@@ -127,8 +151,8 @@ import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.m
       group.add(mesh);
     });
 
-    // Keep the navigation layer centred on the viewport. It is deliberately
-    // schematic: it represents a navigation target, never fabricated biology.
+    // Schematic navigation geometry only. It represents a spatial target,
+    // never fabricated biological evidence.
     group.position.set(0, 0.25, 0);
   }
 
@@ -199,12 +223,6 @@ import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.m
     publish('manager-ready');
   });
   window.addEventListener('beforeunload', () => observer.disconnect(), { once: true });
-
-  const originalBuildHook = window.__testhpDeepLayerRebuild;
-  window.__testhpDeepLayerRebuild = () => {
-    if (typeof originalBuildHook === 'function') originalBuildHook();
-    buildDeepGeometry();
-  };
 
   buildDeepGeometry();
   publish('initial');
