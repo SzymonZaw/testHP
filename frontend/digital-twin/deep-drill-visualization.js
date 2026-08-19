@@ -3,10 +3,7 @@
   const badge = document.getElementById('spatial-level-badge');
   const node = document.getElementById('spatial-node');
   const children = document.getElementById('spatial-children');
-  const baseCanvas = document.getElementById('twin-canvas');
-  const hint = viewport?.querySelector('.viewer-hint');
-  const controls = viewport?.querySelector('.viewer-controls');
-  if (!viewport || !badge || !node || !children || !baseCanvas) return;
+  if (!viewport || !badge || !node || !children) return;
 
   const panel = document.createElement('section');
   panel.id = 'deep-drill-visualization';
@@ -44,27 +41,10 @@
   const target = () => node.querySelector('strong')?.textContent?.trim() || 'Spatial target';
   const childCount = () => children.querySelectorAll('.spatial-target').length;
 
-  function isolateMacroCanvas(deep) {
-    // The canonical macro renderer lives on twin-canvas. While drilling down,
-    // it must be completely removed from both the visual and pointer-event
-    // stacks. Otherwise the macro hand can remain visible through the deep
-    // visualization and OrbitControls can still rotate it underneath.
-    baseCanvas.style.display = deep ? 'none' : 'block';
-    baseCanvas.style.visibility = deep ? 'hidden' : 'visible';
-    baseCanvas.style.pointerEvents = deep ? 'none' : 'auto';
-
-    if (hint) hint.style.visibility = deep ? 'hidden' : 'visible';
-    if (controls) controls.style.visibility = deep ? 'hidden' : 'visible';
-
-    viewport.dataset.activeVisualization = deep ? `deep:${level()}` : 'macro';
-  }
-
   function render() {
     const current = level();
-    const deep = current !== 'macro';
-    isolateMacroCanvas(deep);
     panel.replaceChildren();
-    if (!deep) { panel.style.display = 'none'; return; }
+    if (current === 'macro') { panel.style.display = 'none'; return; }
     panel.style.display = 'block';
 
     const shell = document.createElement('div'); shell.className = 'ddv-shell';
@@ -91,6 +71,5 @@
   const observer = new MutationObserver(render);
   [badge, node, children].forEach(el => observer.observe(el, { childList: true, subtree: true, characterData: true }));
   window.addEventListener('resize', render, { passive: true });
-  window.addEventListener('beforeunload', () => observer.disconnect(), { once: true });
   render();
 })();
