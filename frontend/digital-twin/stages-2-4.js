@@ -4,11 +4,32 @@
   const $=id=>document.getElementById(id),wait=ms=>new Promise(r=>setTimeout(r,ms));
   const tf=(url,options={},ms=8000)=>{const c=new AbortController(),t=setTimeout(()=>c.abort(),ms);return fetch(url,{...options,signal:c.signal}).finally(()=>clearTimeout(t));};
   const slug=v=>String(v||'').toLowerCase().trim().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'');
-  const childId=(p,l)=>{const k=String(l||'').toLowerCase().trim(),d={palm:'palm',thumb:'thumb',index:'index',middle:'middle',ring:'ring',little:'little',wrist:'wrist',thenar:'thenar',hypothenar:'hypothenar','central palm':'central-palm'};if(d[k])return d[k];if(k==='proximal segment')return`${p}-proximal`;if(k==='middle segment')return`${p}-middle`;if(k==='distal segment')return`${p}-distal`;const f=k.match(/microscopy field\s*([abc])/i);if(f)return`${p}-field-${f[1].toLowerCase()}`;const c=k.match(/cell target\s*(\d+)/i);if(c)return`${p}-cell-${c[1]}`;return slug(l);};
+  const childId=(p,l)=>{
+    const k=String(l||'').toLowerCase().trim();
+    const d={
+      palm:'palm','śródręcze':'palm',
+      thumb:'thumb','kciuk':'thumb',
+      index:'index','palec wskazujący':'index',
+      middle:'middle','palec środkowy':'middle',
+      ring:'ring','palec serdeczny':'ring',
+      little:'little','mały palec':'little',
+      wrist:'wrist','nadgarstek':'wrist',
+      thenar:'thenar','kłąb kciuka':'thenar',
+      hypothenar:'hypothenar','kłębik dłoni':'hypothenar',
+      'central palm':'central-palm','centralna część dłoni':'central-palm'
+    };
+    if(d[k])return d[k];
+    if(k==='proximal segment'||k==='odcinek bliższy')return`${p}-proximal`;
+    if(k==='middle segment'||k==='odcinek środkowy')return`${p}-middle`;
+    if(k==='distal segment'||k==='odcinek dalszy')return`${p}-distal`;
+    const f=k.match(/(?:microscopy field|pole mikroskopowe)\s*([abc])/i);if(f)return`${p}-field-${f[1].toLowerCase()}`;
+    const c=k.match(/(?:cell target|cel komórkowy)\s*(\d+)/i);if(c)return`${p}-cell-${c[1]}`;
+    return slug(l);
+  };
   const labels=()=>[...document.querySelectorAll('#spatial-breadcrumb button')].map(b=>b.textContent.trim()).filter(Boolean);
   const nodeId=()=>{const ls=labels();if(!ls.length)return'hand';const ids=['hand'];ls.slice(1).forEach(l=>ids.push(childId(ids.at(-1),l)));return ids.join('/');};
   const sync=()=>{const id=nodeId(),ls=labels(),label=ls.length?ls.join(' > '):'Hand';window.spatialEvidenceTarget=id;window.selectedSpatialNode=id;document.body.dataset.spatialTarget=id;const t=$('evidence-target-label');if(t)t.textContent=` · ${label}`;window.dispatchEvent(new CustomEvent('testhp:spatial-target-changed',{detail:{spatial_target_id:id,label}}));return id;};
-  const ensureTarget=()=>{const bc=$('spatial-breadcrumb');if(!bc)return false;const ls=labels();if(!ls.length)return false;if(ls.length===1&&ls[0].toLowerCase()==='hand'){const palm=[...document.querySelectorAll('#spatial-children button')].find(b=>b.textContent.trim().toLowerCase().startsWith('palm'));if(palm){palm.click();return true;}return false;}sync();return true;};
+  const ensureTarget=()=>{const bc=$('spatial-breadcrumb');if(!bc)return false;const ls=labels();if(!ls.length)return false;if(ls.length===1&&(ls[0].toLowerCase()==='hand'||ls[0].toLowerCase()==='dłoń')){const palm=[...document.querySelectorAll('#spatial-children button')].find(b=>{const t=b.textContent.trim().toLowerCase();return t.startsWith('palm')||t.startsWith('śródręcze');});if(palm){palm.click();return true;}return false;}sync();return true;};
   const hideDebug=()=>document.querySelectorAll('*').forEach(el=>{if(el.children.length>8)return;const t=(el.textContent||'').trim();if(/^TWIN-VIEWPORT DEBUG/i.test(t)||/^TWIN-VIEWPORT DEBUGCLEAR/i.test(t)||/^DEBUG$/i.test(t)){el.style.display='none';el.setAttribute('aria-hidden','true');}});
   const clean=()=>document.querySelectorAll('button').forEach(b=>{if(/^\s*[＋+]\s*Add observation\s*$/i.test((b.textContent||'').trim())){if(b.closest('#evidence-workspace'))b.textContent='＋ Add biological observation';else b.remove();}});
   const normalizeImported=(x,target='hand')=>({id:`backend-${x.asset_id}`,backendAssetId:x.asset_id,type:'Macro',sourceType:'upload',target:x.spatial_target_id||target,timepoint:x.timepoint||timepoint,date:x.date||new Date().toISOString().slice(0,10),modality:x.modality||'Hand image',resolution:x.resolution||'',subject:x.subject_id||subjectId,operator:x.operator||'',filename:x.filename||x.view||`hand-${x.asset_id}`,fileData:'',signals:Array.isArray(x.signals)?x.signals:[],annotations:'',comments:'Imported from registered hand evidence.',history:[{at:new Date().toISOString(),action:'imported from registry'}],archived:false});
