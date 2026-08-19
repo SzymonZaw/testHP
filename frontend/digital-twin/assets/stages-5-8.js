@@ -5,25 +5,27 @@
   panel.innerHTML = `
     <div class="panel-title"><div><span class="section-kicker">DIGITAL TWIN ENGINE</span><strong>STAGES 5–8</strong></div><span class="research-badge">RESEARCH ONLY</span></div>
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;padding:16px">
-      <article class="state-card"><span>Longitudinal</span><strong id="s58-longitudinal">Awaiting observations</strong><small>Stage 5 · change over time</small></article>
-      <article class="state-card"><span>Prediction</span><strong id="s58-prediction">Not established</strong><small>Stage 6 · trajectory extrapolation</small></article>
-      <article class="state-card"><span>Research Copilot</span><strong id="s58-copilot">No summary</strong><small>Stage 7 · evidence interpretation</small></article>
-      <article class="state-card"><span>Human Twin</span><strong id="s58-human">Hand scope</strong><small>Stage 8 · extensible body architecture</small></article>
+      <article class="state-card"><span>Evidence layer</span><strong id="s58-evidence">Initialising</strong><small>Stage 5 · spatially attached observations</small></article>
+      <article class="state-card"><span>Anatomy</span><strong id="s58-anatomy">Skin + skeleton</strong><small>Stage 6 · depth context</small></article>
+      <article class="state-card"><span>Progressive resolution</span><strong id="s58-resolution">Macro → tissue → cell</strong><small>Stage 7 · context preserved</small></article>
+      <article class="state-card"><span>Longitudinal</span><strong id="s58-longitudinal">T0 · ready for T1</strong><small>Stage 8 · time-aware twin</small></article>
     </div>
     <div id="s58-findings" style="padding:0 16px 16px"></div>`;
-  const timeline = document.querySelector('.timeline');
-  timeline?.after(panel);
+  document.querySelector('.timeline')?.after(panel);
 
-  async function getJSON(url, options) { const r = await fetch(url, options); if (!r.ok) throw new Error(await r.text()); return r.json(); }
-  async function refresh() {
-    try {
-      const human = await getJSON('/api/human-twin?subject_id=own_cohort');
-      document.getElementById('s58-human').textContent = (human.twin?.systems || ['hand']).join(', ');
-      const copilot = await getJSON('/api/copilot/stage7', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({subject_id:'own_cohort',node_id:'hand',observations:[]})});
-      document.getElementById('s58-copilot').textContent = copilot.findings?.length ? 'Summary ready' : 'No summary';
-      const findingBox = document.getElementById('s58-findings');
-      findingBox.textContent = copilot.summary || 'No research interpretation is available for the current evidence.';
-    } catch (e) { console.debug('Stages 5-8 panel:', e); }
-  }
-  refresh();
+  const findings = document.getElementById('s58-findings');
+  const set = (id, value) => { const e=document.getElementById(id); if(e)e.textContent=value; };
+
+  import('/digital-twin/hand-surface-engine.js')
+    .then(({STAGES}) => {
+      set('s58-evidence', STAGES[5]);
+      set('s58-anatomy', STAGES[6]);
+      set('s58-resolution', STAGES[7]);
+      set('s58-longitudinal', STAGES[8]);
+      findings.textContent = 'Canonical stage engine loaded. Evidence remains research data; navigation targets do not imply biological findings.';
+    })
+    .catch(error => {
+      findings.textContent = 'Hand surface engine unavailable; legacy viewport remains active.';
+      console.debug('Canonical hand surface engine:', error);
+    });
 })();
