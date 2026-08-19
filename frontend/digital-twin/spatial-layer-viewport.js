@@ -1,10 +1,6 @@
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js';
 
 (() => {
-  // Bridge around the canonical Three.js viewport owned by app.js.
-  // This module never creates a second renderer. It only adds/removes
-  // navigation-only geometry inside the canonical scene and lets the
-  // existing animation loop render it.
   const viewport = document.getElementById('twin-viewport');
   const canvas = document.getElementById('twin-canvas');
   if (!viewport || !canvas) return;
@@ -54,11 +50,14 @@ import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.m
 
   function clearDeepGroup() {
     if (!deepGroup) return;
-    deepGroup.traverse(object => {
-      if (!object.isMesh) return;
-      object.geometry?.dispose?.();
-      if (Array.isArray(object.material)) object.material.forEach(m => m.dispose?.());
-      else object.material?.dispose?.();
+    const objects = [...deepGroup.children];
+    objects.forEach(object => {
+      object.traverse(child => {
+        if (!child.isMesh) return;
+        child.geometry?.dispose?.();
+        if (Array.isArray(child.material)) child.material.forEach(m => m.dispose?.());
+        else child.material?.dispose?.();
+      });
     });
     deepGroup.clear();
   }
@@ -151,11 +150,13 @@ import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.m
     });
 
     manager.active = { ...manager.active, clickable: [...group.children] };
-
-    // Schematic navigation geometry only. It represents a spatial target,
-    // never fabricated biological evidence.
     group.position.set(0, 0.25, 0);
   }
+
+  // app.js owns the renderer and periodically rebuilds its public `active`
+  // descriptor. Register a post-render hook so that the deep navigation layer
+  // is reapplied after every canonical render instead of being silently lost.
+  window.testhpViewportPostRender = buildDeepGeometry;
 
   function clickSpatialTarget(label) {
     const button = [...document.querySelectorAll('#spatial-children .spatial-target')]
@@ -199,9 +200,6 @@ import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.m
     return navigated;
   }
 
-  // In deep layers the canonical macro click handler must not receive the
-  // event. We raycast the navigation-only layer first and then route the hit
-  // through the existing DOM spatial target button, keeping one source of truth.
   canvas.addEventListener('click', event => {
     const currentLevel = level();
     if (currentLevel === 'macro' || currentLevel === 'macro anatomy') return;
