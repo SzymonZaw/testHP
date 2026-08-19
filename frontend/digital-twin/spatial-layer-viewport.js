@@ -102,9 +102,6 @@ import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.m
   function setClickable(manager, objects) {
     const clickable = [...objects];
     manager.active.deepClickable = clickable;
-    // Keep the canonical manager's public clickable pool aligned with the
-    // currently displayed layer. The deep pool is also kept separately so
-    // diagnostics cannot mistake the macro meshes for deep targets.
     manager.active.clickable = clickable;
   }
 
@@ -236,6 +233,18 @@ import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.m
     return navigated;
   }
 
+  // app.js owns the canonical canvas click handler and raycasts the seven
+  // macro meshes. Those meshes remain registered even when visually hidden,
+  // so a click on a deep 3D target can otherwise fall through and reset the
+  // spatial path back to the macro region. Capture the click here and make
+  // the deep layer the sole owner of selection while it is active.
+  canvas.addEventListener('click', event => {
+    if (level() === 'macro' || level() === 'macro anatomy' || !deepGroup?.visible) return;
+    handleDeepClick(event);
+    event.preventDefault();
+    event.stopImmediatePropagation();
+  }, true);
+
   canvas.addEventListener('pointerdown', event => {
     if (level() === 'macro' || level() === 'macro anatomy' || !deepGroup?.visible) {
       pointerDown = null;
@@ -248,7 +257,6 @@ import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.m
     if (!pointerDown || pointerDown.pointerId !== event.pointerId) return;
     const moved = Math.hypot(event.clientX - pointerDown.x, event.clientY - pointerDown.y);
     pointerDown = null;
-    // Let OrbitControls own real drags. A short press is treated as selection.
     if (moved > 7) return;
     const navigated = handleDeepClick(event);
     if (navigated) {
