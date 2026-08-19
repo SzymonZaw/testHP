@@ -1,23 +1,24 @@
 /* Hand Surface · Stages 9–10
- * Rendering-only infrastructure: projection/scaffold state never creates evidence.
+ * Rendering infrastructure never creates biological evidence.
  */
 
 export const HAND_SURFACE_STAGES_9_10 = Object.freeze({
   stage9: {
     id: 'surface-projection',
-    status: 'prototype',
+    status: 'implemented',
     projectionSpace: 'hand-surface',
     sources: ['front', 'back', 'left', 'right'],
-    registration: 'landmark-assisted',
-    blend: 'weighted-multiview',
-    confidence: 'not-validated',
+    registration: 'landmark-assisted-ready',
+    blend: 'normal-weighted-multiview',
+    confidence: 'asset/registration metadata required',
   },
   stage10: {
     id: 'anatomical-scaffold',
-    status: 'prototype',
+    status: 'implemented',
     structures: ['bones', 'joints', 'tendons', 'vessels'],
     opacityIndependent: true,
     evidenceGenerating: false,
+    interactionOwner: false,
   },
 });
 
@@ -27,7 +28,7 @@ export function createSurfaceProjectionState(overrides = {}) {
     opacity: 1,
     mode: 'projected',
     sourceViews: [],
-    registration: 'landmark-assisted',
+    registration: 'landmark-assisted-ready',
     confidence: 'not-validated',
     ...overrides,
   };
@@ -36,7 +37,7 @@ export function createSurfaceProjectionState(overrides = {}) {
 export function createAnatomicalScaffoldState(overrides = {}) {
   return {
     enabled: false,
-    opacity: 1,
+    opacity: 0.42,
     visibleStructures: {
       bones: true,
       joints: true,
@@ -49,12 +50,13 @@ export function createAnatomicalScaffoldState(overrides = {}) {
 }
 
 export function getViewportLayerContract({ activeLayer = 'macro', deepActive = false } = {}) {
+  const macroInput = activeLayer === 'macro' && !deepActive;
   return {
     activeLayer,
     deepActive,
-    skin: { rendered: true, input: activeLayer === 'macro' && !deepActive },
-    scaffold: { rendered: true, input: false },
-    evidence: { rendered: true, input: false },
-    deep: { rendered: deepActive, input: deepActive },
+    skin: { rendered: true, input: macroInput, owner: macroInput ? 'hand-surface' : null },
+    scaffold: { rendered: true, input: false, owner: null },
+    evidence: { rendered: true, input: false, owner: null },
+    deep: { rendered: deepActive, input: deepActive, owner: deepActive ? 'deep-drill' : null },
   };
 }
