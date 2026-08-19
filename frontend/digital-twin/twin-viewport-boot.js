@@ -4,12 +4,16 @@
   const status = document.getElementById('twin-status');
   if (!loading || !canvas) return;
 
+  const progress = (step, detail = '') => {
+    window.dispatchEvent(new CustomEvent('testhp:twin-progress', { detail: { step, detail } }));
+  };
+
   const hideLoading = (message = 'Digital Twin ready') => {
     loading.hidden = true;
     loading.setAttribute('aria-hidden', 'true');
-    if (status && (!status.textContent || /starting|building/i.test(status.textContent))) {
-      status.textContent = message;
-    }
+    if (status && (!status.textContent || /starting|building/i.test(status.textContent))) status.textContent = message;
+    window.__testhpTwinReady = true;
+    window.dispatchEvent(new CustomEvent('testhp:twin-ready', { detail: { width: canvas.width, height: canvas.height, renderer: 'WebGL' } }));
   };
 
   const showFailure = (message) => {
@@ -17,40 +21,52 @@
     loading.textContent = message;
     loading.classList.add('viewer-loading-error');
     if (status) status.textContent = 'Twin Viewport error';
+    window.dispatchEvent(new CustomEvent('testhp:twin-error', { detail: { error: new Error(message) } }));
   };
 
   const report = () => {
     try {
+      progress('canvas-check');
+      if (!canvas.isConnected) throw new Error('Twin canvas is not connected to the DOM');
       window.dispatchEvent(new Event('resize'));
-      window.spatialViewportManager?.render?.();
 
+      progress('manager-check');
+      const manager = window.spatialViewportManager;
+      if (!manager) return false;
+
+      progress('render-call');
+      if (typeof manager.render === 'function') manager.render();
+
+      progress('webgl-check');
       const gl = canvas.getContext('webgl2') || canvas.getContext('webgl');
       if (!gl) {
         showFailure('3D rendering is unavailable. Check WebGL support in the browser.');
         return true;
       }
 
+      progress('ready');
       hideLoading();
-      window.dispatchEvent(new CustomEvent('testhp:twin-ready', {
-        detail: { width: canvas.width, height: canvas.height, renderer: 'WebGL' }
-      }));
       return true;
     } catch (error) {
       console.error('[Twin Viewport] bootstrap failed', error);
-      showFailure('Twin Viewport could not initialize. Open DEBUG for details.');
-      window.dispatchEvent(new CustomEvent('testhp:twin-error', { detail: { error } }));
+      showFailure(`Twin Viewport initialization failed: ${error?.message || error}`);
       return true;
     }
   };
 
-  window.addEventListener('error', (event) => {
+  window.addEventListener('error', event => {
     if (event?.message) console.error('[Twin Viewport] runtime error:', event.message);
   });
+  window.addEventListener('unhandledrejection', event => console.error('[Twin Viewport] unhandled rejection:', event.reason));
 
   let attempts = 0;
   const timer = setInterval(() => {
     attempts += 1;
-    if (report() || attempts >= 10) clearInterval(timer);
+    const done = report();
+    if (done || attempts >= 20) {
+      clearInterval(timer);
+      if (!done && !window.__testhpTwinReady) showFailure('Twin Viewport initialization timed out after 5 seconds. Open DEBUG for diagnostics.');
+    }
   }, 250);
 
   window.addEventListener('beforeunload', () => clearInterval(timer), { once: true });
