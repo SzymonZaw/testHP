@@ -24,26 +24,20 @@
     labels.slice(1).forEach((label) => ids.push(childId(ids[ids.length - 1], label)));
     return ids.join('/');
   };
-  const currentLevel = () => (document.getElementById('spatial-level-badge')?.textContent || 'MACRO').toLowerCase().replace(' ', '');
 
-  const hierarchyPanel = document.createElement('section');
-  hierarchyPanel.className = 'panel';
-  hierarchyPanel.innerHTML = `<div class="panel-title"><div><span class="section-kicker">HIERARCHICAL SUMMARY</span><strong>MACRO → TISSUE → CELLULAR → CELL</strong></div><span class="research-badge">STAGE 4</span></div><div id="stage24-hierarchy" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px"></div><p class="muted" style="margin-top:12px">Parent summaries aggregate only explicitly attached descendant evidence. They never create evidence where none exists.</p>`;
-  root.querySelector('.state-panel')?.after(hierarchyPanel);
-
-  function syncCanonicalTarget() {
+  const syncCanonicalTarget = () => {
     const nodeId = nodeIdFromBreadcrumb();
     const label = [...document.querySelectorAll('#spatial-breadcrumb button')].map((b) => b.textContent.trim()).filter(Boolean).join(' > ') || 'Hand';
     window.spatialEvidenceTarget = nodeId;
     window.selectedSpatialNode = nodeId;
     document.body.dataset.spatialTarget = nodeId;
     const targetLabel = document.getElementById('evidence-target-label');
-    if (targetLabel) targetLabel.textContent = label;
+    if (targetLabel) targetLabel.textContent = ` · ${label}`;
     window.dispatchEvent(new CustomEvent('testhp:spatial-target-changed', { detail: { spatial_target_id: nodeId, label } }));
     return nodeId;
-  }
+  };
 
-  function ensureInitialSpatialTarget() {
+  const ensureInitialSpatialTarget = () => {
     const breadcrumb = document.getElementById('spatial-breadcrumb');
     if (!breadcrumb) return;
     const buttons = [...breadcrumb.querySelectorAll('button')];
@@ -52,20 +46,76 @@
       if (palm) palm.click();
     }
     syncCanonicalTarget();
-  }
+  };
 
-  function cleanupLegacyEvidenceActions() {
-    document.querySelectorAll('#evidence-workspace').forEach((panel) => {
-      panel.querySelectorAll('button').forEach((button) => {
-        if (/^\s*[＋+]\s*Add observation\s*$/i.test(button.textContent || '')) button.textContent = '＋ Add biological observation';
-      });
+  const cleanLegacyActions = () => {
+    document.querySelectorAll('#evidence-workspace button').forEach((button) => {
+      if (/^\s*[＋+]\s*Add observation\s*$/i.test(button.textContent || '')) button.textContent = '＋ Add biological observation';
     });
     document.querySelectorAll('button').forEach((button) => {
       if (button.closest('#evidence-workspace')) return;
       const text = (button.textContent || '').trim();
       if (/^\s*[＋+]\s*Add observation\s*$/i.test(text)) button.remove();
     });
-  }
+  };
+
+  const hideDeveloperDebug = () => {
+    document.querySelectorAll('*').forEach((el) => {
+      if (el.children.length > 8) return;
+      const text = (el.textContent || '').trim();
+      if (/^TWIN-VIEWPORT DEBUG/i.test(text) || /^TWIN-VIEWPORT DEBUGCLEAR/i.test(text)) {
+        el.style.display = 'none';
+        el.setAttribute('aria-hidden', 'true');
+      }
+    });
+  };
+
+  const seedEvidenceFromBackend = async () => {
+    try {
+      const response = await fetch(`/api/hand/analysis?subject_id=${encodeURIComponent(subjectId)}&timepoint=${encodeURIComponent(timepoint)}`);
+      if (!response.ok) return;
+      const analysis = await response.json();
+      const assets = (analysis.assets || []).filter((x) => ['ready', 'available'].includes(String(x.status || '').toLowerCase()));
+      const handAssets = assets.filter((x) => String(x.modality || '').toLowerCase() === 'hand');
+      const key = 'digitalTwinEvidenceUX.v2';
+      let stored = {};
+      try { stored = JSON.parse(localStorage.getItem(key) || '{}'); } catch { stored = {}; }
+      const evidence = Array.isArray(stored.evidence) ? stored.evidence : [];
+      const existingIds = new Set(evidence.map((x) => x.backendAssetId || x.id));
+      handAssets.forEach((asset) => {
+        if (existingIds.has(asset.asset_id)) return;
+        evidence.push({
+          id: `backend-${asset.asset_id}`,
+          backendAssetId: asset.asset_id,
+          type: 'Macro',
+          sourceType: 'upload',
+          target: 'hand/palm',
+          timepoint: asset.timepoint || timepoint,
+          date: asset.date || new Date().toISOString().slice(0, 10),
+          modality: 'Hand image',
+          resolution: asset.resolution || '',
+          subject: asset.subject_id || subjectId,
+          operator: asset.operator || '',
+          filename: asset.filename || asset.view || `hand-${asset.asset_id}`,
+          fileData: '',
+          signals: [],
+          annotations: '',
+          comments: 'Imported from registered hand evidence.',
+          history: [{ at: new Date().toISOString(), action: 'imported from registry' }],
+          archived: false
+        });
+      });
+      localStorage.setItem(key, JSON.stringify({ evidence, target: nodeIdFromBreadcrumb() }));
+      window.dispatchEvent(new CustomEvent('testhp:evidence-registry-synced', { detail: { count: handAssets.length } }));
+    } catch (error) {
+      console.warn('Evidence registry seed failed', error);
+    }
+  };
+
+  const hierarchyPanel = document.createElement('section');
+  hierarchyPanel.className = 'panel';
+  hierarchyPanel.innerHTML = `<div class="panel-title"><div><span class="section-kicker">HIERARCHICAL SUMMARY</span><strong>MACRO → TISSUE → CELLULAR → CELL</strong></div><span class="research-badge">STAGE 4</span></div><div id="stage24-hierarchy" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px"></div><p class="muted" style="margin-top:12px">Parent summaries aggregate only explicitly attached descendant evidence. They never create evidence where none exists.</p>`;
+  root.querySelector('.state-panel')?.after(hierarchyPanel);
 
   async function refreshState() {
     const nodeId = syncCanonicalTarget();
@@ -110,14 +160,18 @@
     if (!nodes.length) container.innerHTML = '<div class="state-card"><span>Hierarchy</span><strong>Not established</strong><small>Attach evidence to begin aggregation.</small></div>';
   }
 
-  const observer = new MutationObserver(() => { syncCanonicalTarget(); cleanupLegacyEvidenceActions(); });
   const breadcrumb = document.getElementById('spatial-breadcrumb');
-  if (breadcrumb) observer.observe(breadcrumb, {childList: true, subtree: true});
-  const shellObserver = new MutationObserver(() => cleanupLegacyEvidenceActions());
-  shellObserver.observe(root, {childList: true, subtree: true});
+  if (breadcrumb) new MutationObserver(() => { syncCanonicalTarget(); cleanLegacyActions(); }).observe(breadcrumb, {childList: true, subtree: true});
+  new MutationObserver(() => { cleanLegacyActions(); hideDeveloperDebug(); }).observe(root, {childList: true, subtree: true});
   window.addEventListener('testhp:evidence-attached', () => refreshState());
-  window.addEventListener('testhp:spatial-target-changed', () => { cleanupLegacyEvidenceActions(); refreshState(); });
-  ensureInitialSpatialTarget();
-  cleanupLegacyEvidenceActions();
-  refreshState();
+  window.addEventListener('testhp:spatial-target-changed', () => { cleanLegacyActions(); refreshState(); });
+
+  const boot = async () => {
+    ensureInitialSpatialTarget();
+    hideDeveloperDebug();
+    await seedEvidenceFromBackend();
+    cleanLegacyActions();
+    refreshState();
+  };
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot, { once: true }); else boot();
 })();
