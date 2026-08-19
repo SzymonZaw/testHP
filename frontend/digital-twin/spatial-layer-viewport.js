@@ -1,8 +1,6 @@
 (() => {
-  // Canonical viewport adapter.
-  // The actual 3D renderer and spatial navigation live in app.js.
-  // This adapter intentionally does NOT create a second Three.js renderer.
-  // It exists as a stable integration surface for diagnostics and legacy modules.
+  // Diagnostic adapter for the canonical Three.js viewport owned by app.js.
+  // IMPORTANT: this module must never replace or fake the real renderer.
   const viewport = document.getElementById('twin-viewport');
   const canvas = document.getElementById('twin-canvas');
   if (!viewport || !canvas) return;
@@ -12,40 +10,53 @@
   const crumbs = () => [...document.querySelectorAll('#spatial-breadcrumb button')].map(x => x.textContent.trim()).filter(Boolean);
   const children = () => [...document.querySelectorAll('#spatial-children .spatial-target strong')].map(x => x.textContent.trim()).filter(Boolean);
 
-  const manager = {
-    version: 'canonical-adapter-1',
+  const makeDiagnosticManager = () => ({
+    version: 'diagnostic-adapter-2',
     deepCanvas: canvas,
     deepRenderer: null,
     activeKey: 'macro|hand',
-    active: { constructor: { name: 'AppThreeRenderer' }, clickable: [] },
+    active: {
+      constructor: { name: 'ThreeCanvasRenderer' },
+      clickable: []
+    },
     render() {
       const path = crumbs();
       const currentLevel = level();
       const currentTarget = target();
       this.activeKey = `${currentLevel}|${path.join('>') || currentTarget}`;
       this.active = {
-        constructor: { name: 'AppThreeRenderer' },
+        constructor: { name: 'ThreeCanvasRenderer' },
         clickable: [],
         root: null,
         scene: null,
         camera: null
       };
       window.dispatchEvent(new CustomEvent('testhp:viewport-rendered', {
-        detail: { level: currentLevel, target: currentTarget, path, children: children() }
+        detail: {
+          level: currentLevel,
+          target: currentTarget,
+          path,
+          children: children(),
+          renderer: 'Three.js canvas owner: app.js'
+        }
       }));
     },
     resize() {
       window.dispatchEvent(new Event('resize'));
-    },
-    base() {},
-    deep() {}
-  };
+    }
+  });
 
-  window.spatialViewportManager = manager;
-  window.spatialEvidenceTarget = 'hand';
-  manager.render();
+  // Never overwrite a manager created by the canonical runtime.
+  // If app.js does not expose one, install only a clearly diagnostic adapter.
+  if (!window.spatialViewportManager) {
+    window.spatialViewportManager = makeDiagnosticManager();
+    window.spatialViewportManager.render();
+  }
 
-  const observer = new MutationObserver(() => manager.render());
+  const observer = new MutationObserver(() => {
+    const manager = window.spatialViewportManager;
+    if (manager && typeof manager.render === 'function') manager.render();
+  });
   ['spatial-level-badge', 'spatial-breadcrumb', 'spatial-node', 'spatial-children'].forEach(id => {
     const el = document.getElementById(id);
     if (el) observer.observe(el, { childList: true, subtree: true, characterData: true });
