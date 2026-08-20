@@ -95,20 +95,31 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 3px s
   width: auto !important;
   min-width: 0 !important;
   max-width: none !important;
+  height: auto !important;
+  min-height: 0 !important;
+  max-height: none !important;
   padding: 0 !important;
+  margin: 0 !important;
   border: 0 !important;
   background: transparent !important;
   box-shadow: none !important;
+  overflow: visible !important;
 }
 #twin-boot-diagnostics.twin-boot-minimized .twin-boot-heading {
   margin: 0 !important;
+  padding: 0 !important;
   display: block !important;
+  height: auto !important;
 }
-#twin-boot-diagnostics.twin-boot-minimized .twin-boot-heading h3 {
+#twin-boot-diagnostics.twin-boot-minimized .twin-boot-heading h3,
+#twin-boot-diagnostics.twin-boot-minimized #twin-boot-lines,
+#twin-boot-diagnostics.twin-boot-minimized .twin-boot-summary {
   display: none !important;
+  visibility: hidden !important;
 }
 #twin-boot-diagnostics.twin-boot-minimized .twin-boot-toggle {
   margin: 0 !important;
   display: block !important;
+  visibility: visible !important;
   padding: 7px 10px !important;
 }
