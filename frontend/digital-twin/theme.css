@@ -66,7 +66,7 @@ body {
 .primary, .secondary { border-radius: 9px; padding: 10px 12px; font-size: 11px; }
 .primary { background: var(--ui-ink); border-color: var(--ui-ink); }
 .secondary { border-color: var(--ui-line-strong); }
-/* Visual-only hiding of region focus. The generated inspector action is the second button in .ri-action-row. */
+/* Visual-only hiding of region focus. The button remains in the DOM and keeps its JS behavior. */
 .inspector-actions #zoom-region,
 .inspector-actions [data-action="zoom-region"],
 .inspector-actions .zoom-region,
@@ -98,7 +98,7 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 3px s
 @media (max-width: 1050px) { .app-shell { padding: 28px 22px 52px; } .coverage-summary { width: 100%; min-width: 0; } .coverage-items { justify-content: flex-start; flex-wrap: wrap; } .coverage-items span { min-width: 96px; } .workspace { grid-template-columns: 1fr; } .inspector { min-height: auto; } .twin-viewport { height: 560px; } .state-card + .state-card { border-left: 0; border-top: 1px solid var(--ui-line); } }
 @media (max-width: 680px) { .app-shell { padding: 22px 14px 38px; } .brand-block h1 { font-size: 30px; } .subject-bar { padding: 18px; } .coverage-items { gap: 7px; } .coverage-items span { flex: 1 1 44%; min-width: 0; } .panel { padding: 17px; border-radius: 15px; } .twin-viewport { height: 430px; } .viewer-hint { max-width: 55%; line-height: 1.4; } .viewer-controls { right: 10px; bottom: 10px; } .state-grid { grid-template-columns: 1fr; } .timeline-line { padding-left: 2px; } .timeline-item { min-width: 145px; } }
 
-/* Boot diagnostics: visual-only minimization. Do not alter boot JavaScript. */
+/* Boot diagnostics: visual-only minimization. Hide all diagnostic text and keep only ROZWIŃ visible. */
 #twin-boot-diagnostics.twin-boot-minimized {
   width: auto !important;
   min-width: 0 !important;
@@ -113,17 +113,18 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 3px s
   box-shadow: none !important;
   overflow: visible !important;
 }
+#twin-boot-diagnostics.twin-boot-minimized > .twin-boot-heading > h3,
+#twin-boot-diagnostics.twin-boot-minimized > #twin-boot-lines,
+#twin-boot-diagnostics.twin-boot-minimized > .twin-boot-summary,
+#twin-boot-diagnostics.twin-boot-minimized .twin-boot-line {
+  display: none !important;
+  visibility: hidden !important;
+}
 #twin-boot-diagnostics.twin-boot-minimized .twin-boot-heading {
   margin: 0 !important;
   padding: 0 !important;
   display: block !important;
   height: auto !important;
-}
-#twin-boot-diagnostics.twin-boot-minimized .twin-boot-heading h3,
-#twin-boot-diagnostics.twin-boot-minimized #twin-boot-lines,
-#twin-boot-diagnostics.twin-boot-minimized .twin-boot-summary {
-  display: none !important;
-  visibility: hidden !important;
 }
 #twin-boot-diagnostics.twin-boot-minimized .twin-boot-toggle {
   margin: 0 !important;
