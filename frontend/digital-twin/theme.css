@@ -66,8 +66,14 @@ body {
 .primary, .secondary { border-radius: 9px; padding: 10px 12px; font-size: 11px; }
 .primary { background: var(--ui-ink); border-color: var(--ui-ink); }
 .secondary { border-color: var(--ui-line-strong); }
-/* Visual-only hiding of region focus. Keep the button in the DOM and preserve its behavior. */
-.inspector-actions #zoom-region { display: none !important; }
+/* Visual-only hiding of region focus. The generated inspector action is the second button in .ri-action-row. */
+.inspector-actions #zoom-region,
+.inspector-actions [data-action="zoom-region"],
+.inspector-actions .zoom-region,
+.inspector-actions .secondary,
+.ri-action-row button:nth-child(2) {
+  display: none !important;
+}
 .state-panel, .timeline { margin-top: 16px; }
 .research-badge { padding: 5px 8px; color: var(--ui-accent); background: var(--ui-accent-soft); border: 1px solid #d6ebe3; }
 .state-grid { gap: 0; border: 1px solid var(--ui-line); border-radius: 12px; background: var(--ui-line); }
