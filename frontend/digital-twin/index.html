@@ -10,11 +10,27 @@
 <section class="panel timeline"><div class="panel-title"><div><span class="section-kicker">HISTORIA W CZASIE</span><strong>OŚ OBSERWACJI</strong></div></div><div class="timeline-line"><span class="timeline-item active"><i></i><b>T0</b><small>najnowsza dostępna obserwacja</small></span><span class="timeline-connector"></span><span class="timeline-item future"><i></i><b>Następna</b><small>oczekiwanie na kolejną obserwację</small></span></div></section>
 </main>
 <dialog id="observation-dialog" hidden aria-hidden="true"><button type="button" class="close" hidden>Zamknij</button><button id="register-observation" type="button" hidden>Zarejestruj</button></dialog>
-<style>.ri-workflow{display:none!important}#zoom-region{display:none!important;visibility:hidden!important;pointer-events:none!important;width:0!important;min-width:0!important;padding:0!important;border:0!important;margin:0!important}#evidence-workspace{display:none!important}</style>
+<style>.ri-workflow{display:none!important}#zoom-region{display:none!important;visibility:hidden!important;pointer-events:none!important;width:0!important;min-width:0!important;padding:0!important;border:0!important;margin:0!important}#evidence-workspace{display:none!important}#legacy-hierarchical-summary{display:none!important}section:has(.section-kicker:first-child){}</style>
 <script type="module" src="/digital-twin/region-inspector-enhancements.js?v=region-inspector-2"></script>
 <script src="/digital-twin/region-data-manager.js?v=region-data-1"></script>
 <script src="/digital-twin/observation-manager.js?v=observation-manager-2"></script>
-<script type="module" src="/digital-twin/twin-bootstrap.js?v=boot-staged-4"></script>
+<script type="module" src="/digital-twin/twin-bootstrap.js?v=boot-staged-5"></script>
 <script src="/digital-twin/i18n-pl.js?v=pl-2"></script>
-<script>new MutationObserver(()=>document.getElementById('evidence-workspace')?.remove()).observe(document.body,{childList:true,subtree:true});</script>
+<script>
+(() => {
+  const removeLegacyHierarchicalSummary = () => {
+    const nodes = [...document.querySelectorAll('section,article,aside,div')];
+    nodes.forEach(el => {
+      if (el.closest('.state-panel')) return;
+      const text = (el.textContent || '').replace(/\s+/g, ' ').trim();
+      if (/PODSUMOWANIE HIERARCHICZNE/.test(text) && /ETAP 4/.test(text)) {
+        el.remove();
+      }
+    });
+  };
+  removeLegacyHierarchicalSummary();
+  new MutationObserver(removeLegacyHierarchicalSummary).observe(document.body, {childList:true, subtree:true});
+  new MutationObserver(() => document.getElementById('evidence-workspace')?.remove()).observe(document.body, {childList:true,subtree:true});
+})();
+</script>
 </body></html>
