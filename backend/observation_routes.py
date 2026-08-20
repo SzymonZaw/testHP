@@ -26,6 +26,7 @@ class ObservationCreateRequest(BaseModel):
     source: str = "manual-entry"
     notes: str = ""
     evidence_id: str | None = None
+    author: str = "local-user"
     source_measurement_ids: list[str] = Field(default_factory=list)
 
 
@@ -38,6 +39,7 @@ class ObservationUpdateRequest(BaseModel):
     modality: str | None = None
     biological_level: str | None = None
     evidence_id: str | None = None
+    author: str | None = None
     source_measurement_ids: list[str] | None = None
 
 
