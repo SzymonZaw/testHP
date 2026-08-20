@@ -24,7 +24,7 @@ def _new_id() -> str:
 
 
 def _path(observation_id: str) -> Path:
-    safe = "".join(ch for ch in observation_id if ch.isalnum() or ch in "-_" )
+    safe = "".join(ch for ch in observation_id if ch.isalnum() or ch in "-_")
     if not safe or safe != observation_id:
         raise ValueError("Invalid observation id")
     return REGISTRY_ROOT / f"{safe}.json"
@@ -66,6 +66,11 @@ def get_observation(observation_id: str) -> dict[str, Any] | None:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
+def _write(item: dict[str, Any]) -> None:
+    REGISTRY_ROOT.mkdir(parents=True, exist_ok=True)
+    _path(str(item["id"])).write_text(json.dumps(item, indent=2, ensure_ascii=False), encoding="utf-8")
+
+
 def create_observation(payload: dict[str, Any]) -> dict[str, Any]:
     level = str(payload.get("biological_level") or "").lower()
     if level not in LEVELS: raise ValueError(f"biological_level must be one of: {', '.join(sorted(LEVELS))}")
@@ -73,8 +78,7 @@ def create_observation(payload: dict[str, Any]) -> dict[str, Any]:
     if not subject_id or not timepoint or not spatial_id or not name: raise ValueError("subject_id, timepoint, spatial_id and name are required")
     observation_id = _new_id(); now = _now(); author = str(payload.get("author") or "local-user").strip() or "local-user"
     item = {"id": observation_id, "subject_id": subject_id, "timepoint": timepoint, "spatial_id": spatial_id, "location_name": payload.get("location_name") or spatial_id.rsplit("/", 1)[-1], "location_level": payload.get("location_level") or "site", "parent_id": payload.get("parent_id"), "biological_level": level, "modality": str(payload.get("modality") or "manual-entry"), "name": name, "value": payload.get("value"), "observed_at": payload.get("observed_at") or now, "source": str(payload.get("source") or "manual-entry").strip(), "notes": str(payload.get("notes") or "").strip(), "evidence_id": payload.get("evidence_id"), "author": author, "source_measurement_ids": list(payload.get("source_measurement_ids") or []), "status": "active", "version": 1, "created_at": now, "updated_at": now, "audit": [{"version": 1, "action": "created", "at": now, "author": author, "source": str(payload.get("source") or "manual-entry")}]}
-    _domain(item, observation_id=observation_id, version=1, created_at=now, updated_at=now)
-    REGISTRY_ROOT.mkdir(parents=True, exist_ok=True); _path(observation_id).write_text(json.dumps(item, indent=2, ensure_ascii=False), encoding="utf-8")
+    _domain(item, observation_id=observation_id, version=1, created_at=now, updated_at=now); _write(item)
     return item
 
 
@@ -90,7 +94,26 @@ def update_observation(observation_id: str, patch: dict[str, Any]) -> dict[str, 
     now = _now(); previous_version = int(item.get("version") or 1); author = str(patch.get("author") or item.get("author") or "local-user").strip() or "local-user"
     diff = {key: {"before": item.get(key), "after": value} for key, value in changes.items()}
     item.update(changes); item["author"] = author; item["version"] = previous_version + 1; item["updated_at"] = now
-    item.setdefault("audit", []).append({"version": item["version"], "action": "updated", "at": now, "author": author, "changed_fields": sorted(changes), "diff": diff})
-    _domain(item, observation_id=observation_id, version=item["version"], created_at=item.get("created_at", now), updated_at=now)
-    _path(observation_id).write_text(json.dumps(item, indent=2, ensure_ascii=False), encoding="utf-8")
+    item.setdefault("audit", []).append({"version": item["version"], "action": "updated", "at": now, "author": author, "changed_fields": sorted(changes), "diff": diff}); _domain(item, observation_id=observation_id, version=item["version"], created_at=item.get("created_at", now), updated_at=now); _write(item)
     return item
+
+
+def archive_observation(observation_id: str, *, author: str = "local-user", reason: str = "") -> dict[str, Any] | None:
+    item = get_observation(observation_id)
+    if item is None: return None
+    if item.get("status") == "archived": return item
+    now = _now(); item["status"] = "archived"; item["updated_at"] = now; item.setdefault("audit", []).append({"version": int(item.get("version") or 1), "action": "archived", "at": now, "author": author, "reason": reason}); _write(item)
+    return item
+
+
+def restore_observation(observation_id: str, *, author: str = "local-user", reason: str = "") -> dict[str, Any] | None:
+    item = get_observation(observation_id)
+    if item is None: return None
+    if item.get("status") != "archived": return item
+    now = _now(); item["status"] = "active"; item["updated_at"] = now; item.setdefault("audit", []).append({"version": int(item.get("version") or 1), "action": "restored", "at": now, "author": author, "reason": reason}); _write(item)
+    return item
+
+
+def observation_history(observation_id: str) -> list[dict[str, Any]] | None:
+    item = get_observation(observation_id)
+    return None if item is None else list(item.get("audit") or [])
