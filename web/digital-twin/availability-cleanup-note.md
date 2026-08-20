@@ -1,0 +1,1 @@
+Temporary cleanup marker: legacy data-availability labels in the 3D Digital Twin UI should not be rendered as a separate user-facing module. Keep underlying availability data APIs intact until the exact renderer is identified.
