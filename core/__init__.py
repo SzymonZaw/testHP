@@ -4,6 +4,7 @@ from .anatomy import AnatomicalLocation, Organ, OrganSystem, Tissue
 from .artifact import Artifact
 from .biomarker import Biomarker
 from .biological_state import BiologicalState
+from .biological_state_aggregation import BiologicalStateAggregator, EvidenceSummary
 from .digital_twin_state import DigitalTwinState
 from .evidence import Evidence
 from .measurement import Measurement
@@ -21,6 +22,8 @@ __all__ = [
     "Artifact",
     "Biomarker",
     "BiologicalState",
+    "BiologicalStateAggregator",
+    "EvidenceSummary",
     "DigitalTwinState",
     "Evidence",
     "Measurement",
