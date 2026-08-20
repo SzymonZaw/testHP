@@ -22,6 +22,7 @@ from .images_layer import scan_skin, validate_skin_dataset
 from .longitudinal import compare_observations
 from .macro_analysis import analyze_image
 from .observation_service import analyze_asset
+from .observation_routes import router as observation_router
 from .provenance import make_provenance
 from .skin_longitudinal import compare_skin_observations
 from .skin_ontology import ontology_snapshot
@@ -42,6 +43,7 @@ RNA_FORMATS = {".gz", ".mtx", ".tsv", ".csv", ".txt", ".h5", ".h5ad", ".tar"}
 app = FastAPI(title="Human Pathology Platform", version="0.8.0")
 register_stage_routes(app)
 register_stage_5_8_routes(app)
+app.include_router(observation_router)
 
 class PipelineRequest(BaseModel):
     datasets: list[str] = []
