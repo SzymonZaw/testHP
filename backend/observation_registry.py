@@ -71,6 +71,12 @@ def _write(item: dict[str, Any]) -> None:
     _path(str(item["id"])).write_text(json.dumps(item, indent=2, ensure_ascii=False), encoding="utf-8")
 
 
+def _validate_interpretations(item: dict[str, Any]) -> None:
+    interpretations = item.get("validated_interpretations") or {}
+    if interpretations and not item.get("evidence_id"):
+        raise ValueError("validated_interpretations require an explicit evidence_id")
+
+
 def create_observation(payload: dict[str, Any]) -> dict[str, Any]:
     level = str(payload.get("biological_level") or "").lower()
     if level not in LEVELS: raise ValueError(f"biological_level must be one of: {', '.join(sorted(LEVELS))}")
@@ -78,6 +84,7 @@ def create_observation(payload: dict[str, Any]) -> dict[str, Any]:
     if not subject_id or not timepoint or not spatial_id or not name: raise ValueError("subject_id, timepoint, spatial_id and name are required")
     observation_id = _new_id(); now = _now(); author = str(payload.get("author") or "local-user").strip() or "local-user"
     item = {"id": observation_id, "subject_id": subject_id, "timepoint": timepoint, "spatial_id": spatial_id, "location_name": payload.get("location_name") or spatial_id.rsplit("/", 1)[-1], "location_level": payload.get("location_level") or "site", "parent_id": payload.get("parent_id"), "biological_level": level, "modality": str(payload.get("modality") or "manual-entry"), "name": name, "value": payload.get("value"), "observed_at": payload.get("observed_at") or now, "source": str(payload.get("source") or "manual-entry").strip(), "notes": str(payload.get("notes") or "").strip(), "evidence_id": payload.get("evidence_id"), "evidence_confidence": payload.get("evidence_confidence"), "evidence_type": payload.get("evidence_type") or "source", "validated_interpretations": payload.get("validated_interpretations") or {}, "author": author, "source_measurement_ids": list(payload.get("source_measurement_ids") or []), "status": "active", "version": 1, "created_at": now, "updated_at": now, "audit": [{"version": 1, "action": "created", "at": now, "author": author, "source": str(payload.get("source") or "manual-entry")}]}
+    _validate_interpretations(item)
     _domain(item, observation_id=observation_id, version=1, created_at=now, updated_at=now); _write(item)
     return item
 
@@ -93,6 +100,7 @@ def update_observation(observation_id: str, patch: dict[str, Any]) -> dict[str, 
     allowed = {"name", "value", "observed_at", "source", "notes", "modality", "biological_level", "evidence_id", "evidence_confidence", "evidence_type", "validated_interpretations", "source_measurement_ids"}
     changes = {key: value for key, value in patch.items() if key in allowed}
     if not changes: return item
+    candidate = dict(item); candidate.update(changes); _validate_interpretations(candidate)
     now = _now(); previous_version = int(item.get("version") or 1); author = str(patch.get("author") or item.get("author") or "local-user").strip() or "local-user"
     diff = {key: {"before": item.get(key), "after": value} for key, value in changes.items()}
     item.update(changes); item["author"] = author; item["version"] = previous_version + 1; item["updated_at"] = now
