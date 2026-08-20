@@ -12,7 +12,6 @@ from core.observation import Observation
 
 ROOT = Path(__file__).resolve().parents[1]
 REGISTRY_ROOT = ROOT / "data" / "registry" / "manual_observations"
-
 LEVELS = {"macro", "tissue", "cellular", "molecular"}
 
 
@@ -153,10 +152,17 @@ def update_observation(observation_id: str, patch: dict[str, Any]) -> dict[str, 
         return item
     now = _now()
     previous_version = int(item.get("version") or 1)
+    diff = {key: {"before": item.get(key), "after": value} for key, value in changes.items()}
     item.update(changes)
     item["version"] = previous_version + 1
     item["updated_at"] = now
-    item.setdefault("audit", []).append({"version": item["version"], "action": "updated", "at": now, "changed_fields": sorted(changes)})
+    item.setdefault("audit", []).append({
+        "version": item["version"],
+        "action": "updated",
+        "at": now,
+        "changed_fields": sorted(changes),
+        "diff": diff,
+    })
     _domain(item, observation_id=observation_id, version=item["version"], created_at=item.get("created_at", now), updated_at=now)
     _path(observation_id).write_text(json.dumps(item, indent=2, ensure_ascii=False), encoding="utf-8")
     return item
