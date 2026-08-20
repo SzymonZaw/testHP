@@ -6,6 +6,7 @@ from typing import Any
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
+from .biological_state_routes import biological_state
 from .observation_registry import archive_observation, create_observation, get_observation, list_observations, observation_history, restore_observation, update_observation
 
 router = APIRouter(tags=["biological-observations"])
@@ -26,6 +27,9 @@ class ObservationCreateRequest(BaseModel):
     source: str = "manual-entry"
     notes: str = ""
     evidence_id: str | None = None
+    evidence_confidence: float | None = Field(default=None, ge=0.0, le=1.0)
+    evidence_type: str = "source"
+    validated_interpretations: dict[str, Any] = Field(default_factory=dict)
     author: str = "local-user"
     source_measurement_ids: list[str] = Field(default_factory=list)
 
@@ -39,6 +43,9 @@ class ObservationUpdateRequest(BaseModel):
     modality: str | None = None
     biological_level: str | None = None
     evidence_id: str | None = None
+    evidence_confidence: float | None = Field(default=None, ge=0.0, le=1.0)
+    evidence_type: str | None = None
+    validated_interpretations: dict[str, Any] | None = None
     author: str | None = None
     source_measurement_ids: list[str] | None = None
 
@@ -52,6 +59,11 @@ class ObservationLifecycleRequest(BaseModel):
 def observations(subject_id: str = "own_cohort", timepoint: str | None = None, spatial_id: str | None = None, biological_level: str | None = None, include_archived: bool = False):
     items = list_observations(subject_id=subject_id, timepoint=timepoint, spatial_id=spatial_id, biological_level=biological_level, include_archived=include_archived)
     return {"subject_id": subject_id, "count": len(items), "observations": items}
+
+
+@router.get("/api/biological-state")
+def state(subject_id: str = "own_cohort", timepoint: str = "T0", spatial_id: str | None = None, include_descendants: bool = True):
+    return biological_state(subject_id=subject_id, timepoint=timepoint, spatial_id=spatial_id, include_descendants=include_descendants)
 
 
 @router.post("/api/observations", status_code=201)
