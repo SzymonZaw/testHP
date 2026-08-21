@@ -63,7 +63,7 @@
     Object.entries(inputs).forEach(([dimension, id]) => { const input = $(id); if (input) input.value = displayInterpretation(current[dimension], dimension) === defaults[dimension] ? '' : displayInterpretation(current[dimension], dimension); });
     source.onchange = () => { const selected = sources.find(item => item.id === source.value); const values = selected?.validated_interpretations || {}; Object.entries(inputs).forEach(([dimension, id]) => { const input = $(id); if (input) input.value = values[dimension] == null ? '' : displayInterpretation(values[dimension], dimension); }); };
   }
-  function escapeHtml(value) { return String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+  function escapeHtml(value) { return String(value ?? '').replace(/[&<>\"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;',"'":'&#39;'}[c])); }
   async function refresh(detail = lastDetail) {
     lastDetail = detail || {};
     const spatialId = stateSpatialId(lastDetail);
@@ -74,8 +74,11 @@
       const payload = await response.json(); lastPayload = payload;
       const state = payload?.state || {}; const interpretations = state.interpretations || {};
       Object.entries(labels).forEach(([dimension, id]) => setText(id, displayInterpretation(interpretations[dimension], dimension)));
-      const count = Number(state.observation_count ?? payload?.summary?.observations ?? 0);
-      setText('evidence-count', `${count} ${count === 1 ? 'element' : 'elementów'}`);
+      // The displayed "Dane" count is the number of observations in the selected
+      // anatomical scope. Evidence is a separate validation dimension and must not
+      // reduce the number of real data items shown to the user.
+      const observationCount = Number(payload?.summary?.observations ?? state.observation_count ?? 0);
+      setText('evidence-count', `${observationCount} ${observationCount === 1 ? 'element' : 'elementów'}`);
       setText('evidence-level', state.availability === 'observed' ? 'Dane obserwowane' : 'Niewystarczające dane');
       setText('confidence-state', state.confidence?.label || 'Nieustalona');
       renderEvidenceBreakdown(payload); renderEditor(payload);
