@@ -29,15 +29,47 @@ class BiologicalStateUpdateRequest(BaseModel):
     interpretations: dict[str, Any] = Field(default_factory=dict)
 
 
+def _canonical_parent_id(spatial_id: str) -> str | None:
+    """Resolve the canonical hand spatial hierarchy when old observations lack parent_id."""
+    parts = [part for part in spatial_id.strip("/").split("/") if part]
+    if not parts:
+        return None
+    if parts[0] != "hand":
+        return None
+    if len(parts) == 1:
+        return None
+
+    region = parts[1]
+    if len(parts) == 2:
+        if region == "palm":
+            return "hand"
+        if region in {"thumb", "index", "middle", "ring", "little"}:
+            return "hand/palm"
+        if region == "wrist":
+            return "hand"
+        return "hand"
+
+    # Subregions of a digit/region belong to that immediate region.
+    return "/".join(parts[:2])
+
+
+def _location_parent(payload: dict[str, Any], spatial_id: str) -> str | None:
+    explicit = payload.get("parent_id")
+    if explicit:
+        return str(explicit)
+    return _canonical_parent_id(spatial_id)
+
+
 def _parse_observations(items: list[dict[str, Any]]) -> tuple[list[Observation], list[AnatomicalLocation]]:
     observations: list[Observation] = []
     locations: dict[str, AnatomicalLocation] = {}
     for item in items:
+        spatial_id = str(item.get("spatial_id") or "hand")
         location = AnatomicalLocation(
-            id=str(item.get("spatial_id") or "hand"),
-            name=str(item.get("location_name") or item.get("spatial_id") or "hand"),
+            id=spatial_id,
+            name=str(item.get("location_name") or spatial_id.rsplit("/", 1)[-1]),
             level=str(item.get("location_level") or "site"),
-            parent_id=item.get("parent_id"),
+            parent_id=_location_parent(item, spatial_id),
         )
         domain = Observation(
             id=str(item["id"]),
@@ -59,6 +91,25 @@ def _parse_observations(items: list[dict[str, Any]]) -> tuple[list[Observation],
         )
         observations.append(domain)
         locations[location.id] = location
+
+    # Materialize missing ancestors so descendant traversal works even when the
+    # registry contains only observations at leaf/child locations.
+    pending = list(locations.values())
+    while pending:
+        location = pending.pop()
+        parent_id = location.parent_id
+        if not parent_id or parent_id in locations:
+            continue
+        parent_parent = _canonical_parent_id(parent_id)
+        parent = AnatomicalLocation(
+            id=parent_id,
+            name=parent_id.rsplit("/", 1)[-1].replace("_", " ").title(),
+            level="site" if "/" not in parent_id else "anatomical_region",
+            parent_id=parent_parent,
+        )
+        locations[parent.id] = parent
+        pending.append(parent)
+
     return observations, list(locations.values())
 
 
