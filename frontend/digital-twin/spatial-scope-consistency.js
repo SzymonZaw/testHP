@@ -2,7 +2,7 @@
   const LEVELS = ['macro', 'tissue', 'cellular', 'molecular'];
   const labels = { macro: 'Makro', tissue: 'Tkanka', cellular: 'Komórkowe', molecular: 'Molekularne' };
   const get = id => document.getElementById(id);
-  const setText = (id, value) => { const el = get(id); if (el) el.textContent = value; };
+  const setText = (id, value) => { const el = get(id); if (el && el.textContent !== String(value)) el.textContent = value; };
   let lastSummary = null;
   let lastSpatialId = 'hand';
   let rendering = false;
@@ -46,7 +46,10 @@
     if (!children) return;
     [...children.querySelectorAll('.spatial-target')].forEach(button => {
       const explicit = button.dataset.spatialId || button.getAttribute('data-spatial-id');
-      if (explicit) button.dataset.spatialId = explicit.startsWith('hand') ? explicit : `hand/${explicit}`;
+      if (explicit) {
+        const normalized = explicit.startsWith('hand') ? explicit : `hand/${explicit}`;
+        if (button.dataset.spatialId !== normalized) button.dataset.spatialId = normalized;
+      }
     });
   }
 
@@ -74,20 +77,17 @@
   function renderLayer(level, counts) {
     const state = get(`${level}-state`), status = get(`${level}-status`), detail = get(`${level}-detail`);
     if (!state || !status || !detail) return;
-    if (!counts.total) {
-      state.textContent = 'Brak danych w zakresie';
-      status.textContent = 'NONE';
-      detail.textContent = `Brak obserwacji ${labels[level].toLowerCase()} dla wybranego spatial_id ani jego potomków.`;
-      return;
-    }
-    state.textContent = `${counts.total} ${counts.total === 1 ? 'dane' : 'danych'} w zakresie`;
-    if (counts.direct && counts.descendants) status.textContent = 'DIRECT + CHILDREN';
-    else if (counts.direct) status.textContent = 'DIRECT';
-    else status.textContent = 'CHILDREN';
+    const stateText = counts.total ? `${counts.total} ${counts.total === 1 ? 'dane' : 'danych'} w zakresie` : 'Brak danych w zakresie';
+    const statusText = !counts.total ? 'NONE' : (counts.direct && counts.descendants ? 'DIRECT + CHILDREN' : counts.direct ? 'DIRECT' : 'CHILDREN');
     const parts = [];
     if (counts.direct) parts.push(`bezpośrednio: ${counts.direct}`);
     if (counts.descendants) parts.push(`w potomkach: ${counts.descendants}`);
-    detail.textContent = `${labels[level]} · ${parts.join(' · ')}. Źródło: obserwacje w scope przestrzennym; evidence jest rozliczane osobno.`;
+    const detailText = !counts.total
+      ? `Brak obserwacji ${labels[level].toLowerCase()} dla wybranego spatial_id ani jego potomków.`
+      : `${labels[level]} · ${parts.join(' · ')}. Źródło: obserwacje w scope przestrzennym; evidence jest rozliczane osobno.`;
+    if (state.textContent !== stateText) state.textContent = stateText;
+    if (status.textContent !== statusText) status.textContent = statusText;
+    if (detail.textContent !== detailText) detail.textContent = detailText;
   }
 
   function renderAuthoritative(summary, spatialId) {
