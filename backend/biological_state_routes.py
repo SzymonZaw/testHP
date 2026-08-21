@@ -30,7 +30,14 @@ class BiologicalStateUpdateRequest(BaseModel):
 
 
 def _canonical_parent_id(spatial_id: str) -> str | None:
-    """Resolve the canonical hand spatial hierarchy when old observations lack parent_id."""
+    """Resolve the immediate parent in the canonical spatial hierarchy.
+
+    The first macro hand regions have a small compatibility mapping because the
+    historical tree uses ``hand/palm`` as the macro container for the digits.
+    Every deeper node, however, must point to the immediately preceding path
+    segment. This preserves arbitrary depth (tissue -> field -> cell -> ...)
+    instead of flattening descendants directly onto the macro region.
+    """
     parts = [part for part in spatial_id.strip("/").split("/") if part]
     if not parts:
         return None
@@ -49,8 +56,9 @@ def _canonical_parent_id(spatial_id: str) -> str | None:
             return "hand"
         return "hand"
 
-    # Subregions of a digit/region belong to that immediate region.
-    return "/".join(parts[:2])
+    # From this point onward, preserve the full hierarchy and use the
+    # immediately preceding node as the parent.
+    return "/".join(parts[:-1])
 
 
 def _location_parent(payload: dict[str, Any], spatial_id: str) -> str | None:
