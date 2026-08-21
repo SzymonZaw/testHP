@@ -55,10 +55,41 @@ class ObservationLifecycleRequest(BaseModel):
     reason: str = ""
 
 
+def _in_spatial_scope(selected_spatial_id: str, candidate_spatial_id: str, include_descendants: bool) -> bool:
+    selected = str(selected_spatial_id or "").strip().strip("/")
+    candidate = str(candidate_spatial_id or "").strip().strip("/")
+    if not selected or not candidate:
+        return False
+    if candidate == selected:
+        return True
+    return include_descendants and candidate.startswith(f"{selected}/")
+
+
 @router.get("/api/observations")
-def observations(subject_id: str = "own_cohort", timepoint: str | None = None, spatial_id: str | None = None, biological_level: str | None = None, include_archived: bool = False):
-    items = list_observations(subject_id=subject_id, timepoint=timepoint, spatial_id=spatial_id, biological_level=biological_level, include_archived=include_archived)
-    return {"subject_id": subject_id, "count": len(items), "observations": items}
+def observations(
+    subject_id: str = "own_cohort",
+    timepoint: str | None = None,
+    spatial_id: str | None = None,
+    biological_level: str | None = None,
+    include_archived: bool = False,
+    include_descendants: bool = False,
+):
+    items = list_observations(
+        subject_id=subject_id,
+        timepoint=timepoint,
+        spatial_id=None if include_descendants else spatial_id,
+        biological_level=biological_level,
+        include_archived=include_archived,
+    )
+    if spatial_id and include_descendants:
+        items = [item for item in items if _in_spatial_scope(spatial_id, item.get("spatial_id"), True)]
+    return {
+        "subject_id": subject_id,
+        "scope": spatial_id,
+        "include_descendants": include_descendants,
+        "count": len(items),
+        "observations": items,
+    }
 
 
 @router.get("/api/biological-state")
