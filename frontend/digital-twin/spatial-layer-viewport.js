@@ -17,10 +17,8 @@
   ];
 
   function isHandRoot() {
-    const m = window.spatialViewportManager;
-    const state = m?.state;
-    const path = crumbs();
-    return state?.level === 'macro' && state?.id === 'hand' && path.length === 1;
+    const state = window.spatialViewportManager?.state;
+    return state?.level === 'macro' && state?.id === 'hand' && crumbs().length === 1;
   }
 
   function installHandMacroTargets() {
@@ -29,7 +27,7 @@
     const manager = window.spatialViewportManager;
     if (!container || !manager?.setSpatialTarget) return false;
 
-    const current = [...container.querySelectorAll('.spatial-target strong')].map(x => x.textContent.trim());
+    const current = children();
     const expected = HAND_MACRO_TARGETS.map(x => x.label);
     if (JSON.stringify(current) === JSON.stringify(expected)) return false;
 
@@ -61,8 +59,8 @@
   function report() {
     const m = window.spatialViewportManager;
     if (!m?.active?.scene) return;
-    installHandMacroTargets();
-    m.render?.();
+    const fixed = installHandMacroTargets();
+    if (!fixed && !isHandRoot()) m.render?.();
     installHandMacroTargets();
     window.dispatchEvent(new CustomEvent('testhp:viewport-rendered', {
       detail: { level: level(), target: target(), path: crumbs(), children: children(), renderer: 'ThreeCanvasRenderer' }
