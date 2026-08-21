@@ -87,10 +87,11 @@ def _confidence_payload(value: float | None) -> dict[str, Any]:
     return {"value": round(value, 4), "label": f"{value:.2f}", "status": "reported"}
 
 
-def _state_payload(state: Any, editable: list[dict[str, Any]] | None = None) -> dict[str, Any]:
+def _state_payload(state: Any, observation_count: int, editable: list[dict[str, Any]] | None = None) -> dict[str, Any]:
     return {
         "subject_id": state.subject_id,
         "timepoint": state.timepoint_id,
+        "observation_count": observation_count,
         "evidence_ids": list(state.evidence_ids),
         "evidence_count": state.evidence_count,
         "availability": state.availability,
@@ -104,40 +105,56 @@ def _state_payload(state: Any, editable: list[dict[str, Any]] | None = None) -> 
     }
 
 
+def _in_spatial_scope(selected_spatial_id: str, candidate_spatial_id: str, include_descendants: bool) -> bool:
+    selected = str(selected_spatial_id or "").strip().strip("/")
+    candidate = str(candidate_spatial_id or "").strip().strip("/")
+    if not selected or not candidate:
+        return False
+    if candidate == selected:
+        return True
+    return include_descendants and candidate.startswith(f"{selected}/")
+
+
 def _build_state(subject_id: str, timepoint: str, spatial_id: str | None, include_descendants: bool):
     items = list_observations(subject_id=subject_id, timepoint=timepoint)
     observations, locations = _parse_observations(items)
     evidence = _evidence(items)
     aggregator = BiologicalStateAggregator(observations, evidence, locations)
+
     if spatial_id is None:
-        state = aggregator.build_state(subject_id, timepoint)
-        scoped_observations = state.observations
+        scoped_observations = observations
+        scoped_evidence = evidence
     else:
-        scoped_evidence = aggregator.evidence_for_location(spatial_id, include_descendants=include_descendants)
-        scoped_evidence_ids = {item.id for item in scoped_evidence}
-        if include_descendants:
-            scoped_observations = [observation for observation in observations if any(item.observation_id == observation.id for item in scoped_evidence)]
-        else:
-            scoped_observations = [observation for observation in observations if observation.anatomical_location and observation.anatomical_location.id == spatial_id]
-        state = aggregator.build_state(subject_id, timepoint)
-        state.observations = scoped_observations
-        state.evidence_ids = tuple(item.id for item in scoped_evidence if item.id in scoped_evidence_ids)
-        state.evidence_count = len(state.evidence_ids)
-        state.availability = "observed" if state.evidence_count else "insufficient_evidence"
-        state.confidence = aggregator._confidence(scoped_evidence)
-        state.interpretations = aggregator._interpretations(scoped_observations, scoped_evidence)
+        scoped_observations = [
+            observation for observation in observations
+            if observation.anatomical_location and _in_spatial_scope(spatial_id, observation.anatomical_location.id, include_descendants)
+        ]
+        scoped_observation_ids = {observation.id for observation in scoped_observations}
+        scoped_evidence = [
+            item for item in evidence
+            if item.observation_id in scoped_observation_ids
+        ]
+
+    state = aggregator.build_state(subject_id, timepoint)
+    state.observations = scoped_observations
+    state.evidence_ids = tuple(item.id for item in scoped_evidence)
+    state.evidence_count = len(state.evidence_ids)
+    state.confidence = aggregator._confidence(scoped_evidence)
+    state.interpretations = aggregator._interpretations(scoped_observations, scoped_evidence)
+    state.availability = "observed" if scoped_observations else "insufficient_evidence"
+
     editable = [
         {
             "id": item.id,
             "name": item.name,
             "spatial_id": item.anatomical_location.id if item.anatomical_location else None,
-            "evidence_id": next((e.id for e in evidence if e.observation_id == item.id), None),
+            "evidence_id": next((e.id for e in scoped_evidence if e.observation_id == item.id), None),
             "validated_interpretations": dict(item.metadata.get("validated_interpretations") or {}),
         }
         for item in scoped_observations
-        if any(e.observation_id == item.id for e in evidence)
+        if any(e.observation_id == item.id for e in scoped_evidence)
     ]
-    return state, editable
+    return state, len(scoped_observations), editable
 
 
 @router.get("/api/biological-state")
@@ -147,15 +164,15 @@ def biological_state(
     spatial_id: str | None = None,
     include_descendants: bool = True,
 ):
-    """Return one canonical, evidence-backed research state for a spatial scope."""
-    state, editable = _build_state(subject_id, timepoint, spatial_id, include_descendants)
+    """Return one canonical research state for a spatial observation scope."""
+    state, observation_count, editable = _build_state(subject_id, timepoint, spatial_id, include_descendants)
     return {
-        "state": _state_payload(state, editable),
+        "state": _state_payload(state, observation_count, editable),
         "summary": {
             "scope": spatial_id,
             "include_descendants": include_descendants,
-            "observations": len(state.observations),
-            "explicit_evidence": state.evidence_count,
+            "observation_count": observation_count,
+            "evidence_count": state.evidence_count,
             "interpretation_source": "validated_interpretations only",
             "dimensions": _DIMENSIONS,
         },
