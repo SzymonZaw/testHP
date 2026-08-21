@@ -1,80 +1,33 @@
 (() => {
   const canvas = document.getElementById('twin-canvas');
   if (!canvas) return;
-  const level = () => document.getElementById('spatial-level-badge')?.textContent?.trim() || 'MACRO';
-  const target = () => document.getElementById('spatial-node')?.querySelector('strong')?.textContent?.trim() || 'Spatial target';
-  const crumbs = () => [...document.querySelectorAll('#spatial-breadcrumb button')].map(x => x.textContent.trim()).filter(Boolean);
-  const children = () => [...document.querySelectorAll('#spatial-children .spatial-target strong')].map(x => x.textContent.trim()).filter(Boolean);
 
-  const HAND_MACRO_TARGETS = [
-    { id: 'palm', label: 'Śródręcze' },
-    { id: 'little', label: 'Mały palec' },
-    { id: 'ring', label: 'Palec serdeczny' },
-    { id: 'middle', label: 'Palec środkowy' },
-    { id: 'index', label: 'Palec wskazujący' },
-    { id: 'thumb', label: 'Kciuk' },
-    { id: 'wrist', label: 'Nadgarstek' }
-  ];
-
-  function isHandRoot() {
-    const state = window.spatialViewportManager?.state;
-    return state?.level === 'macro' && state?.id === 'hand' && crumbs().length === 1;
-  }
-
-  function installHandMacroTargets() {
-    if (!isHandRoot()) return false;
-    const container = document.getElementById('spatial-children');
-    const manager = window.spatialViewportManager;
-    if (!container || !manager?.setSpatialTarget) return false;
-
-    const current = children();
-    const expected = HAND_MACRO_TARGETS.map(x => x.label);
-    if (JSON.stringify(current) === JSON.stringify(expected)) return false;
-
-    container.replaceChildren();
-    for (const target of HAND_MACRO_TARGETS) {
-      const button = document.createElement('button');
-      button.type = 'button';
-      button.className = 'spatial-target';
-      const title = document.createElement('strong');
-      title.textContent = target.label;
-      const meta = document.createElement('span');
-      meta.textContent = 'Macro anatomy';
-      button.append(title, meta);
-      button.addEventListener('click', () => manager.setSpatialTarget({
-        id: target.id,
-        label: target.label,
-        level: 'macro',
-        regionId: target.id
-      }));
-      container.appendChild(button);
-    }
-
-    window.dispatchEvent(new CustomEvent('testhp:spatial-root-macro-fixed', {
-      detail: { target: 'Dłoń', children: expected }
-    }));
-    return true;
-  }
-
-  function report() {
-    const m = window.spatialViewportManager;
-    if (!m?.active?.scene) return;
-    const fixed = installHandMacroTargets();
-    if (!fixed && !isHandRoot()) m.render?.();
-    installHandMacroTargets();
-    window.dispatchEvent(new CustomEvent('testhp:viewport-rendered', {
-      detail: { level: level(), target: target(), path: crumbs(), children: children(), renderer: 'ThreeCanvasRenderer' }
-    }));
-  }
-
-  const observer = new MutationObserver(() => requestAnimationFrame(report));
-  ['spatial-level-badge','spatial-breadcrumb','spatial-node','spatial-children'].forEach(id => {
-    const el = document.getElementById(id);
-    if (el) observer.observe(el, { childList:true, subtree:true, characterData:true });
+  // app.js + spatial-root-anatomy-fix.js own the navigator DOM. This bridge
+  // only reports viewport state and never writes #spatial-children.
+  const read = () => ({
+    level: document.getElementById('spatial-level-badge')?.textContent?.trim() || '?',
+    target: document.getElementById('spatial-node')?.querySelector('strong')?.textContent?.trim() || '?',
+    path: [...document.querySelectorAll('#spatial-breadcrumb button')].map(x => x.textContent.trim()).filter(Boolean),
+    children: [...document.querySelectorAll('#spatial-children .spatial-target strong')].map(x => x.textContent.trim()).filter(Boolean)
   });
-  window.addEventListener('testhp:viewport-manager-ready', report);
-  window.addEventListener('testhp:spatial-layer-changed', report);
-  window.addEventListener('resize', () => window.spatialViewportManager?.resize?.(), { passive:true });
-  window.addEventListener('beforeunload', () => observer.disconnect(), { once:true });
-  report();
+
+  const report = reason => {
+    const state = read();
+    const manager = window.spatialViewportManager;
+    window.dispatchEvent(new CustomEvent('testhp:viewport-rendered', {
+      detail: {
+        ...state,
+        renderer: 'ThreeCanvasRenderer',
+        reason,
+        managerPresent: !!manager,
+        activeKey: manager?.activeKey || null,
+        activeLayer: manager?.activeLayer || null
+      }
+    }));
+  };
+
+  window.addEventListener('testhp:viewport-manager-ready', () => report('manager-ready'));
+  window.addEventListener('testhp:spatial-layer-changed', () => report('spatial-layer-changed'));
+  window.addEventListener('resize', () => window.spatialViewportManager?.resize?.(), { passive: true });
+  report('loaded-without-dom-mutation');
 })();
