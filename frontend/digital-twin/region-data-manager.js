@@ -7,6 +7,7 @@
   };
   const STATUSES=['przypisane','przygotowane','zarejestrowane','gotowe do projekcji 3D'];
   const get=id=>document.getElementById(id);
+  let syncInFlight=false;
   const style=document.createElement('style'); style.textContent=`
     .ri-data-tools{display:flex;gap:5px;flex-wrap:wrap;margin-top:7px}.ri-data-tools button,.ri-data-card button{border:1px solid #d5dde2;background:#fff;color:#53616c;border-radius:7px;padding:5px 7px;font-size:8px;font-weight:750;cursor:pointer}.ri-data-tools button:hover,.ri-data-card button:hover{border-color:#9fc5b8;background:#e9f4f0;color:#146b55}
     .ri-data-list{display:grid;gap:5px;margin-top:8px}.ri-data-card{border:1px solid #e1e6ea;border-radius:8px;background:#fafbfc;padding:7px}.ri-data-card-head{display:flex;justify-content:space-between;align-items:flex-start;gap:6px}.ri-data-card-title{font-size:8px;font-weight:800;color:#34424c;overflow:hidden;text-overflow:ellipsis}.ri-data-card-status{font-size:7px;color:#146b55;white-space:nowrap}.ri-data-card-meta{display:block;margin-top:3px;font-size:7px;color:#8a969f;line-height:1.45}.ri-data-card-actions{display:flex;gap:4px;margin-top:5px}.ri-data-card-actions button{flex:1}.ri-data-empty{margin-top:8px;padding:8px;border:1px dashed #d5dde2;border-radius:8px;color:#8a969f;font-size:8px}
@@ -15,26 +16,93 @@
 
   function readData(){try{const v=JSON.parse(localStorage.getItem(DATA_STORAGE)||'{}');return Array.isArray(v.items)?v.items:[]}catch{return[]}}
   function currentTarget(){const n=window.selectedSpatialNode;if(n)return n.spatial_id||n.id||n.regionId||'hand';const t=window.spatialEvidenceTarget||get('zone-label')?.textContent||'hand';return typeof t==='string'?t:(t.id||t.spatial_id||t.regionId||'hand')}
+  function canonicalParentId(spatialId){
+    const parts=String(spatialId||'hand').replace(/^\/+|\/+$/g,'').split('/').filter(Boolean);
+    if(parts[0]!=='hand'||parts.length<2)return parts.length===1?'hand':null;
+    if(parts.length===2){
+      if(parts[1]==='palm')return 'hand';
+      if(['thumb','index','middle','ring','little'].includes(parts[1]))return 'hand/palm';
+      if(parts[1]==='wrist')return 'hand';
+      return 'hand';
+    }
+    return parts.slice(0,2).join('/');
+  }
+  function targetName(spatialId){return String(spatialId||'hand').split('/').filter(Boolean).pop()||'hand'}
+
+  async function syncItemToObservation(item){
+    if(!item?.evidenceId||!item?.target||!TYPES[item.type])return item;
+    const params=new URLSearchParams({subject_id:'own_cohort',timepoint:'T0',spatial_id:item.target,biological_level:item.type});
+    try{
+      const listResponse=await fetch(`/api/observations?${params.toString()}`,{cache:'no-store'});
+      if(!listResponse.ok)return item;
+      const listPayload=await listResponse.json();
+      const observations=Array.isArray(listPayload?.observations)?listPayload.observations:[];
+      let observation=observations.find(x=>x.evidence_id===item.evidenceId);
+      const payload={
+        subject_id:'own_cohort',timepoint:'T0',spatial_id:item.target,
+        location_name:targetName(item.target),location_level:item.target.includes('/')?'anatomical_region':'site',
+        parent_id:canonicalParentId(item.target),biological_level:item.type,modality:'region-data',
+        name:item.name,value:item.source||item.fileName||item.name,observed_at:item.updatedAt||item.createdAt||new Date().toISOString(),
+        source:item.source||'region-data-manager',notes:item.notes||'',evidence_id:item.evidenceId,evidence_type:item.type,
+        author:'local-user'
+      };
+      if(observation){
+        if(item.observationId!==observation.id){item.observationId=observation.id;return item;}
+        await fetch(`/api/observations/${encodeURIComponent(observation.id)}`,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:payload.name,value:payload.value,observed_at:payload.observed_at,source:payload.source,notes:payload.notes,modality:payload.modality,biological_level:payload.biological_level,evidence_id:payload.evidence_id,evidence_type:payload.evidence_type,author:'local-user'})});
+        return item;
+      }
+      const createResponse=await fetch('/api/observations',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+      if(!createResponse.ok)return item;
+      const created=await createResponse.json().catch(()=>({}));
+      if(created?.observation?.id)item.observationId=created.observation.id;
+    }catch(error){console.warn('[RegionData] Could not sync region data to observation registry.',error)}
+    return item;
+  }
+
+  async function syncRegionDataToObservations(){
+    if(syncInFlight)return;
+    const items=readData().filter(item=>item?.evidenceId&&item?.target&&TYPES[item.type]);
+    if(!items.length)return;
+    syncInFlight=true;
+    try{
+      let changed=false;
+      for(const item of items){
+        const before=item.observationId;
+        await syncItemToObservation(item);
+        if(item.observationId!==before)changed=true;
+      }
+      if(changed)localStorage.setItem(DATA_STORAGE,JSON.stringify({version:1,items:readData().map(current=>items.find(x=>x.id===current.id)||current)}));
+      window.dispatchEvent(new CustomEvent('testhp:biological-state-refresh'));
+      window.dispatchEvent(new CustomEvent('testhp:observation-updated'));
+    }finally{syncInFlight=false}
+  }
+
+  function archiveObservationForItem(item){
+    if(!item?.observationId)return;
+    fetch(`/api/observations/${encodeURIComponent(item.observationId)}/archive`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({author:'local-user',reason:'Region data removed'})}).catch(error=>console.warn('[RegionData] Could not archive linked observation.',error));
+  }
+
   function writeData(items){
     localStorage.setItem(DATA_STORAGE,JSON.stringify({version:1,items}));
     try{const evidence=JSON.parse(localStorage.getItem(STORAGE)||'{}');evidence.evidence=Array.isArray(evidence.evidence)?evidence.evidence:[];const ids=new Set(items.map(x=>x.evidenceId));evidence.evidence=evidence.evidence.filter(e=>!String(e.id||'').startsWith('ri-data-')||ids.has(e.id));items.forEach(x=>{const e={id:x.evidenceId,type:x.type,target:x.target,title:x.name,status:x.status,source:x.source||'frontend',createdAt:x.createdAt,updatedAt:x.updatedAt};const i=evidence.evidence.findIndex(y=>y.id===e.id);if(i>=0)evidence.evidence[i]=e;else evidence.evidence.push(e)});localStorage.setItem(STORAGE,JSON.stringify(evidence))}catch{}
     window.dispatchEvent(new CustomEvent('testhp:evidence-ux-refresh')); window.dispatchEvent(new CustomEvent('testhp:region-data-changed',{detail:{target:currentTarget()}}));
+    syncRegionDataToObservations();
   }
   function typeItems(type){return readData().filter(x=>x.type===type&&x.target===currentTarget())}
-  function escapeHtml(v){return String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
+  function escapeHtml(v){return String(v??'').replace(/[&<>\"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;',"'":'&#39;'}[c]))}
 
   function ensureDialog(){
     if(get('ri-data-dialog'))return get('ri-data-dialog');
     const d=document.createElement('dialog');d.id='ri-data-dialog';d.className='ri-data-dialog';
     d.innerHTML=`<form class="ri-data-form" id="ri-data-form"><h3 id="ri-data-dialog-title">Dodaj dane</h3><input id="ri-data-id" type="hidden"><label for="ri-data-type">Typ danych</label><select id="ri-data-type"><option value="tissue">Tkanka</option><option value="cellular">Komórkowe</option><option value="molecular">Molekularne</option></select><label for="ri-data-name">Nazwa / opis</label><input id="ri-data-name" type="text" placeholder="np. WSI Śródręcza · preparat 01" required><label for="ri-data-status">Status przepływu</label><select id="ri-data-status">${STATUSES.map(s=>`<option value="${s}">${s}</option>`).join('')}</select><label for="ri-data-source">Źródło / identyfikator</label><input id="ri-data-source" type="text" placeholder="np. WSI-001 / mikroskop M2"><label for="ri-data-file">Plik źródłowy (opcjonalnie)</label><input id="ri-data-file" type="file"><small>Zapisywana jest nazwa i metadane pliku. Duży plik nie jest kopiowany do localStorage.</small><label for="ri-data-notes">Notatka</label><textarea id="ri-data-notes" placeholder="Dodatkowe informacje o danych…"></textarea><div class="ri-data-form-actions"><button type="button" id="ri-data-cancel">Anuluj</button><button type="submit" class="primary">Zapisz dane</button></div></form>`;
     document.body.appendChild(d); get('ri-data-cancel').onclick=()=>d.close();
-    get('ri-data-form').onsubmit=e=>{e.preventDefault();const id=get('ri-data-id').value,old=readData().find(x=>x.id===id),file=get('ri-data-file').files[0],now=new Date().toISOString();const name=get('ri-data-name').value.trim();if(!name){alert('Podaj nazwę danych.');return}const item={id:id||`ri-data-${Date.now()}-${Math.random().toString(36).slice(2,8)}`,evidenceId:id?old?.evidenceId||`ri-data-${id}`:`ri-data-${Date.now()}-${Math.random().toString(36).slice(2,8)}`,target:currentTarget(),type:get('ri-data-type').value,name,status:get('ri-data-status').value,source:get('ri-data-source').value.trim(),notes:get('ri-data-notes').value.trim(),fileName:file?.name||old?.fileName||'',fileSize:file?.size||old?.fileSize||0,fileType:file?.type||old?.fileType||'',createdAt:old?.createdAt||now,updatedAt:now};const all=readData();writeData(id?all.map(x=>x.id===id?item:x):[...all,item]);d.close();render()};
+    get('ri-data-form').onsubmit=e=>{e.preventDefault();const id=get('ri-data-id').value,old=readData().find(x=>x.id===id),file=get('ri-data-file').files[0],now=new Date().toISOString();const name=get('ri-data-name').value.trim();if(!name){alert('Podaj nazwę danych.');return}const item={id:id||`ri-data-${Date.now()}-${Math.random().toString(36).slice(2,8)}`,evidenceId:id?old?.evidenceId||`ri-data-${id}`:`ri-data-${Date.now()}-${Math.random().toString(36).slice(2,8)}`,observationId:old?.observationId||'',target:currentTarget(),type:get('ri-data-type').value,name,status:get('ri-data-status').value,source:get('ri-data-source').value.trim(),notes:get('ri-data-notes').value.trim(),fileName:file?.name||old?.fileName||'',fileSize:file?.size||old?.fileSize||0,fileType:file?.type||old?.fileType||'',createdAt:old?.createdAt||now,updatedAt:now};const all=readData();writeData(id?all.map(x=>x.id===id?item:x):[...all,item]);d.close();render()};
     return d;
   }
   function openEditor(item,type){const d=ensureDialog();get('ri-data-dialog-title').textContent=item?'Edytuj dane':'Dodaj dane';get('ri-data-id').value=item?.id||'';get('ri-data-type').value=item?.type||type||'tissue';get('ri-data-name').value=item?.name||'';get('ri-data-status').value=item?.status||'przypisane';get('ri-data-source').value=item?.source||'';get('ri-data-notes').value=item?.notes||'';get('ri-data-file').value='';d.showModal()}
-  function renderType(type){const row=document.querySelector(`.evidence-row[data-ri-type="${type}"]`);if(!row)return;const items=typeItems(type),state=row.querySelector(`#${type}-state`),status=row.querySelector(`#${type}-status`),detail=row.querySelector(`#${type}-detail`);if(state)state.textContent=items.length?`${items.length} dostępne dane`:'Niedostępne';if(status)status.textContent=items.length?items.map(x=>x.status).join(' · '):'—';if(detail)detail.textContent=items.length?`${items.length} ${TYPES[type].title.toLowerCase()} ${items.length===1?'dane':'danych'} jawnie przypisano do tego regionu.`:TYPES[type].empty;let list=row.querySelector('.ri-data-list');if(!list){list=document.createElement('div');list.className='ri-data-list';row.appendChild(list)}list.innerHTML=items.length?items.map(x=>`<article class="ri-data-card"><div class="ri-data-card-head"><span class="ri-data-card-title">${escapeHtml(x.name)}</span><span class="ri-data-card-status">${escapeHtml(x.status)}</span></div><span class="ri-data-card-meta">${escapeHtml(x.source||'bez źródła')}${x.fileName?' · '+escapeHtml(x.fileName):''}${x.notes?' · '+escapeHtml(x.notes):''}</span><div class="ri-data-card-actions"><button type="button" data-ri-edit="${escapeHtml(x.id)}">Edytuj</button><button type="button" data-ri-delete="${escapeHtml(x.id)}">Usuń</button></div></article>`).join(''):`<div class="ri-data-empty">${escapeHtml(TYPES[type].empty)}</div>`;list.querySelectorAll('[data-ri-edit]').forEach(b=>b.onclick=()=>openEditor(readData().find(x=>x.id===b.dataset.riEdit)));list.querySelectorAll('[data-ri-delete]').forEach(b=>b.onclick=()=>{const item=readData().find(x=>x.id===b.dataset.riDelete);if(!item||!confirm(`Usunąć dane „${item.name}”?`))return;writeData(readData().filter(x=>x.id!==item.id));render()})}
+  function renderType(type){const row=document.querySelector(`.evidence-row[data-ri-type="${type}"]`);if(!row)return;const items=typeItems(type),state=row.querySelector(`#${type}-state`),status=row.querySelector(`#${type}-status`),detail=row.querySelector(`#${type}-detail`);if(state)state.textContent=items.length?`${items.length} dostępne dane`:'Niedostępne';if(status)status.textContent=items.length?items.map(x=>x.status).join(' · '):'—';if(detail)detail.textContent=items.length?`${items.length} ${TYPES[type].title.toLowerCase()} ${items.length===1?'dane':'danych'} jawnie przypisano do tego regionu.`:TYPES[type].empty;let list=row.querySelector('.ri-data-list');if(!list){list=document.createElement('div');list.className='ri-data-list';row.appendChild(list)}list.innerHTML=items.length?items.map(x=>`<article class="ri-data-card"><div class="ri-data-card-head"><span class="ri-data-card-title">${escapeHtml(x.name)}</span><span class="ri-data-card-status">${escapeHtml(x.status)}</span></div><span class="ri-data-card-meta">${escapeHtml(x.source||'bez źródła')}${x.fileName?' · '+escapeHtml(x.fileName):''}${x.notes?' · '+escapeHtml(x.notes):''}</span><div class="ri-data-card-actions"><button type="button" data-ri-edit="${escapeHtml(x.id)}">Edytuj</button><button type="button" data-ri-delete="${escapeHtml(x.id)}">Usuń</button></div></article>`).join(''):`<div class="ri-data-empty">${escapeHtml(TYPES[type].empty)}</div>`;list.querySelectorAll('[data-ri-edit]').forEach(b=>b.onclick=()=>openEditor(readData().find(x=>x.id===b.dataset.riEdit)));list.querySelectorAll('[data-ri-delete]').forEach(b=>b.onclick=()=>{const item=readData().find(x=>x.id===b.dataset.riDelete);if(!item||!confirm(`Usunąć dane „${item.name}”?`))return;archiveObservationForItem(item);writeData(readData().filter(x=>x.id!==item.id));render()})}
   function ensureRows(){Object.keys(TYPES).forEach(type=>{const state=get(`${type}-state`);if(!state)return;const row=state.closest('.evidence-row');if(!row)return;row.dataset.riType=type;if(row.querySelector('.ri-data-tools'))return;const tools=document.createElement('div');tools.className='ri-data-tools';tools.innerHTML=`<button type="button">＋ Dodaj dane</button>`;row.appendChild(tools);tools.querySelector('button').onclick=()=>openEditor(null,type)})}
   function render(){ensureRows();Object.keys(TYPES).forEach(renderType)}
-  window.addEventListener('testhp:spatial-layer-changed',()=>setTimeout(render,0));window.addEventListener('testhp:evidence-ux-refresh',()=>setTimeout(render,0));window.addEventListener('testhp:region-data-changed',()=>setTimeout(render,0));
-  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',render,{once:true});else render();
+  window.addEventListener('testhp:spatial-layer-changed',()=>{setTimeout(render,0);syncRegionDataToObservations()});window.addEventListener('testhp:evidence-ux-refresh',()=>setTimeout(render,0));window.addEventListener('testhp:region-data-changed',()=>setTimeout(render,0));
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',()=>{render();syncRegionDataToObservations()},{once:true});else{render();syncRegionDataToObservations()}
 })();
