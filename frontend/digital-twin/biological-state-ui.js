@@ -37,7 +37,7 @@
   function editableSources(payload) { return Array.isArray(payload?.state?.editable_observations) ? payload.state.editable_observations : []; }
   function renderEvidenceBreakdown(payload) {
     const summary = payload?.summary || {};
-    const observations = Number(summary.observations || 0);
+    const observations = Number(summary.data_count ?? summary.observation_count ?? summary.observations ?? payload?.state?.data_count ?? payload?.state?.observation_count ?? 0);
     const direct = Number(summary.direct_evidence || 0);
     const descendants = Number(summary.descendant_evidence || 0);
     const locations = Array.isArray(summary.by_location) ? summary.by_location : [];
@@ -74,12 +74,11 @@
       const payload = await response.json(); lastPayload = payload;
       const state = payload?.state || {}; const interpretations = state.interpretations || {};
       Object.entries(labels).forEach(([dimension, id]) => setText(id, displayInterpretation(interpretations[dimension], dimension)));
-      // The displayed "Dane" count is the number of observations in the selected
-      // anatomical scope. Evidence is a separate validation dimension and must not
-      // reduce the number of real data items shown to the user.
-      const observationCount = Number(payload?.summary?.observations ?? state.observation_count ?? 0);
+      // "Dane" is the number of real observations in the selected anatomical
+      // scope. Evidence is a separate validation/interpretation dimension.
+      const observationCount = Number(payload?.summary?.data_count ?? payload?.summary?.observation_count ?? payload?.summary?.observations ?? state.data_count ?? state.observation_count ?? 0);
       setText('evidence-count', `${observationCount} ${observationCount === 1 ? 'element' : 'elementów'}`);
-      setText('evidence-level', state.availability === 'observed' ? 'Dane obserwowane' : 'Niewystarczające dane');
+      setText('evidence-level', observationCount > 0 ? 'Dane obserwowane' : 'Niewystarczające dane');
       setText('confidence-state', state.confidence?.label || 'Nieustalona');
       renderEvidenceBreakdown(payload); renderEditor(payload);
       window.dispatchEvent(new CustomEvent('testhp:biological-state-updated', { detail: payload }));
