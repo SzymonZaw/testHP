@@ -1,4 +1,4 @@
-"""Runtime contracts for Hand Surface stages 16–19.
+"""Runtime contracts for Hand Surface stages 16–20.
 
 These contracts deliberately separate preparation, registration, projection and
 geometry calibration. They do not claim photogrammetric reconstruction or
@@ -99,19 +99,21 @@ class GeometryCalibration:
 
 @dataclass
 class SurfaceRuntimeManifest:
-    schema: str = "hand-surface-stages-16-19"
+    schema: str = "hand-surface-stages-16-20"
     coordinate_system: str = COORDINATE_SYSTEM
     segmentation: list[SegmentationMask] = field(default_factory=list)
     cameras: list[CameraView] = field(default_factory=list)
     geometry: GeometryCalibration = field(default_factory=GeometryCalibration)
     projection_status: str = "not-ready"
     geometry_status: str = "not-calibrated"
+    registration_qa: dict[str, Any] = field(default_factory=dict)
     provenance: list[dict[str, Any]] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
         data = asdict(self)
         data["projection_status"] = projection_readiness(self.segmentation, self.cameras)
         data["geometry_status"] = "valid" if not self.geometry.validate() else "needs-review"
+        data["registration_qa"] = registration_quality_report(self.segmentation, self.cameras)
         return data
 
 
@@ -130,6 +132,39 @@ def projection_readiness(
     if not views:
         return "needs-camera-registration"
     return "ready-for-surface-projection"
+
+
+def registration_quality_report(
+    segmentation: Iterable[SegmentationMask],
+    cameras: Iterable[CameraView],
+) -> dict[str, Any]:
+    """Return an explicit Stage 20 QA report without claiming registration accuracy."""
+    masks = list(segmentation)
+    cameras = list(cameras)
+    valid_masks = [m for m in masks if m.usable]
+    valid_cameras = [c for c in cameras if c.valid]
+    views = {view: {"segmentation": False, "camera": False} for view in SUPPORTED_VIEWS}
+    for mask in valid_masks:
+        view = getattr(mask, "view", None)
+        if view in views:
+            views[view]["segmentation"] = True
+    for camera in valid_cameras:
+        views[camera.view]["camera"] = True
+    ready_views = [view for view, state in views.items() if state["segmentation"] and state["camera"]]
+    missing_views = [view for view, state in views.items() if not state["segmentation"] or not state["camera"]]
+    score = round(len(ready_views) / len(SUPPORTED_VIEWS), 4)
+    return {
+        "schema": "hand-surface-registration-qa-v1",
+        "supported_views": list(SUPPORTED_VIEWS),
+        "ready_views": ready_views,
+        "missing_or_incomplete_views": missing_views,
+        "usable_segmentation_count": len(valid_masks),
+        "valid_camera_count": len(valid_cameras),
+        "coverage": score,
+        "status": "ready" if len(ready_views) == len(SUPPORTED_VIEWS) else "review",
+        "accuracy_claim": False,
+        "evidence_boundary": "QA reports structural readiness only; it does not establish photogrammetric or anatomical accuracy.",
+    }
 
 
 def select_projection_source(candidates: Iterable[ProjectionCandidate]) -> dict[str, Any] | None:
@@ -164,7 +199,7 @@ def build_runtime_manifest(
         geometry=geometry or GeometryCalibration(),
     )
     manifest.provenance.append({
-        "stage": "16-19",
+        "stage": "16-20",
         "coordinate_system": COORDINATE_SYSTEM,
         "statement": "Runtime metadata records observations and transformations; it does not infer biological state.",
     })
