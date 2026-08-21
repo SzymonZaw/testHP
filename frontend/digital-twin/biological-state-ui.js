@@ -29,9 +29,20 @@
     }
     return String(value);
   }
-  function stateSpatialId(detail) {
-    if (detail?.spatial_id) return detail.spatial_id;
-    if (detail?.path?.length) return detail.path.map(String).join('/').toLowerCase().replaceAll(' ', '-');
+  function canonicalSpatialId(detail) {
+    if (detail?.spatial_id) return String(detail.spatial_id);
+    const managerId = window.spatialViewportManager?.state?.id;
+    if (managerId) return String(managerId);
+    const selected = window.selectedSpatialNode;
+    if (typeof selected === 'string' && selected) return selected;
+    const target = window.spatialEvidenceTarget;
+    if (typeof target === 'string' && target) return target;
+    if (detail?.path?.length) {
+      const path = detail.path.map(String).filter(Boolean);
+      const last = path.at(-1)?.toLowerCase().replaceAll(' ', '-');
+      const aliases = {'dłoń':'palm','śródręcze':'palm','kciuk':'thumb','palec-wskazujący':'index','palec-środkowy':'middle','palec-serdeczny':'ring','mały-palec':'little','nadgarstek':'wrist'};
+      if (aliases[last]) return `hand/${aliases[last]}`;
+    }
     return 'hand/palm';
   }
   function editableSources(payload) { return Array.isArray(payload?.state?.editable_observations) ? payload.state.editable_observations : []; }
@@ -66,7 +77,7 @@
   function escapeHtml(value) { return String(value ?? '').replace(/[&<>\"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;',"'":'&#39;'}[c])); }
   async function refresh(detail = lastDetail) {
     lastDetail = detail || {};
-    const spatialId = stateSpatialId(lastDetail);
+    const spatialId = canonicalSpatialId(lastDetail);
     const params = new URLSearchParams({ subject_id: 'own_cohort', timepoint: 'T0', spatial_id: spatialId, include_descendants: 'true' });
     try {
       const response = await fetch(`/api/biological-state?${params.toString()}`, { cache: 'no-store' });
@@ -74,8 +85,6 @@
       const payload = await response.json(); lastPayload = payload;
       const state = payload?.state || {}; const interpretations = state.interpretations || {};
       Object.entries(labels).forEach(([dimension, id]) => setText(id, displayInterpretation(interpretations[dimension], dimension)));
-      // "Dane" is the number of real observations in the selected anatomical
-      // scope. Evidence is a separate validation/interpretation dimension.
       const observationCount = Number(payload?.summary?.data_count ?? payload?.summary?.observation_count ?? payload?.summary?.observations ?? state.data_count ?? state.observation_count ?? 0);
       setText('evidence-count', `${observationCount} ${observationCount === 1 ? 'element' : 'elementów'}`);
       setText('evidence-level', observationCount > 0 ? 'Dane obserwowane' : 'Niewystarczające dane');
