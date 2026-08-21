@@ -29,20 +29,11 @@
   }
 
   function activate(part) {
-    const target = {
-      ...part,
-      spatial_id: part.id,
-      spatialId: part.id
-    };
+    const target = { ...part, spatial_id: part.id, spatialId: part.id };
     const manager = window.spatialViewportManager;
-
-    // The canonical target contract uses spatial_id. Keep id/regionId as
-    // compatibility fields because the renderer still consumes them.
     if (manager?.setSpatialTarget) {
       try {
         manager.setSpatialTarget(target);
-        window.dispatchEvent(new CustomEvent('testhp:spatial-layer-changed', { detail: target }));
-        window.dispatchEvent(new CustomEvent('testhp:spatial-target-changed', { detail: target }));
         if (window.testhpSpatialContract?.publish) window.testhpSpatialContract.publish(target);
         setDiagnostic(`Selected anatomical part '${part.label}' from root Dłoń.`);
         return;
@@ -50,8 +41,6 @@
         console.error('[Twin navigation] target selection failed', error);
       }
     }
-
-    // Keep the navigation responsive even if the renderer manager is temporarily unavailable.
     window.dispatchEvent(new CustomEvent('testhp:spatial-target-request', { detail: target }));
     if (window.testhpSpatialContract?.publish) window.testhpSpatialContract.publish(target);
     setDiagnostic(`Selected anatomical part '${part.label}' from root Dłoń; renderer manager was unavailable.`);
@@ -66,14 +55,40 @@
     button.style.zIndex = '1';
   }
 
+  function isCanonicalRootDom(children) {
+    const direct = [...children.children];
+    if (direct.length !== ROOT_PARTS.length) return false;
+    if (!direct.every(el => el.matches('button.spatial-root-anatomical-part.spatial-target'))) return false;
+    const directLabels = direct.map(el => el.querySelector(':scope > strong')?.textContent?.trim() || '');
+    if (!directLabels.every((value, i) => value === ROOT_PARTS[i].label)) return false;
+    // A root target must never contain another navigation target. Nested
+    // .spatial-target buttons were the cause of clicks landing on stale deep
+    // targets while the visible root state still showed Dłoń.
+    if (children.querySelector('.spatial-root-anatomical-part .spatial-target')) return false;
+    return true;
+  }
+
+  function installDelegatedRootClick() {
+    if (window.__testhpRootMacroClickHandlerInstalled) return;
+    window.__testhpRootMacroClickHandlerInstalled = true;
+    document.addEventListener('click', event => {
+      const button = event.target?.closest?.('#spatial-children > .spatial-root-anatomical-part');
+      if (!button || !currentIsRoot()) return;
+      const part = ROOT_PARTS.find(x => x.id === button.dataset.spatialId);
+      if (!part) return;
+      event.preventDefault();
+      event.stopPropagation();
+      activate(part);
+    }, true);
+  }
+
   function renderRootParts() {
     const children = $('spatial-children');
     if (!children || !currentIsRoot()) return false;
-    const expected = ROOT_PARTS.map(x => x.label);
-    const existing = [...children.querySelectorAll('.spatial-root-anatomical-part')].map(x => x.querySelector('strong')?.textContent.trim() || '');
-    if (existing.length === expected.length && existing.every((value, i) => value === expected[i])) {
-      children.querySelectorAll('.spatial-root-anatomical-part').forEach(installButtonStyle);
-      setDiagnostic("Root Dłoń is normalized to anatomical macro parts.");
+
+    if (isCanonicalRootDom(children)) {
+      children.querySelectorAll(':scope > .spatial-root-anatomical-part').forEach(installButtonStyle);
+      setDiagnostic('Root Dłoń has exactly 7 direct anatomical macro targets; no nested navigation targets.');
       return false;
     }
 
@@ -98,26 +113,33 @@
       children.appendChild(button);
     });
 
-    setDiagnostic("Root Dłoń is rendered as clickable anatomical macro targets; 'Regional field' is not used here.");
+    setDiagnostic("Root Dłoń was normalized: only direct anatomical macro targets remain; stale nested targets were removed.");
     return true;
   }
 
   function install() {
+    installDelegatedRootClick();
+    let scheduled = false;
     const tryApply = () => {
+      scheduled = false;
       if (currentIsRoot()) renderRootParts();
     };
+    const schedule = () => {
+      if (scheduled) return;
+      scheduled = true;
+      requestAnimationFrame(tryApply);
+    };
+
     tryApply();
-    const observer = new MutationObserver(() => {
-      if (currentIsRoot()) requestAnimationFrame(tryApply);
-    });
+    const observer = new MutationObserver(schedule);
     ['spatial-breadcrumb', 'spatial-children', 'spatial-node', 'spatial-level-badge'].forEach(id => {
       const el = $(id);
       if (el) observer.observe(el, { childList: true, subtree: true, characterData: true });
     });
-    window.addEventListener('testhp:viewport-manager-ready', tryApply);
-    window.addEventListener('testhp:spatial-layer-changed', tryApply);
-    window.addEventListener('testhp:viewport-rendered', tryApply);
-    setInterval(tryApply, 500);
+    window.addEventListener('testhp:viewport-manager-ready', schedule);
+    window.addEventListener('testhp:spatial-layer-changed', schedule);
+    window.addEventListener('testhp:viewport-rendered', schedule);
+    window.addEventListener('beforeunload', () => observer.disconnect(), { once: true });
   }
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', install, { once: true });

@@ -1,166 +1,18 @@
-const viewport=document.getElementById('twin-viewport');
-const badge=document.getElementById('spatial-level-badge');
-const node=document.getElementById('spatial-node');
-const children=document.getElementById('spatial-children');
-const breadcrumb=document.getElementById('spatial-breadcrumb');
-
-if(viewport&&badge&&node&&children&&breadcrumb){
-  const view=document.createElement('section');
-  view.id='spatial-layer-view';
-  view.className='spatial-layer-view';
-  viewport.appendChild(view);
-
-  const labels={
-    'TISSUE FIELD':['Sekcja tkankowa','Płaszczyzna nawigacji tkankowej'],
-    'CELLULAR FIELD':['Pole komórkowe','Płaszczyzna nawigacji mikroskopowej'],
-    'SINGLE CELL':['Pojedyncza komórka','Widok celu pojedynczej komórki']
-  };
-
-  const HAND_PARTS=[
-    {id:'wrist',label:'Nadgarstek'},
-    {id:'palm',label:'Śródręcze'},
-    {id:'thumb',label:'Kciuk'},
-    {id:'index',label:'Palec wskazujący'},
-    {id:'middle',label:'Palec środkowy'},
-    {id:'ring',label:'Palec serdeczny'},
-    {id:'little',label:'Mały palec'}
-  ];
-
-  function level(){return String(badge.textContent||'MAKRO').trim().toUpperCase();}
-  function parent(){return [...breadcrumb.querySelectorAll('button')].slice(-2,-1)[0]||null;}
-  function isHandRoot(){
-    const crumbs=[...breadcrumb.querySelectorAll('button')].map(b=>b.textContent.trim()).filter(Boolean);
-    const current=node.querySelector('strong')?.textContent?.trim()||'';
-    return crumbs.length===1&&(current==='Hand'||current==='Dłoń');
-  }
-  function debug(message,detail={}){
-    window.dispatchEvent(new CustomEvent('testhp:spatial-navigation-debug',{detail:{message,...detail}}));
-  }
-  function syncDebugCause(){
-    const panel=document.getElementById('twin-debug-panel');
-    if(!panel)return;
-    let box=document.getElementById('twin-spatial-root-cause');
-    if(!box){
-      box=document.createElement('pre');
-      box.id='twin-spatial-root-cause';
-      box.style.cssText='margin:8px 0 0;padding:10px;border:1px solid #8b6b35;border-radius:8px;background:#15120a;color:#f0d28b;white-space:pre-wrap;font:11px/1.35 ui-monospace,SFMono-Regular,Consolas,monospace';
-      panel.appendChild(box);
+(() => {
+  // app.js is the canonical owner of spatial navigation. This module is
+  // intentionally passive: it must never replace or proxy navigation buttons.
+  // Multiple writers of #spatial-children were causing stale DOM targets.
+  const report = reason => window.dispatchEvent(new CustomEvent('testhp:spatial-navigation-debug', {
+    detail: {
+      source: 'spatial-navigation-v2',
+      mode: 'canonical-passive',
+      reason,
+      managerPresent: !!window.spatialViewportManager,
+      activeKey: window.spatialViewportManager?.activeKey || null,
+      activeLayer: window.spatialViewportManager?.activeLayer || null
     }
-    const current=node.querySelector('strong')?.textContent?.trim()||'?';
-    const crumbs=[...breadcrumb.querySelectorAll('button')].map(b=>b.textContent.trim()).filter(Boolean);
-    const actual=[...children.querySelectorAll('.spatial-target')].map(x=>x.querySelector('strong')?.textContent?.trim()||'');
-    const root=isHandRoot();
-    const fallback=root&&actual.length===1&&/regional field/i.test(actual[0]);
-    box.textContent=[
-      'SPATIAL ROOT CAUSE / HAND',
-      `root:              ${root?'YES':'NO'}`,
-      `current target:    ${current}`,
-      `path:              ${crumbs.join(' > ')||'(none)'}`,
-      `current regionId:  ${root?'null / undefined':'(not root)'}`,
-      `fallback active:   ${fallback?'YES':'NO'}`,
-      `why Regional field:${fallback?' childTargets() reaches its final macro fallback because Hand has no regionId and no explicit root-part branch.':' not active; canonical hand-part targets are being used.'}`,
-      `expected macro:     ${HAND_PARTS.map(x=>x.label).join(' | ')}`,
-      `actual children:    ${actual.join(' | ')||'(none)'}`,
-      'fix:                explicit Hand → macro-region mapping + manager.setSpatialTarget()',
-      `manager:            ${window.spatialViewportManager?'present':'missing'}`
-    ].join('\n');
-  }
-  function normalizeHandRoot(){
-    if(!isHandRoot()){syncDebugCause();return;}
-    const existing=[...children.querySelectorAll('.spatial-target')].map(x=>x.querySelector('strong')?.textContent?.trim()||'');
-    const expected=HAND_PARTS.map(x=>x.label);
-    if(existing.join('|')===expected.join('|')){syncDebugCause();return;}
-    const manager=window.spatialViewportManager;
-    debug('HAND ROOT CHILDREN REPLACED',{
-      reason:'childTargets() has no explicit branch for the root Hand node because it has no regionId; its fallback returns the synthetic Regional field node.',
-      currentNode:{id:'hand',label:node.querySelector('strong')?.textContent?.trim()||'Hand',level:level(),regionId:null},
-      oldChildren:existing,
-      expectedChildren:expected,
-      managerPresent:!!manager,
-      fix:'Use canonical macro region nodes and manager.setSpatialTarget() instead of the synthetic tissue fallback.'
-    });
-    children.replaceChildren();
-    HAND_PARTS.forEach(part=>{
-      const button=document.createElement('button');
-      button.type='button';
-      button.className='spatial-target';
-      button.dataset.spatialId=part.id;
-      button.dataset.spatialLevel='macro';
-      const title=document.createElement('strong');
-      title.textContent=part.label;
-      const meta=document.createElement('span');
-      meta.textContent='Macro anatomy';
-      button.append(title,meta);
-      button.onclick=()=>{
-        const target={id:part.id,label:part.label,level:'macro',regionId:part.id};
-        debug('HAND ROOT TARGET SELECTED',{target,source:'hand-root-navigation'});
-        if(window.spatialViewportManager?.setSpatialTarget) window.spatialViewportManager.setSpatialTarget(target);
-        else debug('HAND ROOT TARGET FAILED',{reason:'spatialViewportManager.setSpatialTarget is unavailable'});
-      };
-      children.appendChild(button);
-    });
-    syncDebugCause();
-  }
-
-  function syncInspectorBoundary(){
-    const macroRow=document.querySelector('.inspector .macro-row');
-    if(!macroRow)return;
-    const deep=level()!=='MAKRO';
-    macroRow.hidden=deep;
-    macroRow.setAttribute('aria-hidden',deep?'true':'false');
-  }
-
-  function render(){
-    normalizeHandRoot();
-    const current=level();
-    view.hidden=current==='MAKRO';
-    syncInspectorBoundary();
-    if(current==='MAKRO')return;
-    view.replaceChildren();
-
-    const header=document.createElement('div');
-    header.className='layer-view-header';
-    const titleWrap=document.createElement('div');
-    const eyebrow=document.createElement('span'); eyebrow.textContent=labels[current]?.[0]||current;
-    const title=document.createElement('strong'); title.textContent=node.querySelector('strong')?.textContent||'Cel przestrzenny';
-    const subtitle=document.createElement('small'); subtitle.textContent=labels[current]?.[1]||'Widok nawigacji przestrzennej';
-    titleWrap.append(eyebrow,title,subtitle);
-    const back=document.createElement('button'); back.type='button'; back.className='layer-parent'; back.textContent='← Warstwa nadrzędna';
-    back.disabled=!parent(); back.onclick=()=>parent()?.click();
-    header.append(titleWrap,back); view.appendChild(header);
-
-    const field=document.createElement('div');
-    field.className=`layer-field layer-${current.toLowerCase().replaceAll(' ','-')}`;
-    const targets=[...children.querySelectorAll('.spatial-target')];
-    targets.forEach((target,i)=>{
-      const item=document.createElement('button'); item.type='button'; item.className='layer-target';
-      item.innerHTML=`<strong>${target.querySelector('strong')?.textContent||`Cel ${i+1}`}</strong><span>${target.querySelector('span')?.textContent||'Cel nawigacyjny'}</span>`;
-      item.onclick=()=>target.click(); field.appendChild(item);
-    });
-    if(!targets.length){
-      const terminal=document.createElement('div'); terminal.className='layer-terminal';
-      terminal.innerHTML='<span>NAJDROBNIEJSZY CEL PRZESTRZENNY</span><strong>Brak głębszego celu</strong><small>Tylko nawigacja · brak powiązanych danych</small>';
-      field.appendChild(terminal);
-    }
-    view.appendChild(field);
-
-    const note=document.createElement('p'); note.className='layer-view-note';
-    note.textContent='To jest wyłącznie widok nawigacji. Wizualizacja nie przedstawia rzeczywistych danych tkankowych, mikroskopowych ani komórkowych, chyba że dane są jawnie przypisane do tego celu.';
-    view.appendChild(note);
-  }
-
-  const observer=new MutationObserver(()=>{
-    normalizeHandRoot();
-    render();
-  });
-  observer.observe(badge,{childList:true,characterData:true,subtree:true});
-  observer.observe(node,{childList:true,characterData:true,subtree:true});
-  observer.observe(children,{childList:true,characterData:true,subtree:true});
-  observer.observe(breadcrumb,{childList:true,subtree:true});
-  window.addEventListener('testhp:viewport-manager-ready',normalizeHandRoot);
-  window.addEventListener('testhp:spatial-layer-changed',normalizeHandRoot);
-  window.addEventListener('testhp:spatial-navigation-debug',e=>console.debug('[TWIN SPATIAL DEBUG]',e.detail));
-  setInterval(syncDebugCause,500);
-  normalizeHandRoot();
-  render();
-}
+  }));
+  window.addEventListener('testhp:viewport-manager-ready', () => report('manager-ready'), { once: true });
+  window.addEventListener('testhp:spatial-layer-changed', () => report('spatial-layer-changed'));
+  report('loaded-without-dom-mutation');
+})();
