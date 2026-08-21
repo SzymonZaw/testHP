@@ -40,6 +40,22 @@ def test_recursive_scope_includes_only_descendants():
     assert {item["id"] for item in descendants} == {"child", "grandchild"}
 
 
+def test_stale_parent_metadata_cannot_move_a_sibling_into_scope():
+    items = [
+        {"id": "palm", "spatial_id": "hand/palm", "parent_id": "hand"},
+        {"id": "thumb", "spatial_id": "hand/thumb", "parent_id": "hand/palm"},
+    ]
+
+    direct, descendants = split_spatial_scope(
+        items,
+        "hand/palm",
+        include_descendants=True,
+    )
+
+    assert [item["id"] for item in direct] == ["palm"]
+    assert descendants == []
+
+
 def test_biological_level_is_a_filter_not_spatial_identity():
     items = [
         {"id": "cell-palm", "spatial_id": "hand/palm", "biological_level": "cellular"},
