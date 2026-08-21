@@ -4,7 +4,7 @@ from core.anatomy import AnatomicalLocation
 from core.biological_state_aggregation import BiologicalStateAggregator
 from core.evidence import Evidence
 from core.observation import Observation
-from backend.biological_state_routes import _confidence_payload
+from backend.biological_state_routes import _canonical_parent_id, _confidence_payload
 
 
 def _observation(observation_id, spatial_id, parent_id=None, validated=None):
@@ -47,16 +47,36 @@ def test_validated_interpretation_requires_linked_evidence():
     assert state.interpretation("damage") is None
 
 
-def test_descendant_evidence_is_explicitly_aggregated_to_parent():
-    parent = _observation("parent", "hand/palm")
-    child = _observation("child", "hand/palm/central-palm", parent_id="hand/palm")
-    evidence = Evidence(id="ev-child", subject_id="own_cohort", observation_id="child", confidence=0.6)
-    aggregator = BiologicalStateAggregator(
-        [parent, child],
-        [evidence],
-        [parent.anatomical_location, child.anatomical_location],
-    )
-    assert aggregator.summarize_location("hand/palm", include_descendants=False).count == 0
-    summary = aggregator.summarize_location("hand/palm", include_descendants=True)
-    assert summary.evidence_ids == ("ev-child",)
-    assert summary.status == "observed"
+def test_deep_spatial_ids_use_the_immediate_parent():
+    assert _canonical_parent_id("hand/palm") == "hand"
+    assert _canonical_parent_id("hand/palm/thenar-eminence") == "hand/palm"
+    assert _canonical_parent_id("hand/palm/thenar-eminence/field-b") == "hand/palm/thenar-eminence"
+    assert _canonical_parent_id("hand/palm/thenar-eminence/field-b/cell-3") == "hand/palm/thenar-eminence/field-b"
+    assert _canonical_parent_id("hand/palm/thenar-eminence/field-b/cell-3/marker-a") == "hand/palm/thenar-eminence/field-b/cell-3"
+
+
+def test_deep_descendant_evidence_reaches_every_ancestor():
+    ids = [
+        "hand/palm",
+        "hand/palm/thenar-eminence",
+        "hand/palm/thenar-eminence/field-b",
+        "hand/palm/thenar-eminence/field-b/cell-3",
+    ]
+    locations = []
+    observations = []
+    for index, spatial_id in enumerate(ids):
+        parent_id = _canonical_parent_id(spatial_id)
+        observation = _observation(f"obs-{index}", spatial_id, parent_id=parent_id)
+        observations.append(observation)
+        locations.append(observation.anatomical_location)
+
+    leaf_evidence = Evidence(id="ev-leaf", subject_id="own_cohort", observation_id="obs-3", confidence=0.7)
+    aggregator = BiologicalStateAggregator(observations, [leaf_evidence], locations)
+
+    for ancestor in ids[:-1]:
+        summary = aggregator.summarize_location(ancestor, include_descendants=True)
+        assert summary.evidence_ids == ("ev-leaf",)
+        assert summary.count == 1
+        assert summary.status == "observed"
+
+    assert aggregator.summarize_location(ids[-1], include_descendants=False).count == 1
