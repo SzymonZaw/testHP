@@ -19,13 +19,10 @@
   function canonicalParentId(spatialId){
     const parts=String(spatialId||'hand').replace(/^\/+|\/+$/g,'').split('/').filter(Boolean);
     if(parts[0]!=='hand'||parts.length<2)return parts.length===1?'hand':null;
-    if(parts.length===2){
-      if(parts[1]==='palm')return 'hand';
-      if(['thumb','index','middle','ring','little'].includes(parts[1]))return 'hand/palm';
-      if(parts[1]==='wrist')return 'hand';
-      return 'hand';
-    }
-    return parts.slice(0,2).join('/');
+    // All direct hand regions are siblings under hand. Never infer thumb/index/etc.
+    // as children of palm merely because they share the same biological layer.
+    if(parts.length===2)return 'hand';
+    return parts.slice(0,-1).join('/');
   }
   function targetName(spatialId){return String(spatialId||'hand').split('/').filter(Boolean).pop()||'hand'}
 
