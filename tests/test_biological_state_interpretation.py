@@ -4,7 +4,8 @@ from core.anatomy import AnatomicalLocation
 from core.biological_state_aggregation import BiologicalStateAggregator
 from core.evidence import Evidence
 from core.observation import Observation
-from backend.biological_state_routes import _canonical_parent_id, _confidence_payload
+from core.spatial_scope import canonical_parent_id
+from backend.biological_state_routes import _confidence_payload
 
 
 def _observation(observation_id, spatial_id, parent_id=None, validated=None):
@@ -48,11 +49,11 @@ def test_validated_interpretation_requires_linked_evidence():
 
 
 def test_deep_spatial_ids_use_the_immediate_parent():
-    assert _canonical_parent_id("hand/palm") == "hand"
-    assert _canonical_parent_id("hand/palm/thenar-eminence") == "hand/palm"
-    assert _canonical_parent_id("hand/palm/thenar-eminence/field-b") == "hand/palm/thenar-eminence"
-    assert _canonical_parent_id("hand/palm/thenar-eminence/field-b/cell-3") == "hand/palm/thenar-eminence/field-b"
-    assert _canonical_parent_id("hand/palm/thenar-eminence/field-b/cell-3/marker-a") == "hand/palm/thenar-eminence/field-b/cell-3"
+    assert canonical_parent_id("hand/palm") == "hand"
+    assert canonical_parent_id("hand/palm/thenar-eminence") == "hand/palm"
+    assert canonical_parent_id("hand/palm/thenar-eminence/field-b") == "hand/palm/thenar-eminence"
+    assert canonical_parent_id("hand/palm/thenar-eminence/field-b/cell-3") == "hand/palm/thenar-eminence/field-b"
+    assert canonical_parent_id("hand/palm/thenar-eminence/field-b/cell-3/marker-a") == "hand/palm/thenar-eminence/field-b/cell-3"
 
 
 def test_deep_descendant_evidence_reaches_every_ancestor():
@@ -65,7 +66,7 @@ def test_deep_descendant_evidence_reaches_every_ancestor():
     locations = []
     observations = []
     for index, spatial_id in enumerate(ids):
-        parent_id = _canonical_parent_id(spatial_id)
+        parent_id = canonical_parent_id(spatial_id)
         observation = _observation(f"obs-{index}", spatial_id, parent_id=parent_id)
         observations.append(observation)
         locations.append(observation.anatomical_location)
