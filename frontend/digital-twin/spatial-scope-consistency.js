@@ -3,8 +3,13 @@
   const labels = { macro: 'Makro', tissue: 'Tkanka', cellular: 'Komórkowe', molecular: 'Molekularne' };
   const get = id => document.getElementById(id);
   const setText = (id, value) => { const el = get(id); if (el) el.textContent = value; };
+  let lastSummary = null;
+  let lastSpatialId = 'hand';
+  let rendering = false;
+  let refreshSequence = 0;
 
   function canonicalSpatialId(detail = {}) {
+    if (window.testhpSpatialScope?.selection) return window.testhpSpatialScope.selection(detail).spatial_id;
     const raw = detail?.spatial_id || detail?.spatialId;
     if (raw) {
       const value = String(raw).replace(/^\/+|\/+$/g, '');
@@ -16,8 +21,7 @@
     }
     if (detail?.id) {
       const id = String(detail.id).replace(/^\/+|\/+$/g, '');
-      if (id === 'hand' || id.startsWith('hand/')) return id;
-      return `hand/${id}`;
+      return id === 'hand' || id.startsWith('hand/') ? id : `hand/${id}`;
     }
     const selected = window.__testhpCanonicalSpatialSelection || window.selectedSpatialNode;
     const selectedId = selected?.spatial_id || selected?.id;
@@ -33,7 +37,7 @@
       : breadcrumb;
     const label = String(detail.target || detail.label || path[path.length - 1] || (spatialId === 'hand' ? 'Dłoń' : spatialId.split('/').pop()));
     const level = String(detail.level || 'macro').toLowerCase();
-    const parent_id = spatialId === 'hand' ? null : spatialId.split('/').slice(0, -1).join('/') || 'hand';
+    const parent_id = window.testhpSpatialScope?.parent(spatialId) ?? (spatialId === 'hand' ? null : spatialId.split('/').slice(0, -1).join('/') || 'hand');
     return { id: spatialId, spatial_id: spatialId, label, level, parent_id, path };
   }
 
@@ -42,9 +46,7 @@
     if (!children) return;
     [...children.querySelectorAll('.spatial-target')].forEach(button => {
       const explicit = button.dataset.spatialId || button.getAttribute('data-spatial-id');
-      if (explicit) {
-        button.dataset.spatialId = explicit.startsWith('hand') ? explicit : `hand/${explicit}`;
-      }
+      if (explicit) button.dataset.spatialId = explicit.startsWith('hand') ? explicit : `hand/${explicit}`;
     });
   }
 
@@ -60,7 +62,7 @@
   function currentDetail() {
     const selected = window.__testhpCanonicalSpatialSelection || window.selectedSpatialNode;
     if (selected && typeof selected === 'object') return selected;
-    return { spatial_id: 'hand' };
+    return { spatial_id: lastSpatialId || 'hand' };
   }
 
   function layerCount(summary, level) {
@@ -85,26 +87,42 @@
     const parts = [];
     if (counts.direct) parts.push(`bezpośrednio: ${counts.direct}`);
     if (counts.descendants) parts.push(`w potomkach: ${counts.descendants}`);
-    detail.textContent = `${labels[level]} · ${parts.join(' · ')}. Liczba pochodzi z obserwacji w scope przestrzennym; evidence jest rozliczane osobno.`;
+    detail.textContent = `${labels[level]} · ${parts.join(' · ')}. Źródło: obserwacje w scope przestrzennym; evidence jest rozliczane osobno.`;
   }
 
-  async function refresh(detail = currentDetail()) {
-    const node = publishSelection(detail);
-    const spatialId = node.spatial_id;
-    const params = new URLSearchParams({ subject_id: 'own_cohort', timepoint: 'T0', spatial_id: spatialId, include_descendants: 'true' });
+  function renderAuthoritative(summary, spatialId) {
+    if (!summary) return;
+    rendering = true;
     try {
-      const response = await fetch(`/api/biological-state?${params.toString()}`, { cache: 'no-store' });
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
-      const payload = await response.json(), summary = payload?.summary || {};
       LEVELS.forEach(level => renderLayer(level, layerCount(summary, level)));
       const observationCount = Number(summary.observation_count || summary.observations || 0);
       const evidenceCount = Number(summary.explicit_evidence || 0);
       setText('evidence-count', `${observationCount} ${observationCount === 1 ? 'element' : 'elementów'}`);
       setText('evidence-level', observationCount ? 'Dane obserwowane' : 'Niewystarczające dane');
       setText('evidence-breakdown', `Scope: ${spatialId} · obserwacje: ${observationCount} · evidence: ${evidenceCount} · direct: ${summary.direct_observations || 0} · descendants: ${summary.descendant_observations || 0}`);
-      window.dispatchEvent(new CustomEvent('testhp:spatial-scope-consistency-updated', { detail: { spatial_id: spatialId, summary, payload } }));
+      const badge = get('zone-label');
+      if (badge) badge.title = `Scope obserwacji: ${spatialId}`;
+    } finally {
+      rendering = false;
+    }
+  }
+
+  async function refresh(detail = currentDetail()) {
+    const node = publishSelection(detail);
+    const spatialId = node.spatial_id;
+    lastSpatialId = spatialId;
+    const sequence = ++refreshSequence;
+    const params = new URLSearchParams({ subject_id: 'own_cohort', timepoint: 'T0', spatial_id: spatialId, include_descendants: 'true' });
+    try {
+      const response = await fetch(`/api/biological-state?${params.toString()}`, { cache: 'no-store' });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const payload = await response.json();
+      if (sequence !== refreshSequence) return;
+      lastSummary = payload?.summary || {};
+      renderAuthoritative(lastSummary, spatialId);
+      window.dispatchEvent(new CustomEvent('testhp:spatial-scope-consistency-updated', { detail: { spatial_id: spatialId, summary: lastSummary, payload } }));
     } catch (error) {
-      console.warn('[SpatialScope] biological-state scope refresh failed', { spatialId, error });
+      if (sequence === refreshSequence) console.warn('[SpatialScope] biological-state scope refresh failed', { spatialId, error });
     }
   }
 
@@ -123,8 +141,23 @@
 
   window.addEventListener('testhp:spatial-layer-changed', onSpatialChange);
   window.addEventListener('testhp:spatial-change', onSpatialChange);
+  window.addEventListener('testhp:spatial-selection-contract-updated', onSpatialChange);
   window.addEventListener('testhp:observation-updated', () => refresh());
+  window.addEventListener('testhp:observation-changed', () => refresh());
   window.addEventListener('testhp:biological-state-refresh', () => refresh());
+  window.addEventListener('testhp:region-data-changed', () => window.setTimeout(() => refresh(), 0));
+  window.addEventListener('testhp:evidence-ux-refresh', () => window.setTimeout(() => refresh(), 0));
+
+  const inspector = document.querySelector('.inspector');
+  if (inspector) {
+    const observer = new MutationObserver(() => {
+      if (rendering || !lastSummary) return;
+      window.setTimeout(() => {
+        if (!rendering && lastSummary) renderAuthoritative(lastSummary, lastSpatialId);
+      }, 0);
+    });
+    observer.observe(inspector, { childList: true, subtree: true, characterData: true });
+  }
 
   const observerTarget = get('spatial-children');
   if (observerTarget) {
