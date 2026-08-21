@@ -26,24 +26,44 @@
       source: 'spatial-root-anatomy-fix.js'
     };
     window.dispatchEvent(new CustomEvent('testhp:spatial-diagnostic', { detail: window.__testhpSpatialNavDiagnostic }));
-    const panel = $('twin-debug-panel');
-    if (!panel) return;
-    let pre = $('twin-debug-navigation');
-    if (!pre) {
-      pre = document.createElement('pre');
-      pre.id = 'twin-debug-navigation';
-      pre.style.cssText = 'margin:8px 0 0;padding:8px;border-top:1px solid #31534c;white-space:pre-wrap;color:#dcece6;font:11px/1.35 ui-monospace,SFMono-Regular,Consolas,monospace';
-      panel.appendChild(pre);
+  }
+
+  function activate(part) {
+    const target = {
+      ...part,
+      spatial_id: part.id,
+      spatialId: part.id
+    };
+    const manager = window.spatialViewportManager;
+
+    // The canonical target contract uses spatial_id. Keep id/regionId as
+    // compatibility fields because the renderer still consumes them.
+    if (manager?.setSpatialTarget) {
+      try {
+        manager.setSpatialTarget(target);
+        window.dispatchEvent(new CustomEvent('testhp:spatial-layer-changed', { detail: target }));
+        window.dispatchEvent(new CustomEvent('testhp:spatial-target-changed', { detail: target }));
+        if (window.testhpSpatialContract?.publish) window.testhpSpatialContract.publish(target);
+        setDiagnostic(`Selected anatomical part '${part.label}' from root Dłoń.`);
+        return;
+      } catch (error) {
+        console.error('[Twin navigation] target selection failed', error);
+      }
     }
-    pre.textContent = [
-      '', 'NAVIGATION DIAGNOSTIC',
-      `reason:          ${detail}`,
-      'root target:     Dłoń',
-      `expected next:   ${ROOT_PARTS.map(x => x.label).join(' | ')}`,
-      'expected level:  Anatomia makro',
-      'bad fallback:    Regional field',
-      'correction:      root-level targets are anatomical parts; tissue begins only after a selected part'
-    ].join('\n');
+
+    // Keep the navigation responsive even if the renderer manager is temporarily unavailable.
+    window.dispatchEvent(new CustomEvent('testhp:spatial-target-request', { detail: target }));
+    if (window.testhpSpatialContract?.publish) window.testhpSpatialContract.publish(target);
+    setDiagnostic(`Selected anatomical part '${part.label}' from root Dłoń; renderer manager was unavailable.`);
+  }
+
+  function installButtonStyle(button) {
+    button.disabled = false;
+    button.removeAttribute('aria-disabled');
+    button.style.pointerEvents = 'auto';
+    button.style.cursor = 'pointer';
+    button.style.position = 'relative';
+    button.style.zIndex = '1';
   }
 
   function renderRootParts() {
@@ -52,39 +72,33 @@
     const expected = ROOT_PARTS.map(x => x.label);
     const existing = [...children.querySelectorAll('.spatial-root-anatomical-part')].map(x => x.querySelector('strong')?.textContent.trim() || '');
     if (existing.length === expected.length && existing.every((value, i) => value === expected[i])) {
-      setDiagnostic("Root Dłoń is already normalized to anatomical macro parts; 'Regional field' is suppressed at this level.");
+      children.querySelectorAll('.spatial-root-anatomical-part').forEach(installButtonStyle);
+      setDiagnostic("Root Dłoń is normalized to anatomical macro parts.");
       return false;
     }
 
-    const before = [...children.querySelectorAll('.spatial-target strong')].map(x => x.textContent.trim());
     children.replaceChildren();
     ROOT_PARTS.forEach(part => {
       const button = document.createElement('button');
       button.type = 'button';
       button.className = 'spatial-target spatial-root-anatomical-part';
+      button.dataset.spatialId = part.id;
       button.dataset.rootAnatomicalPart = part.id;
-      const marker = document.createElement('span');
-      marker.textContent = 'anatomical-part:';
-      marker.style.display = 'none';
       const title = document.createElement('strong');
       title.textContent = part.label;
       const meta = document.createElement('span');
       meta.textContent = 'Anatomia makro';
-      button.append(marker, title, meta);
-      button.addEventListener('click', () => {
-        const manager = window.spatialViewportManager;
-        if (manager?.setSpatialTarget) {
-          manager.setSpatialTarget({ ...part });
-          setDiagnostic(`Selected anatomical part '${part.label}' from root Dłoń.`);
-        }
+      button.append(title, meta);
+      installButtonStyle(button);
+      button.addEventListener('click', event => {
+        event.preventDefault();
+        event.stopPropagation();
+        activate(part);
       });
       children.appendChild(button);
     });
 
-    const wasFallback = before.length === 1 && before[0].toLowerCase() === 'regional field';
-    setDiagnostic(wasFallback
-      ? "The canonical navigator exposed 'Regional field' because childTargets(hand) used a generic tissue fallback for the root node with no regionId."
-      : "Root Dłoń is being rendered as an anatomical macro container; 'Regional field' is not a valid immediate anatomical child.");
+    setDiagnostic("Root Dłoń is rendered as clickable anatomical macro targets; 'Regional field' is not used here.");
     return true;
   }
 
@@ -104,7 +118,6 @@
     window.addEventListener('testhp:spatial-layer-changed', tryApply);
     window.addEventListener('testhp:viewport-rendered', tryApply);
     setInterval(tryApply, 500);
-    setDiagnostic('Waiting for canonical spatial manager; root navigation will use anatomical parts instead of a generic tissue fallback.');
   }
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', install, { once: true });
