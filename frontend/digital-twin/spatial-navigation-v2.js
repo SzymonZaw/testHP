@@ -16,8 +16,61 @@ if(viewport&&badge&&node&&children&&breadcrumb){
     'SINGLE CELL':['Pojedyncza komórka','Widok celu pojedynczej komórki']
   };
 
+  const HAND_PARTS=[
+    {id:'wrist',label:'Nadgarstek'},
+    {id:'palm',label:'Śródręcze'},
+    {id:'thumb',label:'Kciuk'},
+    {id:'index',label:'Palec wskazujący'},
+    {id:'middle',label:'Palec środkowy'},
+    {id:'ring',label:'Palec serdeczny'},
+    {id:'little',label:'Mały palec'}
+  ];
+
   function level(){return String(badge.textContent||'MAKRO').trim().toUpperCase();}
   function parent(){return [...breadcrumb.querySelectorAll('button')].slice(-2,-1)[0]||null;}
+  function isHandRoot(){
+    const crumbs=[...breadcrumb.querySelectorAll('button')].map(b=>b.textContent.trim()).filter(Boolean);
+    const current=node.querySelector('strong')?.textContent?.trim()||'';
+    return crumbs.length===1&&(current==='Hand'||current==='Dłoń');
+  }
+  function debug(message,detail={}){
+    window.dispatchEvent(new CustomEvent('testhp:spatial-navigation-debug',{detail:{message,...detail}}));
+  }
+  function normalizeHandRoot(){
+    if(!isHandRoot())return;
+    const existing=[...children.querySelectorAll('.spatial-target')].map(x=>x.querySelector('strong')?.textContent?.trim()||'');
+    const expected=HAND_PARTS.map(x=>x.label);
+    if(existing.join('|')===expected.join('|'))return;
+    const manager=window.spatialViewportManager;
+    debug('HAND ROOT CHILDREN REPLACED',{
+      reason:'childTargets() has no explicit branch for the root Hand node because it has no regionId; its fallback returns the synthetic Regional field node.',
+      currentNode:{id:'hand',label:node.querySelector('strong')?.textContent?.trim()||'Hand',level:level(),regionId:null},
+      oldChildren:existing,
+      expectedChildren:expected,
+      managerPresent:!!manager,
+      fix:'Use canonical macro region nodes and manager.setSpatialTarget() instead of the synthetic tissue fallback.'
+    });
+    children.replaceChildren();
+    HAND_PARTS.forEach(part=>{
+      const button=document.createElement('button');
+      button.type='button';
+      button.className='spatial-target';
+      button.dataset.spatialId=part.id;
+      button.dataset.spatialLevel='macro';
+      const title=document.createElement('strong');
+      title.textContent=part.label;
+      const meta=document.createElement('span');
+      meta.textContent='Macro anatomy';
+      button.append(title,meta);
+      button.onclick=()=>{
+        const target={id:part.id,label:part.label,level:'macro',regionId:part.id};
+        debug('HAND ROOT TARGET SELECTED',{target,source:'hand-root-navigation'});
+        if(window.spatialViewportManager?.setSpatialTarget) window.spatialViewportManager.setSpatialTarget(target);
+        else debug('HAND ROOT TARGET FAILED',{reason:'spatialViewportManager.setSpatialTarget is unavailable'});
+      };
+      children.appendChild(button);
+    });
+  }
 
   function syncInspectorBoundary(){
     const macroRow=document.querySelector('.inspector .macro-row');
@@ -28,6 +81,7 @@ if(viewport&&badge&&node&&children&&breadcrumb){
   }
 
   function render(){
+    normalizeHandRoot();
     const current=level();
     view.hidden=current==='MAKRO';
     syncInspectorBoundary();
@@ -65,10 +119,17 @@ if(viewport&&badge&&node&&children&&breadcrumb){
     view.appendChild(note);
   }
 
-  const observer=new MutationObserver(render);
+  const observer=new MutationObserver(()=>{
+    normalizeHandRoot();
+    render();
+  });
   observer.observe(badge,{childList:true,characterData:true,subtree:true});
   observer.observe(node,{childList:true,characterData:true,subtree:true});
   observer.observe(children,{childList:true,characterData:true,subtree:true});
   observer.observe(breadcrumb,{childList:true,subtree:true});
+  window.addEventListener('testhp:viewport-manager-ready',normalizeHandRoot);
+  window.addEventListener('testhp:spatial-layer-changed',normalizeHandRoot);
+  window.addEventListener('testhp:spatial-navigation-debug',e=>console.debug('[TWIN SPATIAL DEBUG]',e.detail));
+  normalizeHandRoot();
   render();
 }
