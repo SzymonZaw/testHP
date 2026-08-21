@@ -46,6 +46,29 @@
     return Array.isArray(payload?.state?.editable_observations) ? payload.state.editable_observations : [];
   }
 
+  function renderEvidenceBreakdown(payload) {
+    const summary = payload?.summary || {};
+    const direct = Number(summary.direct_evidence || 0);
+    const descendants = Number(summary.descendant_evidence || 0);
+    const locations = Array.isArray(summary.by_location) ? summary.by_location : [];
+    const element = $('evidence-breakdown');
+    if (!element) return;
+
+    if (direct + descendants === 0) {
+      element.textContent = 'Brak danych przypisanych bezpośrednio lub w podregionach.';
+      return;
+    }
+
+    const parts = [`Bezpośrednio: ${direct}`, `W podregionach: ${descendants}`];
+    if (locations.length > 1) {
+      const details = locations
+        .filter(item => Number(item.count) > 0)
+        .map(item => `${item.name || item.spatial_id}: ${item.count}`);
+      if (details.length) parts.push(`Źródła: ${details.join(' · ')}`);
+    }
+    element.textContent = parts.join(' · ');
+  }
+
   function renderEditor(payload) {
     const editor = $('biological-state-editor');
     const editButton = $('biological-state-edit');
@@ -90,6 +113,7 @@
       setText('evidence-count', `${state.evidence_count || 0} element${state.evidence_count === 1 ? '' : 'ów'}`);
       setText('evidence-level', state.availability === 'observed' ? 'Dane obserwowane' : 'Niewystarczające dane');
       setText('confidence-state', state.confidence?.label || 'Nieustalona');
+      renderEvidenceBreakdown(payload);
       renderEditor(payload);
       window.dispatchEvent(new CustomEvent('testhp:biological-state-updated', { detail: payload }));
     } catch (error) {
@@ -98,6 +122,7 @@
       setText('evidence-count', '0 elementów');
       setText('evidence-level', 'Niewystarczające dane');
       setText('confidence-state', 'Nieustalona');
+      setText('evidence-breakdown', 'Nie udało się pobrać zakresu danych.');
       const editButton = $('biological-state-edit');
       if (editButton) editButton.disabled = true;
       console.warn('[BiologicalState] API unavailable; safe fallback kept.', error);
