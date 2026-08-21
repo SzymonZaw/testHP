@@ -10,13 +10,13 @@
     if (!host) host = document.createElement('section');
     host.id = 'twin-viewport-debug-host';
     if (host.parentElement !== document.body) document.body.appendChild(host);
-    Object.assign(host.style, {position:'fixed',right:'16px',bottom:'16px',zIndex:'2147483647',width:'min(720px,calc(100vw - 32px))',pointerEvents:'auto',isolation:'isolate'});
+    Object.assign(host.style,{position:'fixed',right:'16px',bottom:'16px',zIndex:'2147483647',width:'min(720px,calc(100vw - 32px))',pointerEvents:'auto',isolation:'isolate'});
 
     let toggle = document.getElementById('twin-debug-toggle');
-    if (!toggle) { toggle = document.createElement('button'); toggle.id='twin-debug-toggle'; toggle.type='button'; host.appendChild(toggle); }
+    if (!toggle) { toggle=document.createElement('button'); toggle.id='twin-debug-toggle'; toggle.type='button'; host.appendChild(toggle); }
     Object.assign(toggle.style,{display:'block',padding:'8px 12px',borderRadius:'8px',border:'1px solid #4b746b',background:'#0b1514',color:'#9bd8c4',font:'800 11px ui-monospace,SFMono-Regular,Consolas,monospace',cursor:'pointer',pointerEvents:'auto'});
 
-    let panel = document.getElementById('twin-debug-panel');
+    let panel=document.getElementById('twin-debug-panel');
     if (!panel) {
       panel=document.createElement('div'); panel.id='twin-debug-panel';
       panel.innerHTML='<div style="display:flex;justify-content:space-between;gap:8px;align-items:center"><strong>TWIN VIEWPORT · DEBUG</strong><button id="twin-debug-close" type="button">MINIMIZE</button></div><pre id="twin-debug-runtime"></pre><pre id="twin-debug-state"></pre><pre id="twin-debug-evidence"></pre><pre id="twin-debug-errors"></pre>';
@@ -57,26 +57,49 @@
       const requested=s.evidenceTarget||lastStateRequest?.spatialId||null;
       const normalize=v=>typeof v==='string'?v.replace(/^\/+|\/+$/g,''):'';
       const selected=normalize(requested);
-      const rows=observations.map(o=>({id:String(o.id||''),spatial:normalize(o.spatial_id),level:o.biological_level||'?',evidence:o.evidence_id?String(o.evidence_id):null,subject:o.subject_id||'?',timepoint:o.timepoint||o.timepoint_id||'?',archived:!!o.archived}));
+      const rows=observations.map(o=>({id:String(o.id||''),spatial:normalize(o.spatial_id),level:o.biological_level||'?',evidence:o.evidence_id?String(o.evidence_id):null,subject:o.subject_id||'?',timepoint:o.timepoint||o.timepoint_id||'?',archived:!!o.archived,value:o.value,modality:o.modality||null,source:o.source||null}));
       const direct=rows.filter(o=>o.spatial===selected);
       const descendants=selected?rows.filter(o=>o.spatial.startsWith(selected+'/')):[];
-      const ancestorIds=selected?selected.split('/').map((_,i)=>selected.split('/').slice(0,i+1).join('/')):[];
+      const ancestors=selected?selected.split('/').map((_,i)=>selected.split('/').slice(0,i+1).join('/')):[];
       const byLocation={}; rows.forEach(o=>{byLocation[o.spatial]=(byLocation[o.spatial]||0)+1;});
+      const byLevel={}; rows.forEach(o=>{byLevel[o.level]=(byLevel[o.level]||0)+1;});
       const apiEvidence=new Set((apiState.evidence_ids||[]).map(String));
       const apiObs=rows.filter(o=>o.evidence&&apiEvidence.has(o.evidence));
       const expected=direct.length+descendants.length;
+      const inspector={
+        title:document.getElementById('region-title')?.textContent?.trim()||'?',
+        context:document.getElementById('region-context')?.textContent?.trim()||'?',
+        counts:{macro:document.getElementById('macro-state')?.textContent?.trim()||'',tissue:document.getElementById('tissue-state')?.textContent?.trim()||'',cellular:document.getElementById('cellular-state')?.textContent?.trim()||'',molecular:document.getElementById('molecular-state')?.textContent?.trim()||''},
+        evidenceRows:[...document.querySelectorAll('.evidence-row')].map(r=>({layer:r.querySelector('.layer')?.textContent?.trim()||'?',title:r.querySelector('strong')?.textContent?.trim()||'?',detail:r.querySelector('p')?.textContent?.trim()||''})),
+        observationRows:[...document.querySelectorAll('.observation-row,[data-observation-id]')].map(r=>({id:r.dataset?.observationId||r.getAttribute('data-observation-id')||null,text:r.textContent?.trim()?.slice(0,180)||''})),
+        interpretationCount:document.getElementById('evidence-count')?.textContent?.trim()||null
+      };
+      const spatialChildren=s.children;
+      const childIds=spatialChildren.map(c=>c.id).filter(Boolean);
+      const childObs=rows.filter(o=>childIds.includes(o.spatial));
+      const childSubtreeObs=rows.filter(o=>childIds.some(id=>o.spatial===id||o.spatial.startsWith(id+'/')));
       const consistency=[];
       consistency.push(`selected id == API scope: ${selected && normalize(summary.scope||lastStateRequest?.spatialId)===selected?'YES':'NO'}`);
-      consistency.push(`global observations under selected id: ${expected}`);
+      consistency.push(`global observations in selected subtree: ${expected}`);
+      consistency.push(`global observations direct: ${direct.length}`);
+      consistency.push(`global observations in descendants: ${descendants.length}`);
       consistency.push(`API evidence count: ${apiState.evidence_count??0}`);
       consistency.push(`API evidence-linked observations: ${apiObs.length}`);
-      consistency.push(`INSPECTOR/API mismatch candidate: ${apiState.evidence_count===0&&expected>0?'YES':'NO'}`);
-      const hint=apiState.evidence_count===0&&expected>0?'GLOBAL OBSERVATIONS EXIST, BUT BIOLOGICAL-STATE RETURNED NO EVIDENCE. This isolates the problem to evidence creation/linking or backend scope resolution.':apiState.evidence_count!==expected?'API count differs from raw spatial-prefix count. Inspect evidence links and resolver hierarchy.':'Counts are consistent for the raw observation scope.';
+      consistency.push(`inspector evidence rows: ${inspector.evidenceRows.length}`);
+      consistency.push(`nav child nodes: ${spatialChildren.length}`);
+      consistency.push(`observations on immediate child nodes: ${childObs.length}`);
+      consistency.push(`observations in child subtrees: ${childSubtreeObs.length}`);
+      consistency.push(`INTERPRETATION/UI vs API candidate: ${inspector.interpretationCount!==null&&Number(String(inspector.interpretationCount).match(/\d+/)?.[0]||0)!==expected?'YES':'NO'}`);
+      const levelLines=Object.keys(byLevel).sort().map(k=>`  ${k} = ${byLevel[k]}`);
+      const locationLines=Object.keys(byLocation).sort().map(id=>`  ${id} = ${byLocation[id]}`);
+      const hierarchyLines=spatialChildren.map(c=>`  ${c.label} | id=${c.id||'?'} | disabled=${c.disabled} | connected=${c.connected}`);
+      const rawObs=direct.concat(descendants).map(o=>`${o.id} | spatial=${o.spatial} | level=${o.level} | evidence=${o.evidence||'(none)'} | modality=${o.modality||'?'} | source=${o.source||'?'} | time=${o.timepoint}`).join('\n')||'(none)';
+      const hint=apiState.evidence_count===0&&expected>0?'OBSERVATIONS EXIST IN THE SPATIAL SUBTREE BUT API RETURNS ZERO EVIDENCE. Check evidence_id creation/linking and backend resolver.':inspector.interpretationCount!==null&&Number(String(inspector.interpretationCount).match(/\d+/)?.[0]||0)!==expected?'INTERPRETATION UI COUNT DOES NOT MATCH RAW OBSERVATION SCOPE. Check which payload field biological-state-ui uses.':childSubtreeObs!==expected&&spatialChildren.length?'OBSERVATIONS ARE NOT DISTRIBUTED UNDER NAVIGATION CHILD IDS. The spatial hierarchy and observation spatial_id taxonomy may be using different nodes.':'No immediate hierarchy/count mismatch detected.';
 
       runtime.textContent=['RUNTIME',`status:       ${window.__testhpTwinReady?'READY':'INITIALIZING'}`,`init age:     ${Date.now()-started} ms`,`manager:      ${s.manager?'present':'missing'}`,`canvas:       ${canvas.width}×${canvas.height}`,`last API:     ${lastStateRequest?`${lastStateRequest.http??'—'} · ${lastStateRequest.durationMs??'—'} ms`:'(none)'}`].join('\n');
-      state.textContent=['','SPATIAL STATE',`level:        ${s.level}`,`target:       ${s.target}`,`path:         ${s.path}`,`evidence id:  ${requested?JSON.stringify(requested):'(none)'}`,`selected node:${s.selectedSpatialNode?` ${JSON.stringify(s.selectedSpatialNode)}`:' (none)'}`,`children:     ${s.children.map(c=>`${c.label}[${c.id||'?'}${c.disabled?',disabled':''}]`).join(' | ')||'(none)'}`,`renderer:     ${s.renderer}`,`active key:   ${s.activeKey}`,'','LAST NAVIGATION',lastNavigation?JSON.stringify(lastNavigation,null,2):'(none)','','HIERARCHY / SCOPE CHECK',`normalized scope: ${selected||'(none)'}`,`ancestor chain: ${ancestorIds.join(' > ')||'(none)'}`,'raw locations:',Object.keys(byLocation).sort().map(id=>`  ${id} = ${byLocation[id]}`).join('\n')||'  (none)'].join('\n');
+      state.textContent=['','SPATIAL STATE',`level:        ${s.level}`,`target:       ${s.target}`,`path:         ${s.path}`,`evidence id:  ${requested?JSON.stringify(requested):'(none)'}`,`selected node:${s.selectedSpatialNode?` ${JSON.stringify(s.selectedSpatialNode)}`:' (none)'}`,`children:     ${s.children.map(c=>`${c.label}[${c.id||'?'}${c.disabled?',disabled':''}]`).join(' | ')||'(none)'}`,`renderer:     ${s.renderer}`,`active key:   ${s.activeKey}`,'','LAST NAVIGATION',lastNavigation?JSON.stringify(lastNavigation,null,2):'(none)','','HIERARCHY / SCOPE CHECK',`normalized scope: ${selected||'(none)'}`,`ancestor chain: ${ancestors.join(' > ')||'(none)'}`,'navigation children:',hierarchyLines.join('\n')||'  (none)','raw observation locations:',locationLines.join('\n')||'  (none)','observations by biological level:',levelLines.join('\n')||'  (none)'].join('\n');
 
-      evidence.textContent=['','BIOLOGICAL STATE · EVIDENCE SCOPE',`request:      ${lastStateRequest?.url||'(none)'}`,`include desc: ${summary.include_descendants===true?'YES':'NO'}`,`scope:        ${summary.scope||requested||'(none)'}`,`API status:   ${lastStateRequest?.ok?'OK':lastStateRequest?'FAILED':'NOT RUN'}`,`state count:  ${apiState.evidence_count??'—'}`,`observations: ${summary.observations??'—'}`,`direct:       ${summary.direct_evidence??'—'}`,`descendants:  ${summary.descendant_evidence??'—'}`,`availability: ${apiState.availability??'—'}`,`confidence:   ${apiState.confidence?.value??'—'}`,`evidence ids: ${(apiState.evidence_ids||[]).join(' | ')||'(none)'}`,`by location:  ${Array.isArray(summary.by_location)&&summary.by_location.length?summary.by_location.map(x=>`${x.name||x.spatial_id}=${x.count}`).join(' · '):'(none)'}`,'','RESOLUTION CONSISTENCY',...consistency,'','RAW OBSERVATION MATCHING',`direct:       ${direct.length}`,`descendants:  ${descendants.length}`,`total prefix: ${expected}`,direct.concat(descendants).map(o=>`${o.id} | spatial=${o.spatial} | level=${o.level} | evidence=${o.evidence||'(none)'} | subject=${o.subject} | time=${o.timepoint}`).join('\n')||'(none)','','API-LINKED OBSERVATIONS',apiObs.map(o=>`${o.id} | spatial=${o.spatial} | evidence=${o.evidence}`).join('\n')||'(none)','','DIAGNOSTIC HINT',hint].join('\n');
+      evidence.textContent=['','BIOLOGICAL STATE · EVIDENCE SCOPE',`request:      ${lastStateRequest?.url||'(none)'}`,`include desc: ${summary.include_descendants===true?'YES':'NO'}`,`scope:        ${summary.scope||requested||'(none)'}`,`API status:   ${lastStateRequest?.ok?'OK':lastStateRequest?'FAILED':'NOT RUN'}`,`state count:  ${apiState.evidence_count??'—'}`,`observation_count: ${summary.observations??apiState.observation_count??'—'}`,`direct:       ${summary.direct_evidence??'—'}`,`descendants:  ${summary.descendant_evidence??'—'}`,`availability: ${apiState.availability??'—'}`,`confidence:   ${apiState.confidence?.value??'—'}`,`evidence ids: ${(apiState.evidence_ids||[]).join(' | ')||'(none)'}`,`by location:  ${Array.isArray(summary.by_location)&&summary.by_location.length?summary.by_location.map(x=>`${x.name||x.spatial_id}=${x.count}`).join(' · '):'(none)'}`,'','RESOLUTION CONSISTENCY',...consistency,'','RAW OBSERVATION MATCHING',`direct:       ${direct.length}`,`descendants:  ${descendants.length}`,`total subtree: ${expected}`,rawObs,'','API-LINKED OBSERVATIONS',apiObs.map(o=>`${o.id} | spatial=${o.spatial} | evidence=${o.evidence}`).join('\n')||'(none)','','INSPECTOR DOM SNAPSHOT',`region title: ${inspector.title}`,`context:      ${inspector.context}`,`interpretation count UI: ${inspector.interpretationCount??'(not found)'}`,`layer states: ${JSON.stringify(inspector.counts)}`,inspector.evidenceRows.map(r=>`  ${r.layer} | ${r.title} | ${r.detail}`).join('\n')||'  (none)','','DIAGNOSTIC HINT',hint].join('\n');
       errors.textContent=['','ERROR / INTERACTION',`last error:   ${lastError||'(none)'}`,`last input:   ${lastInteraction?JSON.stringify(lastInteraction):'(none)'}`,`last request: ${lastStateRequest?JSON.stringify(lastStateRequest,null,2):'(none)'}`].join('\n');
     };
 
