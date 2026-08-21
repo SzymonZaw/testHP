@@ -29,13 +29,21 @@
   }
 
   function activate(part) {
-    const target = { ...part };
+    const target = {
+      ...part,
+      spatial_id: part.id,
+      spatialId: part.id
+    };
     const manager = window.spatialViewportManager;
 
+    // The canonical target contract uses spatial_id. Keep id/regionId as
+    // compatibility fields because the renderer still consumes them.
     if (manager?.setSpatialTarget) {
       try {
         manager.setSpatialTarget(target);
         window.dispatchEvent(new CustomEvent('testhp:spatial-layer-changed', { detail: target }));
+        window.dispatchEvent(new CustomEvent('testhp:spatial-target-changed', { detail: target }));
+        if (window.testhpSpatialContract?.publish) window.testhpSpatialContract.publish(target);
         setDiagnostic(`Selected anatomical part '${part.label}' from root Dłoń.`);
         return;
       } catch (error) {
