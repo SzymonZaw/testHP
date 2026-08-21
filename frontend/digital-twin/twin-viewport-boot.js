@@ -16,8 +16,6 @@
 
   let lastNavSnapshot = '';
   let diagnosticsInstalled = false;
-  let biologicalDiagnosticsRunning = false;
-  let lastBiologicalSignature = '';
 
   const readNavigation = () => {
     const crumbs = [...document.querySelectorAll('#spatial-breadcrumb button')].map(el => el.textContent.trim()).filter(Boolean);
@@ -77,101 +75,6 @@
     progress('navigation-diagnostics', detail.join('; '));
     window.__testhpSpatialNavigationDiagnostics = diagnostics;
     return diagnostics;
-  };
-
-  // Evidence diagnostics intentionally read both APIs. This distinguishes the
-  // three states that previously looked identical in the UI:
-  // 1) no observation exists, 2) observation exists but has no evidence_id,
-  // 3) evidence exists but is outside the requested spatial scope.
-  const biologicalEvidenceDiagnostics = async (detail = {}) => {
-    if (biologicalDiagnosticsRunning) return;
-    const spatialId = detail?.spatial_id || detail?.id || window.spatialEvidenceTarget || window.selectedSpatialNode || 'hand/palm';
-    if (!spatialId || spatialId === '?') return;
-    biologicalDiagnosticsRunning = true;
-    const signature = String(spatialId);
-    try {
-      const params = new URLSearchParams({ subject_id: 'own_cohort', timepoint: 'T0', spatial_id: spatialId, include_descendants: 'true' });
-      const [stateResponse, scopedResponse, globalResponse] = await Promise.all([
-        fetch(`/api/biological-state?${params.toString()}`, { cache: 'no-store' }),
-        fetch(`/api/observations?subject_id=own_cohort&timepoint=T0&spatial_id=${encodeURIComponent(spatialId)}&include_archived=false`, { cache: 'no-store' }),
-        fetch('/api/observations?subject_id=own_cohort&timepoint=T0&include_archived=false', { cache: 'no-store' })
-      ]);
-      const statePayload = stateResponse.ok ? await stateResponse.json() : null;
-      const scopedPayload = scopedResponse.ok ? await scopedResponse.json() : null;
-      const globalPayload = globalResponse.ok ? await globalResponse.json() : null;
-      const state = statePayload?.state || {};
-      const summary = statePayload?.summary || {};
-      const scoped = Array.isArray(scopedPayload?.observations) ? scopedPayload.observations : [];
-      const global = Array.isArray(globalPayload?.observations) ? globalPayload.observations : [];
-      const matchingGlobal = global.filter(item => String(item.spatial_id || '') === String(spatialId));
-      const missingEvidence = matchingGlobal.filter(item => !item.evidence_id).map(item => ({
-        id: item.id, name: item.name, biological_level: item.biological_level,
-        modality: item.modality, spatial_id: item.spatial_id, parent_id: item.parent_id || null,
-        evidence_id: null, status: item.status, version: item.version
-      }));
-      const evidenceBacked = matchingGlobal.filter(item => item.evidence_id).map(item => ({
-        id: item.id, name: item.name, biological_level: item.biological_level,
-        spatial_id: item.spatial_id, parent_id: item.parent_id || null, evidence_id: item.evidence_id,
-        evidence_confidence: item.evidence_confidence ?? null, status: item.status, version: item.version
-      }));
-      const returnedEvidenceIds = Array.isArray(state.evidence_ids) ? state.evidence_ids : [];
-      const locations = Array.isArray(summary.by_location) ? summary.by_location : [];
-      const diagnostic = {
-        spatial_id: spatialId,
-        request: `/api/biological-state?${params.toString()}`,
-        state_http: stateResponse.status,
-        observations_scoped_http: scopedResponse.status,
-        observations_global_http: globalResponse.status,
-        state_evidence_count: Number(state.evidence_count || 0),
-        state_evidence_ids: returnedEvidenceIds,
-        summary: {
-          observations: Number(summary.observations || 0),
-          explicit_evidence: Number(summary.explicit_evidence || 0),
-          direct_evidence: Number(summary.direct_evidence || 0),
-          descendant_evidence: Number(summary.descendant_evidence || 0),
-          by_location: locations
-        },
-        observations_in_scope: scoped.length,
-        matching_global_observations: matchingGlobal.length,
-        evidence_backed_observations: evidenceBacked,
-        observations_missing_evidence_id: missingEvidence,
-        evidence_ids_from_observations: evidenceBacked.map(item => item.evidence_id),
-        scope_match: matchingGlobal.length > 0,
-        evidence_pipeline_ok: Number(state.evidence_count || 0) > 0,
-        likely_cause: missingEvidence.length
-          ? 'OBSERVATION_HAS_NO_EVIDENCE_ID'
-          : matchingGlobal.length && !Number(state.evidence_count || 0)
-            ? 'EVIDENCE_EXISTS_BUT_WAS_NOT_INCLUDED_IN_SCOPE'
-            : !matchingGlobal.length
-              ? 'NO_OBSERVATION_FOR_SELECTED_SPATIAL_ID'
-              : 'NO_OBVIOUS_EVIDENCE_SCOPE_DEFECT'
-      };
-      window.__testhpBiologicalEvidenceDiagnostics = diagnostic;
-      const compact = [
-        `spatial_id=${spatialId}`,
-        `stateHTTP=${stateResponse.status}`,
-        `observationsScoped=${scoped.length}`,
-        `observationsGlobalMatch=${matchingGlobal.length}`,
-        `evidenceBacked=${evidenceBacked.length}`,
-        `missingEvidenceId=${missingEvidence.length}`,
-        `state.evidence_count=${diagnostic.state_evidence_count}`,
-        `direct=${diagnostic.summary.direct_evidence}`,
-        `descendants=${diagnostic.summary.descendant_evidence}`,
-        `evidenceIds=${returnedEvidenceIds.length ? returnedEvidenceIds.join('|') : '(none)'}`,
-        `likelyCause=${diagnostic.likely_cause}`
-      ];
-      if (missingEvidence.length) compact.push(`missingEvidenceObservations=${missingEvidence.map(item => `${item.id}:${item.name}`).join(' | ')}`);
-      if (evidenceBacked.length) compact.push(`backedObservations=${evidenceBacked.map(item => `${item.id}:${item.evidence_id}`).join(' | ')}`);
-      if (locations.length) compact.push(`byLocation=${locations.map(item => `${item.spatial_id}:${item.count}`).join(' | ')}`);
-      if (signature !== lastBiologicalSignature || diagnostic.likely_cause !== 'NO_OBVIOUS_EVIDENCE_SCOPE_DEFECT') {
-        progress('BIOLOGICAL EVIDENCE DIAGNOSTICS', compact.join('; '));
-        lastBiologicalSignature = signature;
-      }
-    } catch (error) {
-      progress('BIOLOGICAL EVIDENCE DIAGNOSTICS ERROR', `${error?.message || error}; stack=${error?.stack || 'none'}`);
-    } finally {
-      biologicalDiagnosticsRunning = false;
-    }
   };
 
   const installMutationDiagnostics = () => {
@@ -291,7 +194,6 @@
       }
       progress('ready');
       hideLoading();
-      biologicalEvidenceDiagnostics({ spatial_id: window.spatialEvidenceTarget || window.selectedSpatialNode || 'hand/palm' });
       return true;
     } catch (error) {
       console.error('[Twin Viewport] bootstrap failed', error);
@@ -305,9 +207,8 @@
   window.addEventListener('unhandledrejection', event => progress('UNHANDLED PROMISE', String(event.reason?.stack || event.reason || 'unknown')));
   window.addEventListener('testhp:viewport-manager-ready', () => report());
   window.addEventListener('testhp:twin-error', event => console.error('[Twin Viewport]', event.detail));
-  window.addEventListener('testhp:spatial-layer-changed', event => { progress('SPATIAL LAYER CHANGED', JSON.stringify(event.detail || {})); biologicalEvidenceDiagnostics(event.detail || {}); });
-  window.addEventListener('testhp:spatial-target-changed', event => { progress('SPATIAL TARGET CHANGED', JSON.stringify(event.detail || {})); biologicalEvidenceDiagnostics(event.detail || {}); });
-  window.addEventListener('testhp:observation-updated', event => biologicalEvidenceDiagnostics(event.detail?.observation || event.detail || {}));
+  window.addEventListener('testhp:spatial-layer-changed', event => progress('SPATIAL LAYER CHANGED', JSON.stringify(event.detail || {})));
+  window.addEventListener('testhp:spatial-target-changed', event => progress('SPATIAL TARGET CHANGED', JSON.stringify(event.detail || {})));
 
   let attempts = 0;
   const timer = setInterval(() => {
