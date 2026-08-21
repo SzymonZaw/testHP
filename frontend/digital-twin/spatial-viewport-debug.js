@@ -12,16 +12,13 @@
     let started = Date.now();
     let lastProgress = 'debug initialized';
     let lastMutation = null;
-    let lastWriter = null;
     let lastInteraction = null;
     let minimized = true;
-    const originalMethods = [];
+    let renderQueued = false;
 
     let host = document.getElementById('twin-viewport-debug-host');
-    if (!host) { host = document.createElement('section'); host.id = 'twin-viewport-debug-host'; }
-    // The debug HUD must live outside the 3D viewport. Keeping it inside the
-    // overflow-hidden canvas container can clip the fixed HUD and let the
-    // canvas intercept pointer events. It should remain fixed while the page scrolls.
+    if (!host) host = document.createElement('section');
+    host.id = 'twin-viewport-debug-host';
     if (host.parentElement !== document.body) document.body.appendChild(host);
     host.setAttribute('aria-label', 'Twin Viewport debug');
     Object.assign(host.style, {
@@ -59,10 +56,10 @@
     const now=()=>new Date().toLocaleTimeString();
     const writeLog=(message,stack)=>{
       lines.push(`[${now()}] ${message}${stack?`\n  stack: ${String(stack).replace(/\n/g,'\n         ')}`:''}`);
-      while(lines.length>220) lines.shift();
-      log.textContent=lines.join('\n'); log.scrollTop=log.scrollHeight;
+      while(lines.length>160) lines.shift();
+      if (!minimized) { log.textContent=lines.join('\n'); log.scrollTop=log.scrollHeight; }
     };
-    const event=(message,stack)=>{lastProgress=message;writeLog(message,stack);if(!minimized)render();};
+    const event=(message,stack)=>{lastProgress=message;writeLog(message,stack);queueRender();};
     const childrenNode=()=>document.getElementById('spatial-children');
     const childElements=()=>[...document.querySelectorAll('#spatial-children .spatial-target')];
     const childNames=()=>childElements().map(x=>x.querySelector('strong')?.textContent?.trim()||x.textContent.trim().replace(/\s+/g,' '));
@@ -82,90 +79,63 @@
       return Array.isArray(list)?list.map(x=>({name:x?.name||'',spatialTarget:x?.userData?.spatialTarget||'',type:x?.type||''})):[];
     };
     const handFallback=s=>isHandRoot(s)&&s.children.length===1&&/regional field/i.test(s.children[0]);
-    const stack=()=>{try{throw new Error('diagnostic stack');}catch(e){return e.stack?.split('\n').slice(2,8).join('\n')||'';}};
-
-    const patchWriter=(proto,name)=>{
-      const original=proto[name]; if(typeof original!=='function') return;
-      const wrapped=function(...args){
-        const target=this;
-        if(target===childrenNode() || target?.closest?.('#spatial-children')) {
-          const before=childNames().join(' | ')||'(none)';
-          lastWriter={method:name,before,stack:stack(),time:now()};
-          event(`DOM WRITE | spatial-children | method=${name} | before=${before}`,lastWriter.stack);
-        }
-        return original.apply(this,args);
-      };
-      try{proto[name]=wrapped;originalMethods.push(()=>{proto[name]=original;});}catch(e){event(`DEBUG PATCH FAILED | ${name} | ${e.message}`);}
-    };
-    patchWriter(Node.prototype,'appendChild');
-    patchWriter(Node.prototype,'replaceChild');
-    patchWriter(Node.prototype,'removeChild');
-    patchWriter(Element.prototype,'insertAdjacentHTML');
-    patchWriter(Element.prototype,'replaceChildren');
-
-    const originalInner=Object.getOwnPropertyDescriptor(Element.prototype,'innerHTML');
-    if(originalInner?.set){
-      try{
-        Object.defineProperty(Element.prototype,'innerHTML',{...originalInner,set(value){
-          if(this===childrenNode() || this?.closest?.('#spatial-children')){
-            const before=childNames().join(' | ')||'(none)';
-            lastWriter={method:'innerHTML',before,value:String(value).slice(0,1000),stack:stack(),time:now()};
-            event(`DOM WRITE | spatial-children | method=innerHTML | before=${before} | value=${String(value).slice(0,160)}`,lastWriter.stack);
-          }
-          return originalInner.set.call(this,value);
-        }});
-        originalMethods.push(()=>Object.defineProperty(Element.prototype,'innerHTML',originalInner));
-      }catch(e){event(`DEBUG PATCH FAILED | innerHTML | ${e.message}`);}
-    }
 
     const render=()=>{
+      renderQueued=false;
+      if (minimized) return;
       const s=spatial(), list=clickable(), names=list.map(x=>x.name||x.spatialTarget||'(unnamed)');
       const root=childrenNode();
-      const rootHTML=root?.innerHTML?.slice(0,1800)||'(missing)';
-      const regionIds=childElements().map(x=>({label:x.querySelector('strong')?.textContent?.trim()||'',dataset:{...x.dataset},html:x.outerHTML.slice(0,500)}));
-      const expectedLabels=expected.map(x=>x[1]);
       const managerState=window.spatialViewportManager?.active;
+      const actualChildren=s.children.join(' | ')||'(none)';
+      const expectedLabels=expected.map(x=>x[1]);
       const macroClickable=list.filter(x=>expected.some(e=>e[0]===x.name||e[1]===x.name||e[0]===x.spatialTarget||e[1]===x.spatialTarget));
       runtime.textContent=['RUNTIME',`status:       ${window.__testhpTwinReady?'READY':Date.now()-started>10000?'INIT TIMEOUT':'INITIALIZING'}`,`init age:     ${Date.now()-started} ms`,`manager:      ${window.spatialViewportManager?'present':'MISSING'}`,`ready flag:   ${window.__testhpTwinReady?'YES':'NO'}`,`last progress:${lastProgress}`].join('\n');
-      state.textContent=['','SPATIAL STATE',`level:        ${s.level}`,`target:       ${s.target}`,`spatial_id:   ${s.id}`,`path:         ${s.path}`,`children:     ${s.children.join(' | ')||'(none)'}`,`active view:  ${s.active}`,`active key:   ${s.activeKey}`,`node:         ${s.nodeText}`,`children DOM: ${!!root}`,`children HTML:${rootHTML}`].join('\n');
-      navigation.textContent=['','NAVIGATION DIAGNOSTICS',`root is Hand:       ${isHandRoot(s)?'YES':'NO'}`,`root fallback:     ${handFallback(s)?'YES — Regional field is present at macro root':'NO'}`,`expected count:     7`,`actual count:       ${s.children.length}`,`expected children:  ${expectedLabels.join(' | ')}`,`actual children:    ${s.children.join(' | ')||'(none)'}`,`order correct:      ${s.children.join('|')===expectedLabels.join('|')?'YES':'NO'}`,`macro targets found: ${macroClickable.length}/7`,`manager active key: ${managerState?.activeKey||s.activeKey||'none'}`,`manager target id:   ${managerState?.target?.id||managerState?.spatialId||'unknown'}`].join('\n');
-      source.textContent=['','SOURCE / WRITER DIAGNOSTICS',`last DOM writer:    ${lastWriter?.method||'(none captured)'}`,`writer time:        ${lastWriter?.time||'(none)'}`,`writer before:      ${lastWriter?.before||'(none)'}`,`writer stack:       ${lastWriter?.stack||'(none captured yet)'}`,`writer value:       ${lastWriter?.value||'(not innerHTML)'}`,`child metadata:     ${JSON.stringify(regionIds)}`].join('\n');
+      state.textContent=['','SPATIAL STATE',`level:        ${s.level}`,`target:       ${s.target}`,`spatial_id:   ${s.id}`,`path:         ${s.path}`,`children:     ${actualChildren}`,`active view:  ${s.active}`,`active key:   ${s.activeKey}`,`node:         ${s.nodeText}`,`children DOM: ${!!root}`].join('\n');
+      navigation.textContent=['','NAVIGATION DIAGNOSTICS',`root is Hand:       ${isHandRoot(s)?'YES':'NO'}`,`root fallback:     ${handFallback(s)?'YES — Regional field':'NO'}`,`expected count:     7`,`actual count:       ${s.children.length}`,`expected children:  ${expectedLabels.join(' | ')}`,`actual children:    ${actualChildren}`,`order correct:      ${s.children.join('|')===expectedLabels.join('|')?'YES':'NO'}`,`macro targets found: ${macroClickable.length}/7`, `last mutation:      ${lastMutation?JSON.stringify(lastMutation):'(none)'}`].join('\n');
+      source.textContent=['','SOURCE / MUTATION DIAGNOSTICS',`last mutation:      ${lastMutation?JSON.stringify(lastMutation,null,2):'(none)'}`,`observer scope:     spatial navigation nodes only`,`global DOM hooks:   DISABLED (performance protection)`].join('\n');
       renderer.textContent=['','RENDERER / 3D DIAGNOSTICS',`renderer:      ${s.active}`,`active key:    ${s.activeKey}`,`clickable:     ${list.length}`,`clickable names:${names.join(' | ')||'(none)'}`,`hand macro 3D: ${macroClickable.length}/7`,`Regional field 3D: ${list.some(x=>/regional field/i.test(x.name)||/regional field/i.test(x.spatialTarget))?'YES':'NO'}`,`scene:         ${managerState?.scene?.children?.length??'unknown'}`,`camera:        ${managerState?.camera?'present':'missing'}`].join('\n');
       interaction.textContent=['','LAST INTERACTION',lastInteraction?JSON.stringify(lastInteraction,null,2):'No navigation interaction captured yet.'].join('\n');
+      log.textContent=lines.join('\n');
+      log.scrollTop=log.scrollHeight;
+    };
+    const queueRender=()=>{
+      if (minimized || renderQueued) return;
+      renderQueued=true;
+      requestAnimationFrame(render);
     };
 
+    // IMPORTANT: do not observe document.body. The debug panel itself mutates the
+    // DOM and a body-wide observer can create a feedback loop that consumes the
+    // main thread and freezes scrolling/clicks. Observe only the navigation nodes.
     const observer=new MutationObserver(records=>{
-      const relevant=records.some(r=>r.target===childrenNode()||r.target?.closest?.('#spatial-children'));
-      if(relevant){
-        const after=childNames();
-        lastMutation={time:now(),type:records.map(r=>r.type).join(','),children:after};
-        event(`DOM MUTATION | spatial-children | children=${after.join(' | ')||'(none)'}`);
-        if(handFallback(spatial())) event('ROOT FALLBACK DETECTED | Regional field came back after a DOM mutation');
+      const after=childNames();
+      lastMutation={time:now(),types:[...new Set(records.map(r=>r.type))],children:after};
+      if (records.length) {
+        event(`DOM MUTATION | spatial navigation | children=${after.join(' | ')||'(none)'}`);
+        if(handFallback(spatial())) event('ROOT FALLBACK DETECTED | Regional field is present');
       }
-      if(!minimized)render();
     });
-    observer.observe(document.body,{subtree:true,childList:true,attributes:true,attributeFilter:['class','data-spatial-target','data-spatial-id']});
+    const observeTarget=(el,options)=>{if(el)observer.observe(el,options);};
+    observeTarget(childrenNode(),{subtree:true,childList:true,characterData:true});
+    observeTarget(document.getElementById('spatial-node'),{subtree:true,childList:true,characterData:true});
+    observeTarget(document.getElementById('spatial-breadcrumb'),{subtree:true,childList:true,characterData:true});
 
-    const capture=(type,e)=>event(`${type} | ${JSON.stringify(e.detail||{})}`);
     window.addEventListener('error',e=>event(`WINDOW ERROR | ${e.message||'unknown'} | ${e.filename||''}:${e.lineno||''}`));
     window.addEventListener('unhandledrejection',e=>event(`UNHANDLED PROMISE | ${e.reason?.stack||e.reason||'unknown'}`));
-    window.addEventListener('testhp:twin-ready',e=>{window.__testhpTwinReady=true;capture('TWIN READY',e);});
-    window.addEventListener('testhp:twin-error',e=>capture('TWIN ERROR',e));
-    window.addEventListener('testhp:twin-progress',e=>capture('INIT',e));
-    window.addEventListener('testhp:viewport-rendered',e=>capture('VIEW RENDERED',e));
-    window.addEventListener('testhp:spatial-layer-changed',e=>capture('SPATIAL LAYER',e));
+    window.addEventListener('testhp:twin-ready',e=>{window.__testhpTwinReady=true;event(`TWIN READY | ${JSON.stringify(e.detail||{})}`);});
+    window.addEventListener('testhp:twin-error',e=>event(`TWIN ERROR | ${JSON.stringify(e.detail||{})}`));
+    window.addEventListener('testhp:twin-progress',e=>event(`INIT | ${JSON.stringify(e.detail||{})}`));
+    window.addEventListener('testhp:viewport-rendered',e=>event(`VIEW RENDERED | ${JSON.stringify(e.detail||{})}`));
+    window.addEventListener('testhp:spatial-layer-changed',e=>event(`SPATIAL LAYER | ${JSON.stringify(e.detail||{})}`));
     canvas.addEventListener('click',e=>{lastInteraction={type:'canvas click',x:e.clientX,y:e.clientY,time:now(),target:spatial().target};event(`CANVAS CLICK | x=${Math.round(e.clientX)} y=${Math.round(e.clientY)} | target=${spatial().target}`);},{passive:true});
 
     const setMinimized=v=>{minimized=v;panel.style.display=minimized?'none':'block';toggle.textContent=minimized?'TWIN VIEWPORT DEBUG · ROZWIŃ':'TWIN VIEWPORT DEBUG · ZWIŃ';if(!minimized)render();};
     toggle.onclick=()=>setMinimized(!minimized);
     document.getElementById('twin-debug-close')?.addEventListener('click',()=>setMinimized(true));
-    document.getElementById('twin-debug-refresh')?.addEventListener('click',()=>{event('manual refresh');render();});
-    document.getElementById('twin-debug-clear')?.addEventListener('click',()=>{lines.length=0;event('log cleared');});
-    setInterval(()=>{if(!minimized)render();},500);
-    // Initialize the collapsed state explicitly. Without this call the button
-    // exists but has no label, producing the empty, non-obvious debug box.
+    document.getElementById('twin-debug-refresh')?.addEventListener('click',()=>{lastProgress='manual refresh';render();});
+    document.getElementById('twin-debug-clear')?.addEventListener('click',()=>{lines.length=0;render();});
     setMinimized(true);
-    event('DEBUG READY | writer hooks + mutation observer active');
+    writeLog('DEBUG READY | lightweight observer active; global DOM hooks disabled');
   };
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',boot,{once:true});else boot();
 })();
