@@ -36,13 +36,9 @@
     };
     const manager = window.spatialViewportManager;
 
-    // The canonical target contract uses spatial_id. Keep id/regionId as
-    // compatibility fields because the renderer still consumes them.
     if (manager?.setSpatialTarget) {
       try {
         manager.setSpatialTarget(target);
-        window.dispatchEvent(new CustomEvent('testhp:spatial-layer-changed', { detail: target }));
-        window.dispatchEvent(new CustomEvent('testhp:spatial-target-changed', { detail: target }));
         if (window.testhpSpatialContract?.publish) window.testhpSpatialContract.publish(target);
         setDiagnostic(`Selected anatomical part '${part.label}' from root Dłoń.`);
         return;
@@ -51,7 +47,6 @@
       }
     }
 
-    // Keep the navigation responsive even if the renderer manager is temporarily unavailable.
     window.dispatchEvent(new CustomEvent('testhp:spatial-target-request', { detail: target }));
     if (window.testhpSpatialContract?.publish) window.testhpSpatialContract.publish(target);
     setDiagnostic(`Selected anatomical part '${part.label}' from root Dłoń; renderer manager was unavailable.`);
@@ -64,6 +59,25 @@
     button.style.cursor = 'pointer';
     button.style.position = 'relative';
     button.style.zIndex = '1';
+  }
+
+  function installDelegatedRootClick() {
+    if (window.__testhpRootMacroClickHandlerInstalled) return;
+    window.__testhpRootMacroClickHandlerInstalled = true;
+
+    // The navigation viewport bridge listens to the navigator in capture phase
+    // and can schedule a render immediately after a click. Handle root targets
+    // at the document level first so the selected target is committed before
+    // any bridge/render listener can replace the clicked DOM node.
+    document.addEventListener('click', event => {
+      const button = event.target?.closest?.('#spatial-children .spatial-root-anatomical-part');
+      if (!button || !currentIsRoot()) return;
+      const part = ROOT_PARTS.find(x => x.id === button.dataset.spatialId);
+      if (!part) return;
+      event.preventDefault();
+      event.stopPropagation();
+      activate(part);
+    }, true);
   }
 
   function renderRootParts() {
@@ -90,6 +104,8 @@
       meta.textContent = 'Anatomia makro';
       button.append(title, meta);
       installButtonStyle(button);
+      // Keep a direct listener as a fallback for environments without the
+      // delegated handler. The delegated capture handler is the primary path.
       button.addEventListener('click', event => {
         event.preventDefault();
         event.stopPropagation();
@@ -103,6 +119,7 @@
   }
 
   function install() {
+    installDelegatedRootClick();
     const tryApply = () => {
       if (currentIsRoot()) renderRootParts();
     };
