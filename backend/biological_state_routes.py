@@ -112,6 +112,7 @@ def _build_state(subject_id: str, timepoint: str, spatial_id: str | None, includ
     if spatial_id is None:
         state = aggregator.build_state(subject_id, timepoint)
         scoped_observations = state.observations
+        scoped_evidence = tuple(evidence)
     else:
         scoped_evidence = aggregator.evidence_for_location(spatial_id, include_descendants=include_descendants)
         scoped_evidence_ids = {item.id for item in scoped_evidence}
@@ -137,7 +138,7 @@ def _build_state(subject_id: str, timepoint: str, spatial_id: str | None, includ
         for item in scoped_observations
         if any(e.observation_id == item.id for e in evidence)
     ]
-    return state, editable
+    return state, editable, scoped_evidence
 
 
 @router.get("/api/biological-state")
@@ -148,7 +149,26 @@ def biological_state(
     include_descendants: bool = True,
 ):
     """Return one canonical, evidence-backed research state for a spatial scope."""
-    state, editable = _build_state(subject_id, timepoint, spatial_id, include_descendants)
+    state, editable, scoped_evidence = _build_state(subject_id, timepoint, spatial_id, include_descendants)
+
+    direct_evidence = tuple(
+        item for item in scoped_evidence
+        if spatial_id is None or next((o for o in state.observations if o.id == item.observation_id), None) is not None
+        and next((o for o in state.observations if o.id == item.observation_id), None).anatomical_location is not None
+        and next((o for o in state.observations if o.id == item.observation_id), None).anatomical_location.id == spatial_id
+    )
+    direct_ids = {item.id for item in direct_evidence}
+    descendant_evidence = tuple(item for item in scoped_evidence if item.id not in direct_ids)
+
+    by_location: dict[str, dict[str, Any]] = {}
+    for item in scoped_evidence:
+        observation = next((o for o in state.observations if o.id == item.observation_id), None)
+        location = observation.anatomical_location if observation else None
+        if not location:
+            continue
+        entry = by_location.setdefault(location.id, {"spatial_id": location.id, "name": location.name, "count": 0})
+        entry["count"] += 1
+
     return {
         "state": _state_payload(state, editable),
         "summary": {
@@ -156,6 +176,9 @@ def biological_state(
             "include_descendants": include_descendants,
             "observations": len(state.observations),
             "explicit_evidence": state.evidence_count,
+            "direct_evidence": len(direct_evidence),
+            "descendant_evidence": len(descendant_evidence),
+            "by_location": sorted(by_location.values(), key=lambda item: item["spatial_id"]),
             "interpretation_source": "validated_interpretations only",
             "dimensions": _DIMENSIONS,
         },
