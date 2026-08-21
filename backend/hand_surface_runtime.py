@@ -22,6 +22,7 @@ class SegmentationMask:
     method: str = "background-separation-v1"
     confidence: float = 0.0
     edge_quality: float = 0.0
+    view: str = "unknown"
 
     @property
     def usable(self) -> bool:
