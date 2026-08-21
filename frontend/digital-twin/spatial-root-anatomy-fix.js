@@ -50,7 +50,7 @@
     const children = $('spatial-children');
     if (!children || !currentIsRoot()) return false;
     const expected = ROOT_PARTS.map(x => x.label);
-    const existing = [...children.querySelectorAll('.spatial-root-anatomical-part')].map(x => x.textContent.trim().replace(/Anatomia makro/g, '').trim());
+    const existing = [...children.querySelectorAll('.spatial-root-anatomical-part')].map(x => x.querySelector('strong')?.textContent.trim() || '');
     if (existing.length === expected.length && existing.every((value, i) => value === expected[i])) {
       setDiagnostic("Root Dłoń is already normalized to anatomical macro parts; 'Regional field' is suppressed at this level.");
       return false;
@@ -63,11 +63,14 @@
       button.type = 'button';
       button.className = 'spatial-target spatial-root-anatomical-part';
       button.dataset.rootAnatomicalPart = part.id;
+      const marker = document.createElement('span');
+      marker.textContent = 'anatomical-part:';
+      marker.style.display = 'none';
       const title = document.createElement('strong');
       title.textContent = part.label;
       const meta = document.createElement('span');
       meta.textContent = 'Anatomia makro';
-      button.append(title, meta);
+      button.append(marker, title, meta);
       button.addEventListener('click', () => {
         const manager = window.spatialViewportManager;
         if (manager?.setSpatialTarget) {
