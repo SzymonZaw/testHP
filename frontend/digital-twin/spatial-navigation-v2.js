@@ -36,11 +36,40 @@ if(viewport&&badge&&node&&children&&breadcrumb){
   function debug(message,detail={}){
     window.dispatchEvent(new CustomEvent('testhp:spatial-navigation-debug',{detail:{message,...detail}}));
   }
+  function syncDebugCause(){
+    const panel=document.getElementById('twin-debug-panel');
+    if(!panel)return;
+    let box=document.getElementById('twin-spatial-root-cause');
+    if(!box){
+      box=document.createElement('pre');
+      box.id='twin-spatial-root-cause';
+      box.style.cssText='margin:8px 0 0;padding:10px;border:1px solid #8b6b35;border-radius:8px;background:#15120a;color:#f0d28b;white-space:pre-wrap;font:11px/1.35 ui-monospace,SFMono-Regular,Consolas,monospace';
+      panel.appendChild(box);
+    }
+    const current=node.querySelector('strong')?.textContent?.trim()||'?';
+    const crumbs=[...breadcrumb.querySelectorAll('button')].map(b=>b.textContent.trim()).filter(Boolean);
+    const actual=[...children.querySelectorAll('.spatial-target')].map(x=>x.querySelector('strong')?.textContent?.trim()||'');
+    const root=isHandRoot();
+    const fallback=root&&actual.length===1&&/regional field/i.test(actual[0]);
+    box.textContent=[
+      'SPATIAL ROOT CAUSE / HAND',
+      `root:              ${root?'YES':'NO'}`,
+      `current target:    ${current}`,
+      `path:              ${crumbs.join(' > ')||'(none)'}`,
+      `current regionId:  ${root?'null / undefined':'(not root)'}`,
+      `fallback active:   ${fallback?'YES':'NO'}`,
+      `why Regional field:${fallback?' childTargets() reaches its final macro fallback because Hand has no regionId and no explicit root-part branch.':' not active; canonical hand-part targets are being used.'}`,
+      `expected macro:     ${HAND_PARTS.map(x=>x.label).join(' | ')}`,
+      `actual children:    ${actual.join(' | ')||'(none)'}`,
+      'fix:                explicit Hand → macro-region mapping + manager.setSpatialTarget()',
+      `manager:            ${window.spatialViewportManager?'present':'missing'}`
+    ].join('\n');
+  }
   function normalizeHandRoot(){
-    if(!isHandRoot())return;
+    if(!isHandRoot()){syncDebugCause();return;}
     const existing=[...children.querySelectorAll('.spatial-target')].map(x=>x.querySelector('strong')?.textContent?.trim()||'');
     const expected=HAND_PARTS.map(x=>x.label);
-    if(existing.join('|')===expected.join('|'))return;
+    if(existing.join('|')===expected.join('|')){syncDebugCause();return;}
     const manager=window.spatialViewportManager;
     debug('HAND ROOT CHILDREN REPLACED',{
       reason:'childTargets() has no explicit branch for the root Hand node because it has no regionId; its fallback returns the synthetic Regional field node.',
@@ -70,6 +99,7 @@ if(viewport&&badge&&node&&children&&breadcrumb){
       };
       children.appendChild(button);
     });
+    syncDebugCause();
   }
 
   function syncInspectorBoundary(){
@@ -130,6 +160,7 @@ if(viewport&&badge&&node&&children&&breadcrumb){
   window.addEventListener('testhp:viewport-manager-ready',normalizeHandRoot);
   window.addEventListener('testhp:spatial-layer-changed',normalizeHandRoot);
   window.addEventListener('testhp:spatial-navigation-debug',e=>console.debug('[TWIN SPATIAL DEBUG]',e.detail));
+  setInterval(syncDebugCause,500);
   normalizeHandRoot();
   render();
 }
