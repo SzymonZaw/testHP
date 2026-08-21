@@ -6,6 +6,7 @@ from typing import Any
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
+from core.spatial_scope import split_spatial_scope
 from .biological_state_routes import biological_state
 from .observation_registry import archive_observation, create_observation, get_observation, list_observations, observation_history, restore_observation, update_observation
 
@@ -56,9 +57,20 @@ class ObservationLifecycleRequest(BaseModel):
 
 
 @router.get("/api/observations")
-def observations(subject_id: str = "own_cohort", timepoint: str | None = None, spatial_id: str | None = None, biological_level: str | None = None, include_archived: bool = False):
-    items = list_observations(subject_id=subject_id, timepoint=timepoint, spatial_id=spatial_id, biological_level=biological_level, include_archived=include_archived)
-    return {"subject_id": subject_id, "count": len(items), "observations": items}
+def observations(subject_id: str = "own_cohort", timepoint: str | None = None, spatial_id: str | None = None, biological_level: str | None = None, include_descendants: bool = False, include_archived: bool = False):
+    items = list_observations(subject_id=subject_id, timepoint=timepoint, biological_level=biological_level, include_archived=include_archived)
+    if spatial_id:
+        direct, descendants = split_spatial_scope(items, spatial_id, include_descendants=include_descendants)
+        items = direct + descendants
+    return {
+        "subject_id": subject_id,
+        "count": len(items),
+        "observations": items,
+        "scope": spatial_id,
+        "include_descendants": include_descendants,
+        "direct_count": len(direct) if spatial_id else len(items),
+        "descendant_count": len(descendants) if spatial_id and include_descendants else 0,
+    }
 
 
 @router.get("/api/biological-state")
