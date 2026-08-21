@@ -124,6 +124,7 @@ def _state_payload(state: Any, editable: list[dict[str, Any]] | None = None, obs
         "evidence_ids": list(state.evidence_ids),
         "evidence_count": state.evidence_count,
         "observation_count": observation_count,
+        "data_count": observation_count,
         "availability": state.availability,
         "confidence": _confidence_payload(state.confidence),
         "interpretations": {d: state.interpretation(d) for d in _DIMENSIONS if state.interpretation(d) is not None},
@@ -166,7 +167,11 @@ def _build_state(subject_id: str, timepoint: str, spatial_id: str | None, includ
         state.observations = scoped_observations
         state.evidence_ids = tuple(item.id for item in scoped_evidence)
         state.evidence_count = len(state.evidence_ids)
-        state.availability = "observed" if state.evidence_count else "insufficient_evidence"
+        # Availability describes whether there is real data in the selected
+        # anatomical scope. Evidence-backed validation is represented separately
+        # by evidence_count/confidence and must not turn existing observations into
+        # "no data".
+        state.availability = "observed" if scoped_observations else "insufficient_evidence"
         state.confidence = aggregator._confidence(scoped_evidence)
         state.interpretations = aggregator._interpretations(scoped_observations, scoped_evidence)
 
@@ -213,6 +218,8 @@ def biological_state(subject_id: str = "own_cohort", timepoint: str = "T0", spat
             "scope": spatial_id,
             "include_descendants": include_descendants,
             "observations": len(scoped_observations),
+            "observation_count": len(scoped_observations),
+            "data_count": len(scoped_observations),
             "explicit_evidence": state.evidence_count,
             "direct_evidence": len(direct_evidence),
             "descendant_evidence": len(descendant_evidence),
