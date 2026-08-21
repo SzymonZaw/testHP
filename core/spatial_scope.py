@@ -25,8 +25,18 @@ def canonical_parent_id(spatial_id: str) -> str | None:
 
 
 def location_parent(item: Mapping[str, Any], spatial_id: str) -> str | None:
+    """Resolve a location's parent from its spatial identity.
+
+    ``spatial_id`` is the authoritative spatial identity. A stale or incorrect
+    persisted ``parent_id`` must not be able to move an observation into a
+    sibling's subtree. ``parent_id`` remains compatibility metadata, but the
+    canonical hand path defines traversal.
+    """
+    canonical = canonical_parent_id(spatial_id)
+    if canonical is not None or str(spatial_id or "").strip("/") == "hand":
+        return canonical
     explicit = item.get("parent_id")
-    return str(explicit) if explicit else canonical_parent_id(spatial_id)
+    return str(explicit) if explicit else None
 
 
 def build_parent_map(items: Iterable[Mapping[str, Any]]) -> dict[str, str | None]:
