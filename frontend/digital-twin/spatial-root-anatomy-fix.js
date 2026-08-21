@@ -16,11 +16,7 @@
     return path.length === 1 && /^(dłoń|hand)$/i.test(path[0]);
   };
 
-  let applied = false;
-  let reason = '';
-
   function setDiagnostic(detail) {
-    reason = detail;
     window.__testhpSpatialNavDiagnostic = {
       reason: detail,
       rootTarget: 'Dłoń',
@@ -53,6 +49,12 @@
   function renderRootParts() {
     const children = $('spatial-children');
     if (!children || !currentIsRoot()) return false;
+    const expected = ROOT_PARTS.map(x => x.label);
+    const existing = [...children.querySelectorAll('.spatial-root-anatomical-part')].map(x => x.textContent.trim().replace(/Anatomia makro/g, '').trim());
+    if (existing.length === expected.length && existing.every((value, i) => value === expected[i])) {
+      setDiagnostic("Root Dłoń is already normalized to anatomical macro parts; 'Regional field' is suppressed at this level.");
+      return false;
+    }
 
     const before = [...children.querySelectorAll('.spatial-target strong')].map(x => x.textContent.trim());
     children.replaceChildren();
@@ -80,14 +82,12 @@
     setDiagnostic(wasFallback
       ? "The canonical navigator exposed 'Regional field' because childTargets(hand) used a generic tissue fallback for the root node with no regionId."
       : "Root Dłoń is being rendered as an anatomical macro container; 'Regional field' is not a valid immediate anatomical child.");
-    applied = true;
     return true;
   }
 
   function install() {
     const tryApply = () => {
-      if (!currentIsRoot()) return;
-      renderRootParts();
+      if (currentIsRoot()) renderRootParts();
     };
     tryApply();
     const observer = new MutationObserver(() => {
@@ -100,7 +100,7 @@
     window.addEventListener('testhp:viewport-manager-ready', tryApply);
     window.addEventListener('testhp:spatial-layer-changed', tryApply);
     window.addEventListener('testhp:viewport-rendered', tryApply);
-    setInterval(() => { if (currentIsRoot()) tryApply(); }, 500);
+    setInterval(tryApply, 500);
     setDiagnostic('Waiting for canonical spatial manager; root navigation will use anatomical parts instead of a generic tissue fallback.');
   }
 
