@@ -1,6 +1,24 @@
 (() => {
   const $ = id => document.getElementById(id);
   const clean = value => String(value ?? '').replace(/^\/+|\/+$/g, '');
+  const childSlug = {
+    'Kłąb kciuka': 'thenar-eminence',
+    'Kłębik dłoni': 'hypothenar-eminence',
+    'Centralna część dłoni': 'central-palm',
+    'Thenar eminence': 'thenar-eminence',
+    'Hypothenar eminence': 'hypothenar-eminence',
+    'Central palm': 'central-palm',
+    'Regional field': 'regional-field',
+    'Microscopy field A': 'field-a',
+    'Microscopy field B': 'field-b',
+    'Microscopy field C': 'field-c',
+    'Pole mikroskopowe A': 'field-a',
+    'Pole mikroskopowe B': 'field-b',
+    'Pole mikroskopowe C': 'field-c',
+    'Cell target 1': 'cell-1',
+    'Cell target 2': 'cell-2',
+    'Cell target 3': 'cell-3'
+  };
 
   function canonicalSpatialId(detail = {}) {
     const raw = detail.spatial_id || detail.spatialId;
@@ -40,9 +58,19 @@
   function normalizeNavigationIds() {
     const children = $('spatial-children');
     if (!children) return;
-    [...children.querySelectorAll('.spatial-target')].forEach(button => {
+    const selected = window.__testhpCanonicalSpatialSelection || window.selectedSpatialNode;
+    const parentId = selected?.spatial_id || 'hand';
+    [...children.querySelectorAll('.spatial-target')].forEach((button, index) => {
       const explicit = button.dataset.spatialId || button.getAttribute('data-spatial-id');
-      if (explicit) button.dataset.spatialId = explicit.startsWith('hand') ? explicit : `hand/${explicit}`;
+      if (explicit) {
+        button.dataset.spatialId = explicit.startsWith('hand') ? explicit : `hand/${explicit}`;
+        return;
+      }
+      const label = button.querySelector('strong')?.textContent?.trim() || '';
+      const slug = childSlug[label] || label.toLowerCase().normalize('NFKD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || `child-${index + 1}`;
+      button.dataset.spatialId = `${parentId}/${slug}`;
+      button.dataset.spatialParentId = parentId;
+      button.dataset.spatialLevel = button.dataset.spatialLevel || 'unknown';
     });
   }
 
@@ -56,8 +84,25 @@
     return node;
   }
 
+  function bridgeManager() {
+    const manager = window.spatialViewportManager;
+    if (!manager || typeof manager.setSpatialTarget !== 'function' || manager.__testhpSpatialContractWrapped) return;
+    const original = manager.setSpatialTarget.bind(manager);
+    manager.setSpatialTarget = target => {
+      publish({
+        ...target,
+        spatial_id: target?.spatial_id || (target?.id ? `hand/${clean(target.id)}` : undefined),
+        path: target?.path || ['Dłoń', target?.label || target?.id || 'Cel']
+      });
+      return original(target);
+    };
+    manager.__testhpSpatialContractWrapped = true;
+    window.__testhpSpatialContractManagerBridge = 'installed';
+  }
+
   function onSpatialChange(event) {
     publish(event?.detail || {});
+    bridgeManager();
   }
 
   window.spatialSelectionContract = {
@@ -68,11 +113,17 @@
 
   window.addEventListener('testhp:spatial-layer-changed', onSpatialChange);
   window.addEventListener('testhp:spatial-change', onSpatialChange);
-  window.addEventListener('testhp:viewport-manager-ready', () => normalizeNavigationIds());
+  window.addEventListener('testhp:viewport-manager-ready', () => { normalizeNavigationIds(); bridgeManager(); });
 
   const children = $('spatial-children');
   if (children) {
-    const observer = new MutationObserver(normalizeNavigationIds);
+    const observer = new MutationObserver(() => normalizeNavigationIds());
     observer.observe(children, { childList: true, subtree: true });
   }
+
+  const timer = window.setInterval(() => {
+    bridgeManager();
+    normalizeNavigationIds();
+  }, 500);
+  window.addEventListener('beforeunload', () => window.clearInterval(timer), { once: true });
 })();
