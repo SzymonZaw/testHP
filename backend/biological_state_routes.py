@@ -65,7 +65,8 @@ def _build_state(subject_id:str,timepoint:str,spatial_id:str|None,include_descen
     else:
         direct_items,descendant_items=split_spatial_scope(items,spatial_id,include_descendants=include_descendants);scoped_ids={str(item["id"]) for item in direct_items+descendant_items};scoped_observations=[o for o in observations if o.id in scoped_ids];scoped_evidence=tuple(item for item in evidence if item.observation_id in scoped_ids);state=aggregator.build_state(subject_id,timepoint);state.observations=scoped_observations;state.evidence_ids=tuple(item.id for item in scoped_evidence);state.evidence_count=len(scoped_evidence);state.availability="observed" if scoped_observations else "insufficient_evidence";state.confidence=aggregator._confidence(scoped_evidence);state.interpretations=aggregator._interpretations(scoped_observations,scoped_evidence)
     evidence_by_observation={e.observation_id:e.id for e in evidence}
-    editable=[{"id":item.id,"name":item.name,"spatial_id":item.anatomical_location.id if item.anatomical_location else None,"evidence_id":evidence_by_observation.get(item.id),"validated_interpretations":dict(item.metadata.get("validated_interpretations") or {})} for item in scoped_observations if item.id in evidence_by_observation]
+    # Observations are biological data even without evidence. Evidence is a separate dimension.
+    editable=[{"id":item.id,"name":item.name,"spatial_id":item.anatomical_location.id if item.anatomical_location else None,"evidence_id":evidence_by_observation.get(item.id),"validated_interpretations":dict(item.metadata.get("validated_interpretations") or {})} for item in scoped_observations]
     return state,editable,scoped_evidence,scoped_observations,items
 
 @router.get("/api/biological-state")
