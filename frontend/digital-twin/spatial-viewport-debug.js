@@ -18,13 +18,26 @@
     const originalMethods = [];
 
     let host = document.getElementById('twin-viewport-debug-host');
-    if (!host) { host = document.createElement('section'); host.id = 'twin-viewport-debug-host'; document.body.appendChild(host); }
+    if (!host) { host = document.createElement('section'); host.id = 'twin-viewport-debug-host'; }
+    // The debug HUD must live outside the 3D viewport. Keeping it inside the
+    // overflow-hidden canvas container can clip the fixed HUD and let the
+    // canvas intercept pointer events. It should remain fixed while the page scrolls.
+    if (host.parentElement !== document.body) document.body.appendChild(host);
     host.setAttribute('aria-label', 'Twin Viewport debug');
-    Object.assign(host.style, {position:'fixed',right:'16px',bottom:'16px',zIndex:'2147483647',width:'min(900px,calc(100vw - 32px))',maxWidth:'min(900px,calc(100vw - 32px))',pointerEvents:'auto'});
+    Object.assign(host.style, {
+      position:'fixed', right:'16px', bottom:'16px', zIndex:'2147483647',
+      width:'min(900px,calc(100vw - 32px))', maxWidth:'min(900px,calc(100vw - 32px))',
+      pointerEvents:'auto', isolation:'isolate'
+    });
 
     let toggle = document.getElementById('twin-debug-toggle');
     if (!toggle) { toggle=document.createElement('button'); toggle.id='twin-debug-toggle'; toggle.type='button'; host.appendChild(toggle); }
-    Object.assign(toggle.style,{display:'block',padding:'8px 12px',borderRadius:'8px',border:'1px solid #4b746b',background:'#0b1514',color:'#9bd8c4',font:'800 11px ui-monospace,SFMono-Regular,Consolas,monospace',cursor:'pointer'});
+    Object.assign(toggle.style, {
+      display:'block', minWidth:'190px', padding:'8px 12px', borderRadius:'8px',
+      border:'1px solid #4b746b', background:'#0b1514', color:'#9bd8c4',
+      font:'800 11px ui-monospace,SFMono-Regular,Consolas,monospace', cursor:'pointer',
+      pointerEvents:'auto'
+    });
 
     let panel = document.getElementById('twin-debug-panel');
     if (!panel) {
@@ -32,7 +45,7 @@
       panel.innerHTML='<div style="display:flex;justify-content:space-between;gap:8px;align-items:center;flex-wrap:wrap"><strong>TWIN VIEWPORT · DEBUG</strong><div><button id="twin-debug-refresh" type="button">REFRESH</button><button id="twin-debug-clear" type="button">CLEAR</button><button id="twin-debug-close" type="button">MINIMIZE</button></div></div><pre id="twin-debug-runtime"></pre><pre id="twin-debug-state"></pre><pre id="twin-debug-navigation"></pre><pre id="twin-debug-source"></pre><pre id="twin-debug-renderer"></pre><pre id="twin-debug-interaction"></pre><pre id="twin-debug-log"></pre>';
       host.appendChild(panel);
     }
-    Object.assign(panel.style,{display:'none',marginTop:'6px',width:'100%',maxHeight:'760px',overflow:'auto',padding:'12px',boxSizing:'border-box',borderRadius:'10px',background:'rgba(5,12,13,.98)',border:'1px solid #4b746b',boxShadow:'0 12px 35px rgba(0,0,0,.55)',color:'#dcece6',font:'11px/1.35 ui-monospace,SFMono-Regular,Consolas,monospace'});
+    Object.assign(panel.style,{display:'none',marginTop:'6px',width:'100%',maxHeight:'760px',overflow:'auto',padding:'12px',boxSizing:'border-box',borderRadius:'10px',background:'rgba(5,12,13,.98)',border:'1px solid #4b746b',boxShadow:'0 12px 35px rgba(0,0,0,.55)',color:'#dcece6',font:'11px/1.35 ui-monospace,SFMono-Regular,Consolas,monospace',pointerEvents:'auto'});
 
     const runtime=document.getElementById('twin-debug-runtime');
     const state=document.getElementById('twin-debug-state');
@@ -149,8 +162,10 @@
     document.getElementById('twin-debug-refresh')?.addEventListener('click',()=>{event('manual refresh');render();});
     document.getElementById('twin-debug-clear')?.addEventListener('click',()=>{lines.length=0;event('log cleared');});
     setInterval(()=>{if(!minimized)render();},500);
+    // Initialize the collapsed state explicitly. Without this call the button
+    // exists but has no label, producing the empty, non-obvious debug box.
+    setMinimized(true);
     event('DEBUG READY | writer hooks + mutation observer active');
-    render();
   };
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',boot,{once:true});else boot();
 })();
