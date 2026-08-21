@@ -29,12 +29,10 @@ def _canonical_parent_id(spatial_id: str) -> str | None:
     if not parts or parts[0] != "hand" or len(parts) == 1:
         return None
     region = parts[1]
+    # Macro hand regions are siblings under the hand root. In particular,
+    # thumb/little/etc. must not become descendants of hand/palm (Śródręcze).
     if len(parts) == 2:
-        if region == "palm":
-            return "hand"
-        if region in {"thumb", "index", "middle", "ring", "little"}:
-            return "hand/palm"
-        if region == "wrist":
+        if region in {"palm", "thumb", "index", "middle", "ring", "little", "wrist"}:
             return "hand"
         return "hand"
     return "/".join(parts[:-1])
@@ -56,22 +54,13 @@ def _parse_observations(items: list[dict[str, Any]]) -> tuple[list[Observation],
             parent_id=_location_parent(item, spatial_id),
         )
         observations.append(Observation(
-            id=str(item["id"]),
-            subject_id=str(item["subject_id"]),
-            timepoint_id=str(item["timepoint"]),
-            name=str(item["name"]),
-            value=item.get("value"),
+            id=str(item["id"]), subject_id=str(item["subject_id"]), timepoint_id=str(item["timepoint"]),
+            name=str(item["name"]), value=item.get("value"),
             observed_at=datetime.fromisoformat(str(item["observed_at"]).replace("Z", "+00:00")),
-            anatomical_location=location,
-            source_measurement_ids=list(item.get("source_measurement_ids") or []),
-            metadata={
-                "validated_interpretations": item.get("validated_interpretations") or {},
-                "biological_level": item.get("biological_level", "unspecified"),
-            },
-            biological_level=str(item.get("biological_level") or "unspecified"),
-            modality=str(item.get("modality") or "unknown"),
-            status=str(item.get("status") or "active"),
-            version=int(item.get("version") or 1),
+            anatomical_location=location, source_measurement_ids=list(item.get("source_measurement_ids") or []),
+            metadata={"validated_interpretations": item.get("validated_interpretations") or {}, "biological_level": item.get("biological_level", "unspecified")},
+            biological_level=str(item.get("biological_level") or "unspecified"), modality=str(item.get("modality") or "unknown"),
+            status=str(item.get("status") or "active"), version=int(item.get("version") or 1),
         ))
         locations[spatial_id] = location
 
@@ -82,10 +71,8 @@ def _parse_observations(items: list[dict[str, Any]]) -> tuple[list[Observation],
             continue
         parent_id = location.parent_id
         parent = AnatomicalLocation(
-            id=parent_id,
-            name=parent_id.rsplit("/", 1)[-1].replace("_", " ").title(),
-            level="site" if "/" not in parent_id else "anatomical_region",
-            parent_id=_canonical_parent_id(parent_id),
+            id=parent_id, name=parent_id.rsplit("/", 1)[-1].replace("_", " ").title(),
+            level="site" if "/" not in parent_id else "anatomical_region", parent_id=_canonical_parent_id(parent_id),
         )
         locations[parent.id] = parent
         pending.append(parent)
@@ -100,36 +87,20 @@ def _evidence(items: list[dict[str, Any]]) -> list[Evidence]:
             continue
         confidence = item.get("evidence_confidence")
         result.append(Evidence(
-            id=str(evidence_id),
-            subject_id=str(item["subject_id"]),
-            observation_id=str(item["id"]),
-            evidence_type=str(item.get("evidence_type") or "source"),
-            interpretation_boundary="observation_only",
-            provenance={"source": item.get("source", "manual-entry")},
-            confidence=float(confidence) if confidence is not None else None,
+            id=str(evidence_id), subject_id=str(item["subject_id"]), observation_id=str(item["id"]),
+            evidence_type=str(item.get("evidence_type") or "source"), interpretation_boundary="observation_only",
+            provenance={"source": item.get("source", "manual-entry")}, confidence=float(confidence) if confidence is not None else None,
         ))
     return result
 
 
 def _confidence_payload(value: float | None) -> dict[str, Any]:
-    if value is None:
-        return {"value": None, "label": "Nieustalona", "status": "unknown"}
+    if value is None: return {"value": None, "label": "Nieustalona", "status": "unknown"}
     return {"value": round(value, 4), "label": f"{value:.2f}", "status": "reported"}
 
 
 def _state_payload(state: Any, editable: list[dict[str, Any]] | None = None, observation_count: int = 0) -> dict[str, Any]:
-    return {
-        "subject_id": state.subject_id,
-        "timepoint": state.timepoint_id,
-        "evidence_ids": list(state.evidence_ids),
-        "evidence_count": state.evidence_count,
-        "observation_count": observation_count,
-        "data_count": observation_count,
-        "availability": state.availability,
-        "confidence": _confidence_payload(state.confidence),
-        "interpretations": {d: state.interpretation(d) for d in _DIMENSIONS if state.interpretation(d) is not None},
-        "editable_observations": editable or [],
-    }
+    return {"subject_id": state.subject_id, "timepoint": state.timepoint_id, "evidence_ids": list(state.evidence_ids), "evidence_count": state.evidence_count, "observation_count": observation_count, "data_count": observation_count, "availability": state.availability, "confidence": _confidence_payload(state.confidence), "interpretations": {d: state.interpretation(d) for d in _DIMENSIONS if state.interpretation(d) is not None}, "editable_observations": editable or []}
 
 
 def _build_state(subject_id: str, timepoint: str, spatial_id: str | None, include_descendants: bool):
@@ -137,111 +108,39 @@ def _build_state(subject_id: str, timepoint: str, spatial_id: str | None, includ
     observations, locations = _parse_observations(items)
     evidence = _evidence(items)
     aggregator = BiologicalStateAggregator(observations, evidence, locations)
-
     if spatial_id is None:
-        state = aggregator.build_state(subject_id, timepoint)
-        scoped_observations = list(state.observations)
-        scoped_evidence = tuple(evidence)
+        state = aggregator.build_state(subject_id, timepoint); scoped_observations = list(state.observations); scoped_evidence = tuple(evidence)
     else:
         scoped_evidence = aggregator.evidence_for_location(spatial_id, include_descendants=include_descendants)
-        if include_descendants:
-            # Data count follows the anatomical hierarchy, not the evidence table.
-            # An observation without explicit evidence is still a real data item;
-            # it simply cannot contribute a validated biological interpretation.
-            scoped_observations = [
-                observation for observation in observations
-                if observation.subject_id == subject_id
-                and observation.timepoint_id == timepoint
-                and observation.anatomical_location
-                and aggregator._observation_in_location(observation, spatial_id)
-            ]
-        else:
-            scoped_observations = [
-                observation for observation in observations
-                if observation.subject_id == subject_id
-                and observation.timepoint_id == timepoint
-                and observation.anatomical_location
-                and observation.anatomical_location.id == spatial_id
-            ]
-        state = aggregator.build_state(subject_id, timepoint)
-        state.observations = scoped_observations
-        state.evidence_ids = tuple(item.id for item in scoped_evidence)
-        state.evidence_count = len(state.evidence_ids)
-        # Availability describes whether there is real data in the selected
-        # anatomical scope. Evidence-backed validation is represented separately
-        # by evidence_count/confidence and must not turn existing observations into
-        # "no data".
+        scoped_observations = [observation for observation in observations if observation.subject_id == subject_id and observation.timepoint_id == timepoint and observation.anatomical_location and (aggregator._observation_in_location(observation, spatial_id) if include_descendants else observation.anatomical_location.id == spatial_id)]
+        state = aggregator.build_state(subject_id, timepoint); state.observations = scoped_observations; state.evidence_ids = tuple(item.id for item in scoped_evidence); state.evidence_count = len(state.evidence_ids)
         state.availability = "observed" if scoped_observations else "insufficient_evidence"
-        state.confidence = aggregator._confidence(scoped_evidence)
-        state.interpretations = aggregator._interpretations(scoped_observations, scoped_evidence)
-
+        state.confidence = aggregator._confidence(scoped_evidence); state.interpretations = aggregator._interpretations(scoped_observations, scoped_evidence)
     evidence_by_observation = {e.observation_id: e.id for e in evidence}
-    editable = [
-        {
-            "id": item.id,
-            "name": item.name,
-            "spatial_id": item.anatomical_location.id if item.anatomical_location else None,
-            "evidence_id": evidence_by_observation.get(item.id),
-            "validated_interpretations": dict(item.metadata.get("validated_interpretations") or {}),
-        }
-        for item in scoped_observations
-        if item.id in evidence_by_observation
-    ]
+    editable = [{"id": item.id, "name": item.name, "spatial_id": item.anatomical_location.id if item.anatomical_location else None, "evidence_id": evidence_by_observation.get(item.id), "validated_interpretations": dict(item.metadata.get("validated_interpretations") or {})} for item in scoped_observations if item.id in evidence_by_observation]
     return state, editable, scoped_evidence, scoped_observations
 
 
 @router.get("/api/biological-state")
 def biological_state(subject_id: str = "own_cohort", timepoint: str = "T0", spatial_id: str | None = None, include_descendants: bool = True):
     state, editable, scoped_evidence, scoped_observations = _build_state(subject_id, timepoint, spatial_id, include_descendants)
-
-    direct_evidence = tuple(
-        item for item in scoped_evidence
-        if spatial_id is None
-        or next((o for o in scoped_observations if o.id == item.observation_id), None) is not None
-        and next((o for o in scoped_observations if o.id == item.observation_id), None).anatomical_location is not None
-        and next((o for o in scoped_observations if o.id == item.observation_id), None).anatomical_location.id == spatial_id
-    )
-    direct_ids = {item.id for item in direct_evidence}
-    descendant_evidence = tuple(item for item in scoped_evidence if item.id not in direct_ids)
-
+    direct_evidence = tuple(item for item in scoped_evidence if spatial_id is None or (next((o for o in scoped_observations if o.id == item.observation_id), None) is not None and next((o for o in scoped_observations if o.id == item.observation_id), None).anatomical_location is not None and next((o for o in scoped_observations if o.id == item.observation_id), None).anatomical_location.id == spatial_id))
+    direct_ids = {item.id for item in direct_evidence}; descendant_evidence = tuple(item for item in scoped_evidence if item.id not in direct_ids)
     by_location: dict[str, dict[str, Any]] = {}
     for observation in scoped_observations:
         location = observation.anatomical_location
-        if not location:
-            continue
-        entry = by_location.setdefault(location.id, {"spatial_id": location.id, "name": location.name, "count": 0})
-        entry["count"] += 1
-
-    return {
-        "state": _state_payload(state, editable, len(scoped_observations)),
-        "summary": {
-            "scope": spatial_id,
-            "include_descendants": include_descendants,
-            "observations": len(scoped_observations),
-            "observation_count": len(scoped_observations),
-            "data_count": len(scoped_observations),
-            "explicit_evidence": state.evidence_count,
-            "direct_evidence": len(direct_evidence),
-            "descendant_evidence": len(descendant_evidence),
-            "by_location": sorted(by_location.values(), key=lambda item: item["spatial_id"]),
-            "interpretation_source": "validated_interpretations only",
-            "dimensions": _DIMENSIONS,
-        },
-    }
+        if not location: continue
+        entry = by_location.setdefault(location.id, {"spatial_id": location.id, "name": location.name, "count": 0}); entry["count"] += 1
+    return {"state": _state_payload(state, editable, len(scoped_observations)), "summary": {"scope": spatial_id, "include_descendants": include_descendants, "observations": len(scoped_observations), "observation_count": len(scoped_observations), "data_count": len(scoped_observations), "explicit_evidence": state.evidence_count, "direct_evidence": len(direct_evidence), "descendant_evidence": len(descendant_evidence), "by_location": sorted(by_location.values(), key=lambda item: item["spatial_id"]), "interpretation_source": "validated_interpretations only", "dimensions": _DIMENSIONS}}
 
 
 @router.patch("/api/biological-state")
 def update_biological_state(request: BiologicalStateUpdateRequest):
     unknown = set(request.interpretations) - set(_DIMENSIONS)
-    if unknown:
-        raise HTTPException(status_code=400, detail=f"Unsupported interpretation dimension(s): {', '.join(sorted(unknown))}")
+    if unknown: raise HTTPException(status_code=400, detail=f"Unsupported interpretation dimension(s): {', '.join(sorted(unknown))}")
     cleaned = {key: value for key, value in request.interpretations.items() if value is not None and str(value).strip()}
-    try:
-        item = update_observation(request.observation_id, {"validated_interpretations": cleaned, "author": request.author})
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    if item is None:
-        raise HTTPException(status_code=404, detail="observation not found")
-    if not item.get("evidence_id"):
-        raise HTTPException(status_code=400, detail="An explicit evidence-backed observation is required")
+    try: item = update_observation(request.observation_id, {"validated_interpretations": cleaned, "author": request.author})
+    except ValueError as exc: raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if item is None: raise HTTPException(status_code=404, detail="observation not found")
+    if not item.get("evidence_id"): raise HTTPException(status_code=400, detail="An explicit evidence-backed observation is required")
     return {"status": "updated", "observation": item}
