@@ -10,9 +10,11 @@ from .biological_state_routes import biological_state
 from .data_ingestion import registry_status
 from .observation_registry import archive_observation, create_observation, get_observation, list_observations, observation_history, restore_observation, update_observation
 from .photo_reconstruction_routes import router as photo_reconstruction_router
+from .spatial_object_routes import router as spatial_object_router
 
 router = APIRouter(tags=["biological-observations"])
 router.include_router(photo_reconstruction_router)
+router.include_router(spatial_object_router)
 
 
 class ObservationCreateRequest(BaseModel):
@@ -75,11 +77,6 @@ def spatial_registry(
     spatial_node_id: str | None = None,
     debug: bool = False,
 ):
-    """Return canonical evidence for a spatial target, with per-record match decisions.
-
-    Important: target filtering is deliberately performed after loading the subject/timepoint
-    scope so a missing target attachment cannot hide the record that was rejected.
-    """
     assets = [
         dict(item)
         for item in registry_status()["assets"]
@@ -88,92 +85,46 @@ def spatial_registry(
     target = str(spatial_node_id or "").strip().strip("/") or None
     decisions: list[dict[str, Any]] = []
     matched: list[dict[str, Any]] = []
-
     for item in assets:
         actual = str(item.get("spatial_node_id") or item.get("spatial_id") or item.get("target") or "").strip().strip("/") or None
         attachment = item.get("attachment_status") or ("explicit" if item.get("spatial_node_id") else "registered_root")
         localized = item.get("spatially_localized")
         if target is None:
-            is_match = True
-            reason = "NO_TARGET_REQUESTED"
+            is_match = True; reason = "NO_TARGET_REQUESTED"
         elif actual == target:
-            is_match = True
-            reason = "EXACT_SPATIAL_NODE_MATCH"
+            is_match = True; reason = "EXACT_SPATIAL_NODE_MATCH"
         elif actual and target.startswith(f"{actual}/"):
-            is_match = False
-            reason = "ROOT_OR_ANCESTOR_ATTACHMENT_NOT_DEEP_ATTACHED"
+            is_match = False; reason = "ROOT_OR_ANCESTOR_ATTACHMENT_NOT_DEEP_ATTACHED"
         elif not actual:
-            is_match = False
-            reason = "MISSING_SPATIAL_NODE_ID"
+            is_match = False; reason = "MISSING_SPATIAL_NODE_ID"
         else:
-            is_match = False
-            reason = "SPATIAL_NODE_ID_MISMATCH"
-
+            is_match = False; reason = "SPATIAL_NODE_ID_MISMATCH"
         decision = {
-            "matched": is_match,
-            "reason": reason,
+            "matched": is_match, "reason": reason,
             "evidence_id": item.get("evidence_id") or item.get("asset_id"),
-            "asset_id": item.get("asset_id"),
-            "filename": item.get("filename"),
-            "actual_spatial_node_id": actual,
-            "expected_spatial_node_id": target,
-            "attachment_status": attachment,
-            "spatially_localized": localized,
-            "subject_id": item.get("subject_id"),
-            "timepoint": item.get("timepoint"),
-            "modality": item.get("modality"),
-            "source": item.get("source"),
+            "asset_id": item.get("asset_id"), "filename": item.get("filename"),
+            "actual_spatial_node_id": actual, "expected_spatial_node_id": target,
+            "attachment_status": attachment, "spatially_localized": localized,
+            "subject_id": item.get("subject_id"), "timepoint": item.get("timepoint"),
+            "modality": item.get("modality"), "source": item.get("source"),
             "status": item.get("status"),
             "prepared": bool(item.get("prepared") or item.get("prepared_asset") or item.get("prepared_asset_id")),
         }
         decisions.append(decision)
         if is_match:
             matched.append(item)
-
-    payload: dict[str, Any] = {
-        "subject_id": subject_id,
-        "timepoint": timepoint,
-        "scope": target,
-        "items": matched,
-        "count": len(matched),
-    }
+    payload: dict[str, Any] = {"subject_id": subject_id, "timepoint": timepoint, "scope": target, "items": matched, "count": len(matched)}
     if debug:
-        payload["debug"] = {
-            "scoped_count": len(assets),
-            "target_linked_count": len(matched),
-            "accepted_count": sum(1 for d in decisions if d["matched"]),
-            "rejected_count": sum(1 for d in decisions if not d["matched"]),
-            "target": target,
-            "decisions": decisions,
-        }
+        payload["debug"] = {"scoped_count": len(assets), "target_linked_count": len(matched), "accepted_count": sum(1 for d in decisions if d["matched"]), "rejected_count": sum(1 for d in decisions if not d["matched"]), "target": target, "decisions": decisions}
     return payload
 
 
 @router.get("/api/observations")
-def observations(
-    subject_id: str = "own_cohort",
-    timepoint: str | None = None,
-    spatial_id: str | None = None,
-    biological_level: str | None = None,
-    include_archived: bool = False,
-    include_descendants: bool = False,
-):
-    items = list_observations(
-        subject_id=subject_id,
-        timepoint=timepoint,
-        spatial_id=None if include_descendants else spatial_id,
-        biological_level=biological_level,
-        include_archived=include_archived,
-    )
+def observations(subject_id: str = "own_cohort", timepoint: str | None = None, spatial_id: str | None = None, biological_level: str | None = None, include_archived: bool = False, include_descendants: bool = False):
+    items = list_observations(subject_id=subject_id, timepoint=timepoint, spatial_id=None if include_descendants else spatial_id, biological_level=biological_level, include_archived=include_archived)
     if spatial_id and include_descendants:
         items = [item for item in items if _in_spatial_scope(spatial_id, item.get("spatial_id"), True)]
-    return {
-        "subject_id": subject_id,
-        "scope": spatial_id,
-        "include_descendants": include_descendants,
-        "count": len(items),
-        "observations": items,
-    }
+    return {"subject_id": subject_id, "scope": spatial_id, "include_descendants": include_descendants, "count": len(items), "observations": items}
 
 
 @router.get("/api/biological-state")
