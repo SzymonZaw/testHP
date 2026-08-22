@@ -1,5 +1,5 @@
-import('./spatial-target-canonicalizer.js?v=canonical-target-1').catch(error => console.error('[Twin navigation] target canonicalizer failed to load', error));
-import('./spatial-writer-debug.js?v=writer-debug-1').catch(error => console.error('[Twin navigation] writer debug failed to load', error));
+import('./spatial-target-canonicalizer.js?v=canonical-target-2').catch(error => console.error('[Twin navigation] target canonicalizer failed to load', error));
+import('./spatial-writer-debug.js?v=writer-debug-2').catch(error => console.error('[Twin navigation] writer debug failed to load', error));
 
 (() => {
   const ROOT_PARTS = [
@@ -30,12 +30,12 @@ import('./spatial-writer-debug.js?v=writer-debug-1').catch(error => console.erro
     }[raw] || raw;
   };
 
-  // One-time migration of the already-ingested hand asset into the explicit
-  // deep spatial contract. We reuse the real registered file through the
-  // canonical upload endpoint; no synthetic evidence or local-only registry
-  // record is created. The migration is idempotent and only runs for the
-  // hypothenar target when that target has no linked evidence yet.
-  const EXPLICIT_ASSET_ID = 'aif6yv';
+  // One-time migration of an already-ingested hand asset into the explicit
+  // deep spatial contract. The asset is discovered from the live ingestion
+  // registry rather than relying on a stale hard-coded asset id. This reuses
+  // the real registered file through the canonical upload/attach endpoint;
+  // no synthetic evidence or local-only registry record is created.
+  const PREFERRED_ASSET_ID = 'aif6yv';
   const EXPLICIT_TARGET = 'hand/palm/hypothenar';
   let explicitAttachPromise = null;
 
@@ -59,14 +59,28 @@ import('./spatial-writer-debug.js?v=writer-debug-1').catch(error => console.erro
           return;
         }
 
-        const sourceResponse = await fetch(`/api/spatial/evidence/${encodeURIComponent(EXPLICIT_ASSET_ID)}`, { cache: 'no-store' });
+        const assetsResponse = await fetch('/api/ingestion/assets', { cache: 'no-store' });
+        if (!assetsResponse.ok) {
+          window.dispatchEvent(new CustomEvent('testhp:diagnostic', { detail: { type: 'explicit-evidence-attach', target: EXPLICIT_TARGET, status: 'asset-registry-unavailable', httpStatus: assetsResponse.status } }));
+          return;
+        }
+        const assetsPayload = await assetsResponse.json();
+        const assets = Array.isArray(assetsPayload.assets) ? assetsPayload.assets : [];
+        const availableHandAssets = assets.filter(item => item?.status === 'available' && item?.modality === 'hand' && item?.subject_id === 'own_cohort' && item?.timepoint === 'T0');
+        const sourceAsset = availableHandAssets.find(item => String(item.asset_id) === PREFERRED_ASSET_ID) || availableHandAssets[0];
+        if (!sourceAsset?.asset_id) {
+          window.dispatchEvent(new CustomEvent('testhp:diagnostic', { detail: { type: 'explicit-evidence-attach', target: EXPLICIT_TARGET, status: 'source-missing', reason: 'no available hand asset for own_cohort/T0' } }));
+          return;
+        }
+
+        const sourceResponse = await fetch(`/api/spatial/evidence/${encodeURIComponent(sourceAsset.asset_id)}`, { cache: 'no-store' });
         if (!sourceResponse.ok) {
-          window.dispatchEvent(new CustomEvent('testhp:diagnostic', { detail: { type: 'explicit-evidence-attach', target: EXPLICIT_TARGET, assetId: EXPLICIT_ASSET_ID, status: 'source-missing', httpStatus: sourceResponse.status } }));
+          window.dispatchEvent(new CustomEvent('testhp:diagnostic', { detail: { type: 'explicit-evidence-attach', target: EXPLICIT_TARGET, assetId: sourceAsset.asset_id, status: 'source-missing', httpStatus: sourceResponse.status } }));
           return;
         }
         const blob = await sourceResponse.blob();
-        const sourceName = sourceResponse.headers.get('X-Spatial-Source') || `hand-${EXPLICIT_ASSET_ID}.bin`;
-        const file = new File([blob], sourceName, { type: blob.type || 'application/octet-stream' });
+        const sourceName = sourceResponse.headers.get('X-Spatial-Source') || sourceAsset.filename || `hand-${sourceAsset.asset_id}.bin`;
+        const file = new File([blob], sourceName, { type: blob.type || sourceAsset.media_type || 'application/octet-stream' });
         const form = new FormData();
         form.append('file', file);
         form.append('subject_id', 'own_cohort');
@@ -74,18 +88,18 @@ import('./spatial-writer-debug.js?v=writer-debug-1').catch(error => console.erro
         form.append('spatial_node_id', EXPLICIT_TARGET);
         form.append('spatial_level', 'tissue');
         form.append('modality', 'hand');
-        form.append('source', `explicit-spatial-attachment:${EXPLICIT_ASSET_ID}`);
+        form.append('source', `explicit-spatial-attachment:${sourceAsset.asset_id}`);
 
         const attachResponse = await fetch('/api/spatial/attach', { method: 'POST', body: form });
         const payload = await attachResponse.json().catch(() => ({}));
         if (!attachResponse.ok) throw new Error(payload.detail || `spatial attach HTTP ${attachResponse.status}`);
 
         window.spatialEvidenceTarget = EXPLICIT_TARGET;
-        window.dispatchEvent(new CustomEvent('testhp:evidence-attached', { detail: { target: EXPLICIT_TARGET, status: 'attached', sourceAssetId: EXPLICIT_ASSET_ID, evidence: payload.evidence || null } }));
-        window.dispatchEvent(new CustomEvent('testhp:diagnostic', { detail: { type: 'explicit-evidence-attach', target: EXPLICIT_TARGET, assetId: EXPLICIT_ASSET_ID, status: 'attached', evidenceId: payload.evidence?.evidence_id || null, attachedAssetId: payload.evidence?.asset_id || null } }));
+        window.dispatchEvent(new CustomEvent('testhp:evidence-attached', { detail: { target: EXPLICIT_TARGET, status: 'attached', sourceAssetId: sourceAsset.asset_id, evidence: payload.evidence || null } }));
+        window.dispatchEvent(new CustomEvent('testhp:diagnostic', { detail: { type: 'explicit-evidence-attach', target: EXPLICIT_TARGET, assetId: sourceAsset.asset_id, status: 'attached', evidenceId: payload.evidence?.evidence_id || null, attachedAssetId: payload.evidence?.asset_id || null } }));
       } catch (error) {
         console.error('[Twin navigation] explicit hypothenar evidence attach failed', error);
-        window.dispatchEvent(new CustomEvent('testhp:diagnostic', { detail: { type: 'explicit-evidence-attach', target: EXPLICIT_TARGET, assetId: EXPLICIT_ASSET_ID, status: 'error', message: error.message || String(error) } }));
+        window.dispatchEvent(new CustomEvent('testhp:diagnostic', { detail: { type: 'explicit-evidence-attach', target: EXPLICIT_TARGET, status: 'error', message: error.message || String(error) } }));
       } finally {
         explicitAttachPromise = null;
       }
