@@ -23,6 +23,24 @@
     return next;
   };
 
+  const normalizeObservedState = () => {
+    const manager = window.spatialViewportManager;
+    if (manager?.state && typeof manager.state === 'object') {
+      if (typeof manager.state.spatialTarget === 'string') manager.state.spatialTarget = canonical(manager.state.spatialTarget);
+      if (manager.state.target && typeof manager.state.target === 'object') manager.state.target = canonicalizeTarget(manager.state.target);
+    }
+    if (manager?.active && typeof manager.active === 'object') {
+      if (typeof manager.active.spatial_id === 'string') manager.active.spatial_id = canonical(manager.active.spatial_id);
+      if (typeof manager.active.spatialId === 'string') manager.active.spatialId = canonical(manager.active.spatialId);
+    }
+
+    for (const key of ['selectedSpatialNode', 'spatialEvidenceTarget', 'testhpSpatialTarget']) {
+      const value = window[key];
+      if (typeof value === 'string') window[key] = canonical(value);
+      else if (value && typeof value === 'object') window[key] = canonicalizeTarget(value);
+    }
+  };
+
   const patchManager = manager => {
     if (!manager || manager.__testhpSpatialCanonicalizerInstalled) return;
     const original = manager.setSpatialTarget;
@@ -32,16 +50,7 @@
     manager.setSpatialTarget = function(target, ...args) {
       const next = canonicalizeTarget(target);
       const result = original.call(this, next, ...args);
-
-      // Keep all externally inspected manager state on the same canonical ID.
-      if (this.state && typeof this.state === 'object') {
-        if (typeof this.state.spatialTarget === 'string') this.state.spatialTarget = canonical(this.state.spatialTarget);
-        if (this.state.target && typeof this.state.target === 'object') this.state.target = canonicalizeTarget(this.state.target);
-      }
-      if (this.active && typeof this.active === 'object') {
-        if (typeof this.active.spatial_id === 'string') this.active.spatial_id = canonical(this.active.spatial_id);
-        if (typeof this.active.spatialId === 'string') this.active.spatialId = canonical(this.active.spatialId);
-      }
+      normalizeObservedState();
       return result;
     };
 
@@ -50,18 +59,22 @@
     }));
   };
 
-  const install = () => patchManager(window.spatialViewportManager);
+  const install = () => {
+    patchManager(window.spatialViewportManager);
+    normalizeObservedState();
+  };
+
   install();
   window.addEventListener('testhp:viewport-manager-ready', install);
 
-  // The manager may publish a legacy target before this bridge gets installed.
-  // Normalize that state as soon as the spatial layer changes as well.
-  window.addEventListener('testhp:spatial-layer-changed', () => {
-    const manager = window.spatialViewportManager;
-    patchManager(manager);
-    if (!manager) return;
-    if (manager.state && typeof manager.state === 'object') {
-      if (typeof manager.state.spatialTarget === 'string') manager.state.spatialTarget = canonical(manager.state.spatialTarget);
-    }
-  });
+  // Run after other spatial-layer listeners too, so a legacy writer cannot
+  // leave selectedSpatialNode behind after the canonical contract updates.
+  const reconcile = () => {
+    patchManager(window.spatialViewportManager);
+    queueMicrotask(normalizeObservedState);
+    setTimeout(normalizeObservedState, 0);
+  };
+  window.addEventListener('testhp:spatial-layer-changed', reconcile);
+  window.addEventListener('testhp:spatial-contract-changed', reconcile);
+  window.addEventListener('testhp:spatial-target-changed', reconcile);
 })();
