@@ -4,18 +4,18 @@ from __future__ import annotations
 from typing import Any
 
 from .photo_reconstruction import _load_manifest
-from .reconstruction_quality import validate_reconstruction_inputs
+from .reconstruction_quality import validate_inputs
 from .visual_hull import build_reconstruction, clear_reconstructions, latest_reconstruction
 
 
 def run(subject_id: str, timepoint: str = "T0", resolution: int = 24) -> dict[str, Any]:
     """Validate, reconstruct, publish a SpatialObject and persist the result."""
     records = [r for r in _load_manifest() if r.get("subject_id") == subject_id and r.get("timepoint") == timepoint]
-    quality = validate_reconstruction_inputs(records)
-    if not quality.get("ready"):
+    quality = validate_inputs(records)
+    if quality.get("status") != "ready":
         return {
             "status": "blocked",
-            "reason": quality.get("blocking_reason") or "Reconstruction inputs are not ready",
+            "reason": quality["errors"][0] if quality.get("errors") else "Reconstruction inputs are not ready",
             "quality": quality,
         }
     try:
