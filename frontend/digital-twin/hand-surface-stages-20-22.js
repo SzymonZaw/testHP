@@ -13,8 +13,45 @@
     if (typeof value === 'string') return value;
     return value.spatial_id || value.spatialId || value.targetSpatialId || value.target || value.spatialTarget || null;
   };
+
+  // Keep the last canonical navigation event locally. The evidence cache can
+  // legitimately point at a different target, so it must never win over the
+  // current viewport selection. This also fixes the boot-order case where the
+  // selected node is represented by the manager/event stream rather than a
+  // window global.
+  let lastSpatialTarget = null;
+  const rememberSpatialTarget = detail => {
+    const id = spatialIdOf(detail);
+    if (id && typeof id === 'string' && id.startsWith(TARGET_ROOT)) lastSpatialTarget = id;
+  };
+
+  window.addEventListener('testhp:spatial-target-changed', event => rememberSpatialTarget(event.detail));
+  window.addEventListener('testhp:spatial-layer-changed', event => rememberSpatialTarget(event.detail));
+
+  const managerTarget = () => {
+    const manager = window.spatialViewportManager;
+    const candidates = [
+      manager?.state?.spatialTarget,
+      manager?.state?.spatial_id,
+      manager?.state?.spatialId,
+      manager?.state?.targetSpatialId,
+      manager?.active?.spatial_id,
+      manager?.active?.spatialId,
+      manager?.active?.targetSpatialId,
+      manager?.active?.target
+    ];
+    return candidates.map(spatialIdOf).find(id => typeof id === 'string' && id.startsWith(TARGET_ROOT)) || null;
+  };
+
   const surfaceTarget = () => {
-    const value = window.spatialEvidenceTarget || spatialIdOf(window.selectedSpatialNode) || document.body.dataset.spatialTarget || 'hand';
+    // Priority is intentional: canonical viewport navigation > manager state
+    // > selected-node compatibility globals > evidence-cache target.
+    const value = lastSpatialTarget
+      || managerTarget()
+      || spatialIdOf(window.selectedSpatialNode)
+      || document.body.dataset.spatialTarget
+      || window.spatialEvidenceTarget
+      || TARGET_ROOT;
     return String(value);
   };
 
@@ -22,20 +59,12 @@
     return target === TARGET_ROOT || target.startsWith(`${TARGET_ROOT}/`);
   }
 
-  // Stage 13 is a visualization contract, not measured anatomy. Every
-  // selected descendant gets its own geometry manifest. We deliberately do
-  // not inherit the parent's manifest into the child's target slot because
-  // that would make the UI claim that geometry exists for an unprepared node.
   function ensureGeometryContract() {
     const target = surfaceTarget();
     if (!isSupportedTarget(target)) return null;
 
     const surface = readJson(SURFACE_KEY, {
-      geometry: {},
-      prepared: null,
-      mappings: [],
-      selectedView: 'front',
-      geometryTargets: {}
+      geometry: {}, prepared: null, mappings: [], selectedView: 'front', geometryTargets: {}
     });
     surface.geometry ||= {};
     surface.geometryTargets ||= {};
@@ -58,12 +87,9 @@
           clinical_claim: false,
           coordinate_system: 'hand-surface-v1',
           parameters: {
-            palmLength: scalar('palmLength'),
-            palmWidth: scalar('palmWidth'),
-            fingerSpread: scalar('fingerSpread'),
-            thumbAngle: scalar('thumbAngle'),
-            taper: scalar('taper'),
-            thickness: scalar('thickness')
+            palmLength: scalar('palmLength'), palmWidth: scalar('palmWidth'),
+            fingerSpread: scalar('fingerSpread'), thumbAngle: scalar('thumbAngle'),
+            taper: scalar('taper'), thickness: scalar('thickness')
           },
           evidence_boundary: 'Geometry is a procedural visualization until measured/photo registration is supplied; it does not infer anatomy.',
           updatedAt: new Date().toISOString()
@@ -76,7 +102,6 @@
       surface.geometryManifest = manifest;
     }
     writeJson(SURFACE_KEY, surface);
-
     window.dispatchEvent(new CustomEvent('testhp:hand-surface-geometry-ready', { detail: manifest }));
     return manifest;
   }
@@ -105,9 +130,7 @@
     }
     const surface = readJson(SURFACE_KEY, { geometry: {}, mappings: [], geometryTargets: {} });
     const manifest = surface.geometryTargets?.[target] || surface.geometry?.[target];
-    const mappings = Array.isArray(surface.mappings)
-      ? surface.mappings.filter(m => m?.spatialTarget === target)
-      : [];
+    const mappings = Array.isArray(surface.mappings) ? surface.mappings.filter(m => m?.spatialTarget === target) : [];
     const registered = VIEWS.filter(v => mappings.some(m => m?.view === v && Number(m?.quality || 0) > 0)).length;
     const plan = readJson(PLAN_KEY, null);
     const planReady = plan?.schema === 'surface-projection-v2' && plan?.target === target;
@@ -121,31 +144,21 @@
     ensurePanel();
     renderPanel();
   }
-
   function scheduleReconcile() {
     if (reconcileTimer) return;
-    reconcileTimer = window.setTimeout(() => {
-      reconcileTimer = null;
-      reconcile();
-    }, 0);
+    reconcileTimer = window.setTimeout(() => { reconcileTimer = null; reconcile(); }, 0);
   }
 
   function boot() {
-    // The canonical manager can become ready before this module is loaded.
-    // Reconcile immediately and after the next task so the selected target is
-    // captured even when the layer-change event happened earlier.
     reconcile();
     scheduleReconcile();
-    window.addEventListener('testhp:spatial-target-changed', scheduleReconcile);
-    window.addEventListener('testhp:spatial-layer-changed', scheduleReconcile);
+    window.addEventListener('testhp:spatial-target-changed', event => { rememberSpatialTarget(event.detail); scheduleReconcile(); });
+    window.addEventListener('testhp:spatial-layer-changed', event => { rememberSpatialTarget(event.detail); scheduleReconcile(); });
     window.addEventListener('testhp:hand-surface-geometry-changed', scheduleReconcile);
     window.addEventListener('testhp:evidence-attached', scheduleReconcile);
     window.addEventListener('testhp:surface-projection-plan-changed', scheduleReconcile);
   }
 
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', boot, { once: true });
-  } else {
-    boot();
-  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot, { once: true });
+  else boot();
 })();
