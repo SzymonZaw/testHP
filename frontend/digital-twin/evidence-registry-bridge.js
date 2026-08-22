@@ -32,13 +32,16 @@
   };
 
   // Read-only target-focused registry snapshot for Twin debug.
+  // debug=true makes the backend return the exact match/reject decision for
+  // every same-subject/timepoint record, so a missing target cannot look like
+  // a generic renderer/cache failure.
   async function collectRegistryDiagnostics(target = window.spatialEvidenceTarget || window.selectedSpatialNode || 'hand') {
     const diagnostics = {
       requestedTarget: target,
-      endpoint: '/api/spatial/registry?subject_id=own_cohort&timepoint=T0',
+      endpoint: `/api/spatial/registry?subject_id=own_cohort&timepoint=T0&debug=true`,
       fetchedAt: new Date().toISOString(), ok: false, status: null,
       total: 0, targetLinked: 0, prepared: 0,
-      targetRecords: [], allRecords: [], error: null
+      targetRecords: [], allRecords: [], matchDebug: null, error: null
     };
     try {
       const response = await fetch(diagnostics.endpoint, { cache: 'no-store' });
@@ -61,13 +64,12 @@
         prepared: !!(item.prepared || item.prepared_asset || item.prepared_asset_id),
         prepared_asset_id: item.prepared_asset_id || item.prepared_asset?.id || null
       });
-      diagnostics.total = items.length;
-      diagnostics.allRecords = items.map(summarize);
-      diagnostics.targetRecords = items.filter(item =>
-        (item.spatial_node_id || item.spatial_id || item.target || 'hand') === target
-      ).map(summarize);
+      diagnostics.total = payload.debug?.scoped_count ?? items.length;
+      diagnostics.allRecords = (payload.debug?.decisions || items).map(summarize);
+      diagnostics.targetRecords = items.map(summarize);
       diagnostics.targetLinked = diagnostics.targetRecords.length;
       diagnostics.prepared = diagnostics.targetRecords.filter(item => item.prepared).length;
+      diagnostics.matchDebug = payload.debug || null;
       diagnostics.ok = true;
     } catch (error) {
       diagnostics.error = { name: error.name || 'Error', message: error.message || String(error) };
@@ -87,7 +89,7 @@
     if (target) collectRegistryDiagnostics(target).then(d => {
       console.groupCollapsed(`[Twin Registry Debug] ${target}`);
       console.log('summary', { total: d.total, targetLinked: d.targetLinked, prepared: d.prepared, status: d.status });
-      console.table(d.targetRecords);
+      console.table(d.matchDebug?.decisions || d.targetRecords);
       console.log('all registry records', d.allRecords);
       console.groupEnd();
     });
