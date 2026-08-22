@@ -28,11 +28,18 @@
       const d = window.__testhpTwinRegistryDiagnostics;
       const lines = [];
       lines.push(`requested target: ${t.id}`);
-      lines.push(`endpoint: ${d?.endpoint || '/api/spatial/registry?subject_id=own_cohort&timepoint=T0'}`);
+      lines.push(`endpoint: ${d?.endpoint || '/api/spatial/registry?subject_id=own_cohort&timepoint=T0&debug=true'}`);
       lines.push(`HTTP: ${d?.status ?? 'not fetched'} | ok=${d?.ok ?? false}`);
-      lines.push(`canonical registry: total=${d?.total ?? '—'} target-linked=${d?.targetLinked ?? '—'} prepared=${d?.prepared ?? '—'}`);
+      lines.push(`canonical registry: scoped=${d?.matchDebug?.scoped_count ?? d?.total ?? '—'} returned=${d?.matchDebug?.returned_count ?? d?.targetLinked ?? '—'} rejected=${d?.matchDebug?.rejected_count ?? '—'} prepared=${d?.prepared ?? '—'}`);
       lines.push(`localStorage UX cache: total=${cacheItems.length} target-linked=${targetItems(cacheItems,t.id).length}`);
       if (d?.error) lines.push(`ERROR: ${d.error.name}: ${d.error.message}`);
+
+      const decisions = Array.isArray(d?.matchDebug?.decisions) ? d.matchDebug.decisions : [];
+      if (decisions.length) {
+        lines.push('BACKEND TARGET-MATCH DECISIONS (exact rejection point):');
+        decisions.forEach((x,i)=>lines.push(`  [${i+1}] ${x.matched?'ACCEPT':'REJECT'} reason=${x.reason} expected=${x.expected_spatial_node_id||'NULL'} actual=${x.actual_spatial_node_id||'NULL'} attachment=${x.attachment_status||'NULL'} localized=${x.spatially_localized} evidence=${x.evidence_id||'NULL'} asset=${x.asset_id||'NULL'} file=${x.filename||'NULL'}`));
+      }
+
       const canonical = Array.isArray(d?.targetRecords) ? d.targetRecords : [];
       const cache = targetItems(cacheItems,t.id);
       if (canonical.length) {
@@ -47,8 +54,9 @@
       const near = allCanonical.filter(x => [x.spatial_node_id,x.spatial_id,x.target].some(v => String(v||'').includes(t.id) || t.id.includes(String(v||''))));
       if (near.length) lines.push(`near-match records (${near.length}) — useful for path/id mismatch:`);
       near.slice(0,12).forEach((x,i)=>lines.push(`  [${i+1}] spatial_node_id=${x.spatial_node_id||'NULL'} spatial_id=${x.spatial_id||'NULL'} target=${x.target||'NULL'} level=${x.spatial_level||'NULL'} attachment=${x.attachment_status||'NULL'} localized=${x.spatially_localized} prepared=${x.prepared}`));
-      if (!canonical.length && near.length) lines.push('DIAGNOSIS HINT: registry has nearby IDs but none exact-match the active target; likely spatial-id/attachment mismatch.');
-      if (!canonical.length && !near.length && d?.ok) lines.push('DIAGNOSIS HINT: canonical registry returned no exact or nearby target record; this is a data/ingestion gap, not a renderer click failure.');
+      if (decisions.some(x=>x.reason==='ROOT_ONLY_REGISTERED_ASSET_NOT_DEEP_ATTACHED')) lines.push('DIAGNOSIS: evidence exists in canonical registry, but ingestion registered it only at root `hand`; it is intentionally rejected for this deeper target until explicitly attached.');
+      else if (!canonical.length && near.length) lines.push('DIAGNOSIS HINT: registry has nearby IDs but none exact-match the active target; likely spatial-id/attachment mismatch.');
+      else if (!canonical.length && !near.length && d?.ok) lines.push('DIAGNOSIS HINT: canonical registry returned no exact or nearby target record; this is a data/ingestion gap, not a renderer click failure.');
       if (canonical.length && !cache.length) lines.push('DIAGNOSIS HINT: canonical registry has target evidence but UX cache does not; cache synchronization/rendering is stale.');
       if (!canonical.length && cache.length) lines.push('DIAGNOSIS HINT: UX cache has target evidence but canonical registry does not; cached/manual evidence is not backed by the canonical registry.');
       body.textContent = lines.join('\n');
@@ -81,10 +89,6 @@
     const schedule=()=>{ if(scheduled)return; scheduled=true; requestAnimationFrame(()=>{scheduled=false;render();}); };
     ['testhp:spatial-layer-changed','testhp:spatial-contract-changed','testhp:evidence-attached','testhp:hand-surface-ready','testhp:surface-projection-plan-changed','testhp:evidence-registry-debug','testhp:evidence-registry-synced'].forEach(e=>window.addEventListener(e,schedule));
 
-    // The existing registry bridge owns the canonical fetch. Trigger it after
-    // navigation and refresh the panel when its result arrives. This keeps the
-    // visible debug flow backed by the same source-of-truth check used by the
-    // console diagnostics, while retaining the UX cache view for comparison.
     const refreshCanonical = () => {
       const t=target();
       if (typeof window.__testhpCollectRegistryDiagnostics === 'function') {
