@@ -83,8 +83,20 @@
     const manager = window.spatialViewportManager;
     const canonical = managerSpatialId(manager);
     if (!canonical) return;
-    if (manager?.state && typeof manager.state === 'object') manager.state.spatialTarget = canonical;
+    if (manager?.state && typeof manager.state === 'object') {
+      manager.state.spatial_id = canonical;
+      manager.state.spatialId = canonical;
+      manager.state.spatialTarget = canonical;
+      if (manager.state.target && typeof manager.state.target === 'object') {
+        manager.state.target.spatial_id = canonical;
+        manager.state.target.spatialId = canonical;
+      }
+    }
     if (manager && typeof manager === 'object') manager.spatialTarget = canonical;
+    if (manager?.active && typeof manager.active === 'object') {
+      if (typeof manager.active.spatial_id === 'string') manager.active.spatial_id = canonical;
+      if (typeof manager.active.spatialId === 'string') manager.active.spatialId = canonical;
+    }
     window.selectedSpatialNode = canonical;
     window.spatialEvidenceTarget = canonical;
     window.testhpSpatialTarget = canonical;
