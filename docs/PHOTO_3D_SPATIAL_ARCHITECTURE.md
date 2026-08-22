@@ -9,6 +9,7 @@ Observation
   -> RegisteredView
   -> ReconstructionAsset
   -> SpatialObject
+  -> Spatial Model / Inspector / Navigation / Research Interpretation
 ```
 
 A photo is evidence. A prepared photo is a processed representation. A
@@ -54,10 +55,35 @@ created -> prepared -> registered -> reconstructed -> published
 Legacy stage-specific statuses are translated at the boundary by
 `backend.spatial_contract.lifecycle()`.
 
+## Stages 6-10 boundary
+
+The reconstruction orchestrator is the single write boundary for the 3D
+result. It validates registered views, builds the silhouette-envelope mesh,
+generates a multi-view reference texture atlas, then publishes one
+`ReconstructionAsset` and one `SpatialObject`.
+
+Persistent outputs are grouped under one reconstruction directory:
+
+- `manifest.json` — compatibility manifest
+- `reconstruction.json` — canonical reconstruction record
+- `hand.obj` / `hand.mtl` — geometry asset
+- `texture.png` — multi-view reference atlas when raster inputs are available
+
+The canonical SpatialObject index is stored at
+`data/registry/spatial_objects.json` and is exposed through
+`/api/spatial/objects`.
+
+The current geometry method is `silhouette-envelope-v1` because calibrated
+camera intrinsics/extrinsics are not yet part of the registration contract.
+The texture stage therefore creates a provenance-preserving reference atlas,
+not a claim of calibrated surface projection. A future calibrated projection
+worker can replace that implementation without changing the SpatialObject or
+ReconstructionAsset identity.
+
 ## Migration rule
 
-Stages 1-5 continue to use the existing photo manifest for persistence. The
-shared spatial projection in `backend.photo_reconstruction_spatial` is the
-migration boundary. Later reconstruction stages should consume that
-projection and publish `ReconstructionAsset` + `SpatialObject`; they should
-not create another photo/registration model.
+Stages 1-5 continue to use the existing photo manifest for source persistence.
+The shared spatial projection in `backend.photo_reconstruction_spatial` is the
+input boundary. Stages 6-10 consume the registered records and publish
+`ReconstructionAsset` + `SpatialObject`; they do not create another photo or
+registration model.
