@@ -1,3 +1,5 @@
+import('./spatial-writer-debug.js?v=writer-debug-1').catch(error => console.error('[Twin navigation] writer debug failed to load', error));
+
 (() => {
   const ROOT_PARTS = [
     { id: 'palm', label: 'Śródręcze', level: 'macro', regionId: 'palm' },
@@ -61,9 +63,6 @@
     if (!direct.every(el => el.matches('button.spatial-root-anatomical-part.spatial-target'))) return false;
     const directLabels = direct.map(el => el.querySelector(':scope > strong')?.textContent?.trim() || '');
     if (!directLabels.every((value, i) => value === ROOT_PARTS[i].label)) return false;
-    // A root target must never contain another navigation target. Nested
-    // .spatial-target buttons were the cause of clicks landing on stale deep
-    // targets while the visible root state still showed Dłoń.
     if (children.querySelector('.spatial-root-anatomical-part .spatial-target')) return false;
     return true;
   }
