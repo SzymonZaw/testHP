@@ -1,5 +1,4 @@
-import('./spatial-target-canonicalizer.js?v=canonical-target-2').catch(error => console.error('[Twin navigation] target canonicalizer failed to load', error));
-import('./spatial-writer-debug.js?v=writer-debug-2').catch(error => console.error('[Twin navigation] writer debug failed to load', error));
+import('./spatial-target-canonicalizer.js?v=canonical-target-3').catch(error => console.error('[Twin navigation] target canonicalizer failed to load', error));
 
 (() => {
   const ROOT_PARTS = [
@@ -30,11 +29,6 @@ import('./spatial-writer-debug.js?v=writer-debug-2').catch(error => console.erro
     }[raw] || raw;
   };
 
-  // One-time migration of an already-ingested hand asset into the explicit
-  // deep spatial contract. The asset is discovered from the live ingestion
-  // registry rather than relying on a stale hard-coded asset id. This reuses
-  // the real registered file through the canonical upload/attach endpoint;
-  // no synthetic evidence or local-only registry record is created.
   const PREFERRED_ASSET_ID = 'aif6yv';
   const EXPLICIT_TARGET = 'hand/palm/hypothenar';
   let explicitAttachPromise = null;
