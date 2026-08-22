@@ -5,7 +5,7 @@
     const box = document.createElement('section');
     box.id = 'hand-surface-debug-flow';
     box.style.cssText = 'margin:12px 0;padding:12px;border:1px solid #52647a;border-radius:10px;background:#0d1420;color:#dbe7f5;font:12px/1.45 system-ui,sans-serif;';
-    box.innerHTML = '<div style="font-weight:800;letter-spacing:.06em;text-transform:uppercase;margin-bottom:8px">HAND SURFACE · DEBUG FLOW</div><div id="hsd-target" style="margin-bottom:10px"></div><div id="hsd-flow" style="display:grid;gap:6px"></div><details id="hsd-chain" style="margin-top:10px"><summary style="cursor:pointer;color:#9fc4e8;font-weight:700">TARGET CHAIN / PROVENANCE</summary><pre id="hsd-chain-body" style="white-space:pre-wrap;margin:8px 0 0;color:#aebed0;font:11px/1.4 ui-monospace,SFMono-Regular,Consolas,monospace"></pre></details><details id="hsd-registry" style="margin-top:10px"><summary style="cursor:pointer;color:#9fc4e8;font-weight:700">REGISTRY / CACHE MISMATCH DIAGNOSTICS</summary><pre id="hsd-registry-body" style="white-space:pre-wrap;margin:8px 0 0;color:#aebed0;font:11px/1.4 ui-monospace,SFMono-Regular,Consolas,monospace"></pre></details>';
+    box.innerHTML = '<div style="font-weight:800;letter-spacing:.06em;text-transform:uppercase;margin-bottom:8px">HAND SURFACE · DEBUG FLOW</div><div id="hsd-target" style="margin-bottom:10px"></div><div id="hsd-flow" style="display:grid;gap:6px"></div><pre id="hsd-details" style="white-space:pre-wrap;margin:10px 0 0;color:#aebed0;font:11px/1.4 ui-monospace,SFMono-Regular,Consolas,monospace"></pre><details id="hsd-chain" style="margin-top:10px"><summary style="cursor:pointer;color:#9fc4e8;font-weight:700">TARGET CHAIN / PROVENANCE</summary><pre id="hsd-chain-body" style="white-space:pre-wrap;margin:8px 0 0;color:#aebed0;font:11px/1.4 ui-monospace,SFMono-Regular,Consolas,monospace"></pre></details><details id="hsd-registry" style="margin-top:10px"><summary style="cursor:pointer;color:#9fc4e8;font-weight:700">REGISTRY / CACHE MISMATCH DIAGNOSTICS</summary><pre id="hsd-registry-body" style="white-space:pre-wrap;margin:8px 0 0;color:#aebed0;font:11px/1.4 ui-monospace,SFMono-Regular,Consolas,monospace"></pre></details>';
     panel.appendChild(box);
 
     const esc = v => String(v ?? '').replace(/[&<>\"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;',"'":'&#39;'}[c]));
@@ -158,8 +158,10 @@
       const projectionReady=!!g.projectionPlan;
       const packageReady=!!g.twinPackage;
       const driftSources=[t.contractId,t.selectedId,t.evidenceId].filter(Boolean).filter(x=>normalize(x)!==normalize(t.id));
-      document.getElementById('hsd-target').innerHTML=`<strong>Aktualny cel:</strong> ${esc(t.label)} <code style="color:#9fc4e8">${esc(t.id)}</code> <span style="color:#71849b">source=${esc(t.source)}</span>${driftSources.length?` <span style="color:#f0b36a;font-weight:800">TARGET DRIFT</span>`:''}`;
-      document.getElementById('hsd-flow').innerHTML=[
+      const targetNode=document.getElementById('hsd-target');
+      if (targetNode) targetNode.innerHTML=`<strong>Aktualny cel:</strong> ${esc(t.label)} <code style="color:#9fc4e8">${esc(t.id)}</code> <span style="color:#71849b">source=${esc(t.source)}</span>${driftSources.length?` <span style="color:#f0b36a;font-weight:800">TARGET DRIFT</span>`:''}`;
+      const flowNode=document.getElementById('hsd-flow');
+      if (flowNode) flowNode.innerHTML=[
         stage('ŹRÓDŁA · 11',items.length?'READY':'EMPTY',`${items.length} rekordów dla celu`),
         stage('PRZYGOTOWANIE · 12',preparedCount?'READY':'BLOCKED',preparedCount?`${preparedCount} prepared asset dla celu`:'brak prepared asset dla celu'),
         stage('GEOMETRIA · 13',Object.keys(g).length?'READY':'EMPTY',Object.keys(g).length?'geometria dla celu':'brak geometrii dla celu'),
@@ -168,7 +170,8 @@
         stage('PROJEKCJA · 21',projectionReady?'READY':'WAITING',projectionReady?'plan dla celu':'plan nieutworzony dla celu'),
         stage('PAKIET · 22',packageReady?'READY':'WAITING',packageReady?'pakiet dla celu':'pakiet nieutworzony dla celu')
       ].join('<div style="text-align:center;color:#71849b">↓</div>');
-      document.getElementById('hsd-details').textContent=`TARGET: ${t.id}\nSOURCE: ${t.source}\nMANAGER: ${t.managerId||'NULL'} | CONTRACT: ${t.contractId||'NULL'} | SELECTED: ${t.selectedId||'NULL'} | EVIDENCE: ${t.evidenceId||'NULL'}\nEVIDENCE: ${all.length} total | ${items.length} target-linked | prepared=${preparedCount}\nVIEWS: ${present.length}/5 target-scoped\nRENDERER: ${window.spatialViewportManager?.active?.constructor?.name||'unknown'} | manager=${window.spatialViewportManager?'present':'missing'}`;
+      const detailsNode=document.getElementById('hsd-details');
+      if (detailsNode) detailsNode.textContent=`TARGET: ${t.id}\nSOURCE: ${t.source}\nMANAGER: ${t.managerId||'NULL'} | CONTRACT: ${t.contractId||'NULL'} | SELECTED: ${t.selectedId||'NULL'} | EVIDENCE: ${t.evidenceId||'NULL'}\nEVIDENCE: ${all.length} total | ${items.length} target-linked | prepared=${preparedCount}\nVIEWS: ${present.length}/5 target-scoped\nRENDERER: ${window.spatialViewportManager?.active?.constructor?.name||'unknown'} | manager=${window.spatialViewportManager?'present':'missing'}`;
       renderChain(t);
       renderRegistryDiagnostics(t,all);
     };
