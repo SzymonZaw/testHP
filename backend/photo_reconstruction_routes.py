@@ -2,9 +2,10 @@ from __future__ import annotations
 
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from .photo_reconstruction import assign_view, file_for, prepare_by_id, register_prepared, state, upload_photo
+from .reconstruction_orchestrator import clear, get_result, run
 
 router = APIRouter(prefix="/api/hand/photo-reconstruction", tags=["photo-reconstruction"])
 
@@ -12,6 +13,12 @@ router = APIRouter(prefix="/api/hand/photo-reconstruction", tags=["photo-reconst
 class ViewAssignment(BaseModel):
     asset_id: str
     view: str
+
+
+class BuildRequest(BaseModel):
+    subject_id: str = "own_cohort"
+    timepoint: str = "T0"
+    resolution: int = Field(default=24, ge=8, le=64)
 
 
 @router.get("/state")
@@ -55,6 +62,27 @@ def photo_reconstruction_register(subject_id: str = "own_cohort", timepoint: str
         return register_prepared(subject_id, timepoint)
     except Exception as exc:
         raise HTTPException(status_code=422, detail=f"registration failed: {exc}") from exc
+
+
+@router.post("/build")
+def photo_reconstruction_build(request: BuildRequest):
+    result = run(request.subject_id, request.timepoint, request.resolution)
+    if result.get("status") == "blocked":
+        return result
+    return {"status": "published", "reconstruction": result}
+
+
+@router.get("/result")
+def photo_reconstruction_result(subject_id: str = "own_cohort", timepoint: str = "T0"):
+    result = get_result(subject_id, timepoint)
+    if result is None:
+        raise HTTPException(status_code=404, detail="no reconstruction exists for this subject and timepoint")
+    return result
+
+
+@router.delete("/result")
+def photo_reconstruction_clear(subject_id: str = "own_cohort", timepoint: str = "T0"):
+    return {"status": "cleared", "deleted": clear(subject_id, timepoint)}
 
 
 @router.get("/file/source/{asset_id}")
