@@ -16,12 +16,13 @@ def run(subject_id: str, timepoint: str = "T0", resolution: int = 24) -> dict[st
         return {
             "status": "blocked",
             "reason": quality["errors"][0] if quality.get("errors") else "Reconstruction inputs are not ready",
+            "registered_count": quality.get("registered_count", 0),
             "quality": quality,
         }
     try:
         return build_reconstruction(subject_id, timepoint, resolution)
     except ValueError as exc:
-        return {"status": "blocked", "reason": str(exc), "quality": quality}
+        return {"status": "blocked", "reason": str(exc), "registered_count": quality.get("registered_count", 0), "quality": quality}
 
 
 def get_result(subject_id: str, timepoint: str = "T0") -> dict[str, Any] | None:
