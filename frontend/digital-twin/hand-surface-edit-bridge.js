@@ -11,8 +11,9 @@
     d.addEventListener('close',()=>d.remove(),{once:true});
   }
   window.addEventListener('testhp:edit-evidence',e=>{if(e.detail?.item)open(e.detail.item)});
+  const loadSpatialEvidenceWriter=()=>{if(document.querySelector('script[data-spatial-evidence-writer]'))return;const s=document.createElement('script');s.src='/digital-twin/spatial-evidence-writer.js?v=writer-2';s.dataset.spatialEvidenceWriter='1';document.body.appendChild(s)};
   const loadStages20to22=()=>{if(document.querySelector('script[data-stages-20-22]'))return;const s=document.createElement('script');s.src='/digital-twin/hand-surface-stages-20-22.js?v=stages-20-22-1';s.dataset.stages20To22='1';document.body.appendChild(s)};
   const loadSimpleUi=()=>{if(document.querySelector('script[data-hand-surface-simple-ui]'))return;const s=document.createElement('script');s.src='/digital-twin/hand-surface-simple-ui.js?v=simple-ui-2';s.dataset.handSurfaceSimpleUi='1';document.body.appendChild(s)};
   const loadHandSurfaceDebug=()=>{if(document.querySelector('script[data-hand-surface-debug]'))return;const s=document.createElement('script');s.src='/digital-twin/hand-surface-debug.js?v=hand-surface-debug-1';s.dataset.handSurfaceDebug='1';document.body.appendChild(s)};
-  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',()=>{loadStages20to22();loadSimpleUi();loadHandSurfaceDebug()},{once:true});else{loadStages20to22();loadSimpleUi();loadHandSurfaceDebug()}
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',()=>{loadSpatialEvidenceWriter();loadStages20to22();loadSimpleUi();loadHandSurfaceDebug()},{once:true});else{loadSpatialEvidenceWriter();loadStages20to22();loadSimpleUi();loadHandSurfaceDebug()}
 })();
