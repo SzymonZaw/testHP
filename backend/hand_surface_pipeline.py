@@ -10,7 +10,8 @@ from dataclasses import asdict, dataclass, field
 from math import exp
 from typing import Any, Iterable
 
-SUPPORTED_VIEWS = ("front", "back", "side_left", "side_right", "thumb")
+from .hand_surface import SUPPORTED_VIEWS
+
 COORDINATE_SYSTEM = "hand-surface-v1"
 
 
