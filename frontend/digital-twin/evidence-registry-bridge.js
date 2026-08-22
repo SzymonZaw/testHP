@@ -10,20 +10,55 @@
     if (!panel) { panel = document.createElement('section'); panel.id = 'testhp-registry-debug-panel'; panel.style.cssText = 'margin-top:14px;border:1px solid var(--border,#d8dee8);border-radius:12px;padding:14px;background:var(--panel,#fff);font-size:13px'; studio.appendChild(panel); }
     const rejected = d.matchDebug?.rejected || [], accepted = d.matchDebug?.accepted || [];
     const rows = (d.matchDebug?.decisions || []).map(x => `<tr><td style="padding:5px 7px;font-weight:700">${x.matched ? 'ACCEPT' : 'REJECT'}</td><td style="padding:5px 7px"><code>${x.actual_spatial_node_id || 'NULL'}</code></td><td style="padding:5px 7px"><code>${x.expected_spatial_node_id || 'NULL'}</code></td><td style="padding:5px 7px">${x.reason || '—'}</td><td style="padding:5px 7px">${x.attachment_status || '—'}</td><td style="padding:5px 7px">${x.filename || x.evidence_id || '—'}</td></tr>`).join('');
-    panel.innerHTML = `<div style="display:flex;justify-content:space-between;gap:10px;align-items:center"><strong>REGISTRY / CACHE MISMATCH DIAGNOSTICS</strong><span style="font-size:11px;font-weight:700">${d.ok ? 'READY' : 'ERROR'}</span></div><div style="margin-top:8px">Target: <code>${d.requestedTarget || '—'}</code> · scoped: <b>${d.total}</b> · accepted: <b>${accepted.length}</b> · rejected: <b>${rejected.length}</b> · target-linked: <b>${d.targetLinked}</b></div>${d.error ? `<div style="margin-top:8px">${d.error.name}: ${d.error.message}</div>` : `<div style="margin-top:10px;overflow:auto"><table style="width:100%;border-collapse:collapse"><thead><tr><th align="left">Decision</th><th align="left">Actual</th><th align="left">Expected</th><th align="left">Reason</th><th align="left">Attachment</th><th align="left">Evidence</th></tr></thead><tbody>${rows || '<tr><td colspan="6" style="padding:8px">No records in subject/timepoint scope.</td></tr>'}</tbody></table></div>`}`;
+    const sourceWarning = d.matchDebug?.sourceWarning ? `<div style="margin-top:8px;padding:8px;border:1px dashed var(--border,#d8dee8)">${d.matchDebug.sourceWarning}</div>` : '';
+    panel.innerHTML = `<div style="display:flex;justify-content:space-between;gap:10px;align-items:center"><strong>REGISTRY / CACHE MISMATCH DIAGNOSTICS</strong><span style="font-size:11px;font-weight:700">${d.ok ? 'READY' : 'ERROR'}</span></div><div style="margin-top:8px">Target: <code>${d.requestedTarget || '—'}</code> · scoped: <b>${d.total}</b> · accepted: <b>${accepted.length}</b> · rejected: <b>${rejected.length}</b> · target-linked: <b>${d.targetLinked}</b></div>${sourceWarning}${d.error ? `<div style="margin-top:8px">${d.error.name}: ${d.error.message}</div>` : `<div style="margin-top:10px;overflow:auto"><table style="width:100%;border-collapse:collapse"><thead><tr><th align="left">Decision</th><th align="left">Actual</th><th align="left">Expected</th><th align="left">Reason</th><th align="left">Attachment</th><th align="left">Evidence</th></tr></thead><tbody>${rows || '<tr><td colspan="6" style="padding:8px">No records in subject/timepoint scope.</td></tr>'}</tbody></table></div>`}`;
   }
+
+  const summarize = item => ({ evidence_id: item.evidence_id || null, asset_id: item.asset_id || null, spatial_node_id: item.spatial_node_id || null, spatial_id: item.spatial_id || null, target: item.target || null, spatial_level: item.spatial_level || null, attachment_status: item.attachment_status || null, spatially_localized: item.spatially_localized ?? null, source: item.source || null, modality: item.modality || null, filename: item.filename || null, prepared: !!(item.prepared || item.prepared_asset || item.prepared_asset_id), prepared_asset_id: item.prepared_asset_id || item.prepared_asset?.id || null });
+
+  const localDecision = (item, target) => {
+    const actual = item.spatial_node_id;
+    const matched = actual === target;
+    let reason = 'SPATIAL_ID_MISMATCH';
+    if (matched) reason = 'EXACT_SPATIAL_ID_MATCH';
+    else if (actual === 'hand' && String(target).startsWith('hand/')) reason = 'ROOT_ONLY_REGISTERED_ASSET_NOT_DEEP_ATTACHED';
+    else if (!actual) reason = 'MISSING_SPATIAL_NODE_ID';
+    return { ...summarize(item), expected_spatial_node_id: target, actual_spatial_node_id: actual, matched, reason };
+  };
 
   async function collectRegistryDiagnostics(target = window.spatialEvidenceTarget || window.selectedSpatialNode || 'hand') {
     const encodedTarget = encodeURIComponent(String(target));
-    const diagnostics = { requestedTarget: target, endpoint: `/api/spatial/registry?subject_id=own_cohort&timepoint=T0&spatial_node_id=${encodedTarget}&debug=true`, fetchedAt: new Date().toISOString(), ok: false, status: null, total: 0, targetLinked: 0, prepared: 0, targetRecords: [], allRecords: [], matchDebug: null, error: null };
+    const endpoint = `/api/spatial/registry?subject_id=own_cohort&timepoint=T0&spatial_node_id=${encodedTarget}&debug=true`;
+    const diagnostics = { requestedTarget: target, endpoint, fetchedAt: new Date().toISOString(), ok: false, status: null, total: 0, targetLinked: 0, prepared: 0, targetRecords: [], allRecords: [], matchDebug: null, error: null };
     try {
-      const response = await fetch(diagnostics.endpoint, { cache: 'no-store' }); diagnostics.status = response.status;
+      const response = await fetch(endpoint, { cache: 'no-store' }); diagnostics.status = response.status;
       if (!response.ok) throw new Error(`registry HTTP ${response.status}`);
       const payload = await response.json(); const items = Array.isArray(payload.items) ? payload.items : [];
-      const summarize = item => ({ evidence_id: item.evidence_id || null, asset_id: item.asset_id || null, spatial_node_id: item.spatial_node_id || null, spatial_id: item.spatial_id || null, target: item.target || null, spatial_level: item.spatial_level || null, attachment_status: item.attachment_status || null, spatially_localized: item.spatially_localized ?? null, source: item.source || null, modality: item.modality || null, filename: item.filename || null, prepared: !!(item.prepared || item.prepared_asset || item.prepared_asset_id), prepared_asset_id: item.prepared_asset_id || item.prepared_asset?.id || null });
-      const decisions = Array.isArray(payload.debug?.decisions) ? payload.debug.decisions : [];
-      diagnostics.total = payload.debug?.scoped_count ?? decisions.length; diagnostics.allRecords = decisions.map(summarize); diagnostics.targetRecords = items.map(summarize); diagnostics.targetLinked = items.length; diagnostics.prepared = diagnostics.targetRecords.filter(item => item.prepared).length;
-      diagnostics.matchDebug = { ...(payload.debug || {}), accepted: decisions.filter(d => d.matched), rejected: decisions.filter(d => !d.matched), rejectedCount: decisions.filter(d => !d.matched).length, target };
+      let decisions = Array.isArray(payload.debug?.decisions) ? payload.debug.decisions : [];
+      if (!payload.debug || !Array.isArray(payload.debug.decisions)) {
+        // Older backend/deployed API: the filtered request hides the rejected records.
+        // Re-fetch the unfiltered canonical scope and perform the same matcher locally.
+        const fallbackEndpoint = '/api/spatial/registry?subject_id=own_cohort&timepoint=T0';
+        const fallbackResponse = await fetch(fallbackEndpoint, { cache: 'no-store' });
+        if (fallbackResponse.ok) {
+          const fallbackPayload = await fallbackResponse.json();
+          const scopedItems = Array.isArray(fallbackPayload.items) ? fallbackPayload.items : [];
+          decisions = scopedItems.map(item => localDecision(item, target));
+          diagnostics.matchDebug = {
+            sourceWarning: 'SERVER DEBUG PAYLOAD UNAVAILABLE — decisions reconstructed locally from the unfiltered canonical registry. Deploy/restart the backend branch to get server-side decision tracing.',
+            fallbackEndpoint,
+          };
+        } else {
+          diagnostics.matchDebug = { sourceWarning: `SERVER DEBUG PAYLOAD UNAVAILABLE and fallback registry request failed (HTTP ${fallbackResponse.status}).` };
+        }
+      }
+      diagnostics.total = payload.debug?.scoped_count ?? decisions.length;
+      diagnostics.allRecords = decisions.map(summarize);
+      diagnostics.targetRecords = items.map(summarize);
+      diagnostics.targetLinked = items.length;
+      diagnostics.prepared = diagnostics.targetRecords.filter(item => item.prepared).length;
+      diagnostics.matchDebug = { ...(diagnostics.matchDebug || {}), ...(payload.debug || {}), decisions, accepted: decisions.filter(d => d.matched), rejected: decisions.filter(d => !d.matched), rejectedCount: decisions.filter(d => !d.matched).length, target };
+      diagnostics.total = Math.max(diagnostics.total, decisions.length);
       diagnostics.ok = true;
     } catch (error) { diagnostics.error = { name: error.name || 'Error', message: error.message || String(error) }; }
     window.__testhpTwinRegistryDiagnostics = diagnostics; renderDiagnostics(diagnostics); window.dispatchEvent(new CustomEvent('testhp:evidence-registry-debug', { detail: diagnostics })); return diagnostics;
