@@ -1,133 +1,49 @@
 (() => {
-  const TARGET_LABEL = () => {
+  const $ = id => document.getElementById(id);
+  const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  function getTarget() {
     const node = window.selectedSpatialNode || window.spatialEvidenceTarget;
-    if (node && typeof node === 'object') return node.label || node.spatial_id || node.id || 'Bieżący cel';
-    return window.spatialEvidenceTarget || document.body.dataset.spatialTarget || 'hand';
-  };
-
-  const findTextPanel = (text) => [...document.querySelectorAll('.panel, section, article')]
-    .find(el => (el.textContent || '').includes(text));
-
-  const clickStage = (panelId, tab) => {
-    const panel = document.getElementById(panelId);
-    const button = panel?.querySelector(`[data-tab="${tab}"]`);
-    button?.click();
-    panel?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  };
-
+    if (node && typeof node === 'object') return { id: node.id || '', spatial_id: node.spatial_id || node.spatialId || node.id || 'hand', label: node.label || node.path?.join(' > ') || node.spatial_id || node.id || 'Bieżący cel' };
+    const value = window.spatialEvidenceTarget || document.body.dataset.spatialTarget || 'hand';
+    return { id: '', spatial_id: String(value), label: String(value) };
+  }
   function installCss() {
-    if (document.getElementById('hand-surface-simple-ui-css')) return;
-    const style = document.createElement('style');
-    style.id = 'hand-surface-simple-ui-css';
+    if ($('hand-surface-unified-ui-css')) return;
+    const style = document.createElement('style'); style.id = 'hand-surface-unified-ui-css';
     style.textContent = `
-      #hand-surface-simple-nav{margin:16px 0;display:flex;flex-wrap:wrap;gap:8px;align-items:center}
-      #hand-surface-simple-nav .simple-context{flex:1 1 100%;font-size:13px;color:var(--muted,#667085);margin-bottom:2px}
-      #hand-surface-simple-nav button{border:1px solid var(--border,#d8dee8);background:var(--panel,#fff);border-radius:999px;padding:9px 15px;cursor:pointer;font-weight:600}
-      #hand-surface-simple-nav button.active{background:#172033;color:#fff;border-color:#172033}
-      .hss-simple-actions{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 12px}
-      .hss-simple-actions button{border:1px solid var(--border,#d8dee8);background:transparent;border-radius:999px;padding:7px 11px;cursor:pointer}
-      .hss-simple-actions button.primary{background:#172033;color:#fff}
-      #hand-surface-studio .hss-tabs[data-simple-hidden],#hand-surface-stages-20-22 .hss22-tabs[data-simple-hidden]{display:none!important}
-      #hand-surface-simple-status{margin-left:auto;font-size:12px;color:var(--muted,#667085)}
+      #hand-surface-unified{margin:16px 0;border:1px solid var(--border,#d8dee8);border-radius:14px;background:var(--panel,#fff);overflow:hidden}
+      #hand-surface-unified .hsu-head{padding:16px 18px;border-bottom:1px solid var(--border,#d8dee8);display:flex;justify-content:space-between;gap:16px;align-items:center;flex-wrap:wrap}
+      #hand-surface-unified .hsu-kicker{display:block;font-size:11px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--muted,#667085);margin-bottom:3px}
+      #hand-surface-unified .hsu-title{font-size:18px;font-weight:800}
+      #hand-surface-unified .hsu-target{font-size:13px;color:var(--muted,#667085);text-align:right}.hsu-target strong{display:block;color:inherit;font-size:14px}.hsu-target code{font-size:11px}
+      #hand-surface-unified .hsu-nav{display:flex;gap:6px;padding:10px 14px;border-bottom:1px solid var(--border,#d8dee8);background:rgba(79,111,143,.04);align-items:center}
+      #hand-surface-unified .hsu-nav button{border:0;background:transparent;border-radius:9px;padding:9px 13px;cursor:pointer;font-weight:700;color:inherit}.hsu-nav button.active{background:#172033;color:#fff}
+      #hand-surface-unified .hsu-progress{margin-left:auto;font-size:12px;color:var(--muted,#667085)}
+      #hand-surface-unified .hsu-body{padding:0 14px 14px}.hsu-section[hidden]{display:none!important}
+      #hand-surface-unified .panel-title,#hand-surface-unified .hss-tabs,#hand-surface-unified .hss22-tabs{display:none!important}
+      #hand-surface-unified .panel{margin:0;border:0;box-shadow:none}
+      @media(max-width:700px){#hand-surface-unified .hsu-progress{width:100%;margin-left:0}.hsu-target{text-align:left}}
     `;
     document.head.appendChild(style);
   }
-
-  function simplifyStudio() {
-    const studio = document.getElementById('hand-surface-studio');
-    if (!studio || studio.dataset.simpleUi === '1') return;
-    studio.dataset.simpleUi = '1';
-    const tabs = studio.querySelector('.hss-tabs');
-    if (tabs) tabs.dataset.simpleHidden = '1';
-
-    const header = studio.querySelector('.panel-title');
-    if (header) {
-      header.innerHTML = `<div><span class="section-kicker">MATERIAŁ</span><strong>Źródła → przygotowanie → geometria</strong></div><span class="muted">Cel: ${TARGET_LABEL()}</span>`;
-    }
-
-    const actions = document.createElement('div');
-    actions.className = 'hss-simple-actions';
-    actions.innerHTML = `
-      <button class="primary" data-simple-stage="evidence">Źródła</button>
-      <button data-simple-stage="prepare">Przygotowanie</button>
-      <button data-simple-stage="geometry">Geometria</button>
-      <span id="hand-surface-simple-status">Techniczne etapy 11–15 pozostają w tle.</span>`;
-    studio.insertBefore(actions, studio.querySelector('#hss-content'));
-    actions.querySelectorAll('[data-simple-stage]').forEach(btn => btn.onclick = () => {
-      const stage = btn.dataset.simpleStage;
-      studio.querySelectorAll('[data-simple-stage]').forEach(x => x.classList.toggle('primary', x === btn));
-      studio.querySelector(`.hss-tabs [data-tab="${stage}"]`)?.click();
-    });
-
-    studio.querySelector('.hss-tabs [data-tab="evidence"]')?.click();
+  function createShell() {
+    if ($('hand-surface-unified')) return $('hand-surface-unified');
+    const studio = $('hand-surface-studio'); if (!studio?.parentElement) return null;
+    const shell = document.createElement('section'); shell.id='hand-surface-unified'; shell.className='panel';
+    shell.innerHTML = `<div class="hsu-head"><div><span class="hsu-kicker">HAND SURFACE</span><div class="hsu-title">Materiał → geometria → rejestracja</div></div><div class="hsu-target" id="hand-surface-unified-target"></div></div><div class="hsu-nav"><button class="active" data-hsu-tab="material">Materiał</button><button data-hsu-tab="registration">Rejestracja</button><span class="hsu-progress" id="hand-surface-unified-progress">Jedna ścieżka pracy dla wybranego celu</span></div><div class="hsu-body"><div class="hsu-section" data-hsu-section="material"></div><div class="hsu-section" data-hsu-section="registration" hidden></div></div>`;
+    studio.parentElement.insertBefore(shell, studio); return shell;
   }
-
-  function simplifyRegistration() {
-    const panel = document.getElementById('hand-surface-stages-20-22');
-    if (!panel || panel.dataset.simpleUi === '1') return;
-    panel.dataset.simpleUi = '1';
-    const tabs = panel.querySelector('.hss22-tabs');
-    if (tabs) tabs.dataset.simpleHidden = '1';
-    const header = panel.querySelector('.panel-title');
-    if (header) {
-      header.innerHTML = `<div><span class="section-kicker">REJESTRACJA</span><strong>Widoki → mapowanie → kontrola jakości</strong></div><span class="muted">Cel: ${TARGET_LABEL()}</span>`;
-    }
-    const actions = document.createElement('div');
-    actions.className = 'hss-simple-actions';
-    actions.innerHTML = `
-      <button class="primary" data-simple-reg="registration">Kontrola jakości</button>
-      <button data-simple-reg="projection">Plan projekcji</button>
-      <button data-simple-reg="package">Pakiet bliźniaka</button>`;
-    panel.insertBefore(actions, panel.querySelector('#hss22-content'));
-    actions.querySelectorAll('[data-simple-reg]').forEach(btn => btn.onclick = () => {
-      actions.querySelectorAll('[data-simple-reg]').forEach(x => x.classList.toggle('primary', x === btn));
-      panel.querySelector(`.hss22-tabs [data-tab="${btn.dataset.simpleReg}"]`)?.click();
-    });
-    panel.querySelector('.hss22-tabs [data-tab="registration"]')?.click();
+  function movePanels(shell) {
+    const studio=$('hand-surface-studio'), registration=$('hand-surface-stages-20-22'); if(!studio||!registration||!shell)return false;
+    const material=shell.querySelector('[data-hsu-section="material"]'), reg=shell.querySelector('[data-hsu-section="registration"]');
+    if(studio.parentElement!==material) material.appendChild(studio); if(registration.parentElement!==reg) reg.appendChild(registration); return true;
   }
-
-  function installTopNavigation() {
-    if (document.getElementById('hand-surface-simple-nav')) return;
-    const anchor = document.getElementById('hand-surface-studio') || document.querySelector('.timeline');
-    if (!anchor?.parentElement) return;
-    const nav = document.createElement('nav');
-    nav.id = 'hand-surface-simple-nav';
-    nav.innerHTML = `
-      <div class="simple-context"><strong>AKTUALNY CEL</strong> · ${TARGET_LABEL()} · wszystko poniżej dotyczy tego samego miejsca</div>
-      <button class="active" data-simple-nav="material">Materiał</button>
-      <button data-simple-nav="registration">Rejestracja</button>
-      <button data-simple-nav="interpretation">Interpretacja</button>
-      <span id="hand-surface-simple-status">Jedna ścieżka pracy dla wybranego celu.</span>`;
-    anchor.parentElement.insertBefore(nav, anchor);
-    nav.querySelectorAll('[data-simple-nav]').forEach(btn => btn.onclick = () => {
-      nav.querySelectorAll('[data-simple-nav]').forEach(x => x.classList.toggle('active', x === btn));
-      const kind = btn.dataset.simpleNav;
-      if (kind === 'material') {
-        simplifyStudio();
-        document.getElementById('hand-surface-studio')?.scrollIntoView({behavior:'smooth',block:'start'});
-      } else if (kind === 'registration') {
-        simplifyRegistration();
-        document.getElementById('hand-surface-stages-20-22')?.scrollIntoView({behavior:'smooth',block:'start'});
-      } else {
-        const panel = findTextPanel('INTERPRETACJA BADAWCZA');
-        if (panel) panel.scrollIntoView({behavior:'smooth',block:'start'});
-      }
-    });
-  }
-
-  function boot() {
-    installCss();
-    installTopNavigation();
-    simplifyStudio();
-    simplifyRegistration();
-  }
-
-  const observer = new MutationObserver(() => {
-    installTopNavigation();
-    simplifyStudio();
-    simplifyRegistration();
-  });
-  observer.observe(document.body, { childList: true, subtree: true });
-  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot, { once: true });
-  else boot();
+  function selectUnderlying(panel, selector){panel?.querySelector(selector)?.click();}
+  function selectTab(kind){const shell=$('hand-surface-unified');if(!shell)return;shell.querySelectorAll('[data-hsu-tab]').forEach(b=>b.classList.toggle('active',b.dataset.hsuTab===kind));shell.querySelectorAll('[data-hsu-section]').forEach(s=>s.hidden=s.dataset.hsuSection!==kind);if(kind==='material')selectUnderlying($('hand-surface-studio'),'.hss-tabs [data-tab="evidence"]');else selectUnderlying($('hand-surface-stages-20-22'),'.hss22-tabs [data-tab="registration"]');}
+  function updateTarget(){const shell=$('hand-surface-unified');if(!shell)return;const t=getTarget();const el=$('hand-surface-unified-target');if(el)el.innerHTML=`<span>AKTUALNY CEL</span><strong>${escapeHtml(t.label)}</strong><code>${escapeHtml(t.spatial_id)}</code>`;const p=$('hand-surface-unified-progress');if(p)p.textContent=`Wszystkie materiały dotyczą: ${t.spatial_id}`;}
+  function boot(){installCss();const shell=createShell();if(!shell)return;movePanels(shell);shell.querySelectorAll('[data-hsu-tab]').forEach(btn=>{if(btn.dataset.hsuBound==='1')return;btn.dataset.hsuBound='1';btn.addEventListener('click',()=>selectTab(btn.dataset.hsuTab));});updateTarget();selectTab('material');}
+  let scheduled=false;const scheduleBoot=()=>{if(scheduled)return;scheduled=true;queueMicrotask(()=>{scheduled=false;boot();});};
+  window.addEventListener('testhp:spatial-layer-changed',()=>{updateTarget();scheduleBoot();});window.addEventListener('testhp:evidence-attached',scheduleBoot);window.addEventListener('testhp:hand-surface-ready',scheduleBoot);window.addEventListener('testhp:surface-projection-plan-changed',scheduleBoot);
+  new MutationObserver(scheduleBoot).observe(document.body,{childList:true,subtree:true});
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',boot,{once:true});else boot();
 })();
