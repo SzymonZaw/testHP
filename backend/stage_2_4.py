@@ -32,6 +32,32 @@ SIGNAL_LAYERS = {
 }
 AGE_KEYS = {"macro": "macro_age", "tissue": "tissue_age", "cellular": "cell_age", "molecular": "molecular_age"}
 
+# The viewport uses the short, canonical deep-node ids. Older registry records
+# and a few legacy callers used the display/semantic suffix form. Canonicalize
+# once at the backend boundary so filtering, state and aggregation operate on
+# one identity instead of relying on UI aliases.
+CANONICAL_SPATIAL_IDS = {
+    "hand/palm/thenar-eminence": "hand/palm/thenar",
+    "hand/palm/hypothenar-eminence": "hand/palm/hypothenar",
+    "hand/palm/central-palm-eminence": "hand/palm/central-palm",
+}
+
+def _canonical_node_id(node_id: str | None) -> str | None:
+    if node_id is None:
+        return None
+    raw = str(node_id).strip().strip("/")
+    if not raw:
+        return None
+    return CANONICAL_SPATIAL_IDS.get(raw, raw)
+
+def _canonicalize_item(item: dict[str, Any]) -> dict[str, Any]:
+    node = _canonical_node_id(item.get("spatial_node_id"))
+    if node is None or node == item.get("spatial_node_id"):
+        return item
+    normalized = dict(item)
+    normalized["spatial_node_id"] = node
+    return normalized
+
 class AggregateRequest(BaseModel):
     subject_id: str
     timepoint: str = "T0"
@@ -95,10 +121,11 @@ def _sync_registered_assets(items: list[dict[str, Any]]) -> list[dict[str, Any]]
     return items
 
 def _load() -> list[dict[str, Any]]:
-    return _sync_registered_assets(_load_raw())
+    return [_canonicalize_item(item) for item in _sync_registered_assets(_load_raw())]
 
 def _safe_node(node_id: str) -> str:
-    parts = [safe_component(part, "node") for part in node_id.split("/") if part]
+    canonical = _canonical_node_id(node_id) or "hand"
+    parts = [safe_component(part, "node") for part in canonical.split("/") if part]
     return "/".join(parts)[:160] or "hand"
 
 def _validate_level(level: str) -> str:
@@ -125,17 +152,21 @@ def _matches(item: dict[str, Any], subject_id: str, timepoint: str) -> bool:
     return item.get("subject_id") == subject_id and item.get("timepoint") == timepoint
 
 def _node_matches(item: dict[str, Any], node_id: str | None) -> bool:
-    return node_id is None or item.get("spatial_node_id") == node_id
+    expected = _canonical_node_id(node_id)
+    actual = _canonical_node_id(item.get("spatial_node_id"))
+    return expected is None or actual == expected
 
 def _node_match_debug(item: dict[str, Any], node_id: str | None) -> dict[str, Any]:
-    """Explain the exact spatial filter decision for one canonical record."""
-    actual = item.get("spatial_node_id")
-    matched = node_id is None or actual == node_id
-    if node_id is None:
+    """Explain the exact canonical spatial filter decision for one record."""
+    expected = _canonical_node_id(node_id)
+    actual_raw = item.get("spatial_node_id")
+    actual = _canonical_node_id(actual_raw)
+    matched = expected is None or actual == expected
+    if expected is None:
         reason = "no spatial_node_id filter requested"
-    elif actual == node_id:
-        reason = "EXACT_SPATIAL_ID_MATCH"
-    elif actual == "hand" and str(node_id).startswith("hand/"):
+    elif actual == expected:
+        reason = "EXACT_CANONICAL_SPATIAL_ID_MATCH" if actual_raw != expected else "EXACT_SPATIAL_ID_MATCH"
+    elif actual == "hand" and str(expected).startswith("hand/"):
         reason = "ROOT_ONLY_REGISTERED_ASSET_NOT_DEEP_ATTACHED"
     elif actual is None:
         reason = "MISSING_SPATIAL_NODE_ID"
@@ -144,8 +175,9 @@ def _node_match_debug(item: dict[str, Any], node_id: str | None) -> dict[str, An
     return {
         "evidence_id": item.get("evidence_id"),
         "asset_id": item.get("asset_id"),
-        "expected_spatial_node_id": node_id,
+        "expected_spatial_node_id": expected,
         "actual_spatial_node_id": actual,
+        "raw_spatial_node_id": actual_raw,
         "matched": matched,
         "reason": reason,
         "attachment_status": item.get("attachment_status"),
@@ -187,14 +219,15 @@ def _direct_state(items: list[dict[str, Any]], node_id: str | None = None) -> di
     return {"evidence_count": len(selected), "signals": signal_summary, "biological_age": _age_summary(signal_summary), "coverage": _coverage(selected), "interpretation_boundary": "research_signals_only", "insufficient_evidence": not bool(signal_summary), "registered_evidence_count": len(selected), "localized_evidence_count": sum(1 for i in selected if i.get("spatially_localized", True))}
 
 def _node_path(node_id: str) -> list[str]:
-    parts = [p for p in node_id.split("/") if p]
+    canonical = _canonical_node_id(node_id) or "hand"
+    parts = [p for p in canonical.split("/") if p]
     if parts and parts[0] != "hand": parts.insert(0, "hand")
     return ["/".join(parts[:i]) for i in range(1, len(parts) + 1)] or ["hand"]
 
 def _aggregate(items: list[dict[str, Any]], root_node_id: str) -> dict[str, Any]:
     path = _node_path(root_node_id); nodes: list[dict[str, Any]] = []
     for node in path:
-        descendants = [i for i in items if i.get("spatial_node_id") == node or str(i.get("spatial_node_id", "")).startswith(node + "/")]
+        descendants = [i for i in items if _canonical_node_id(i.get("spatial_node_id")) == node or str(_canonical_node_id(i.get("spatial_node_id")) or "").startswith(node + "/")]
         summary = _signal_summary(descendants)
         localized = sum(1 for i in descendants if i.get("spatially_localized", True))
         nodes.append({"node_id": node, "evidence_count": len(descendants), "signals": summary, "biological_age": _age_summary(summary), "coverage": _coverage(descendants), "status": "observed" if descendants else "insufficient_evidence", "registered_evidence_count": len(descendants), "localized_evidence_count": localized})
@@ -219,35 +252,38 @@ async def attach_evidence(file: UploadFile = File(...), subject_id: str = Form("
 @router.get("/api/spatial/registry")
 def spatial_registry(subject_id: str = "own_cohort", timepoint: str = "T0", spatial_node_id: str | None = None, debug: bool = False):
     all_items = _load()
+    requested_node = _canonical_node_id(spatial_node_id)
     scoped = [i for i in all_items if _matches(i, subject_id, timepoint)]
-    items = [i for i in scoped if _node_matches(i, spatial_node_id)]
+    items = [i for i in scoped if _node_matches(i, requested_node)]
     response: dict[str, Any] = {"subject_id": subject_id, "timepoint": timepoint, "items": items, "count": len(items), "canonical": True}
     if debug:
         response["debug"] = {
-            "filter": {"subject_id": subject_id, "timepoint": timepoint, "spatial_node_id": spatial_node_id},
+            "filter": {"subject_id": subject_id, "timepoint": timepoint, "spatial_node_id": requested_node, "raw_spatial_node_id": spatial_node_id},
             "scoped_count": len(scoped),
             "returned_count": len(items),
             "rejected_count": len(scoped) - len(items),
-            "decisions": [_node_match_debug(item, spatial_node_id) for item in scoped],
+            "decisions": [_node_match_debug(item, requested_node) for item in scoped],
         }
     return response
 
 @router.get("/api/spatial/state")
 def current_state(subject_id: str = "own_cohort", timepoint: str = "T0", spatial_node_id: str | None = None):
     items = [i for i in _load() if _matches(i, subject_id, timepoint)]
-    return {"subject_id": subject_id, "timepoint": timepoint, "spatial_node_id": spatial_node_id, **_direct_state(items, spatial_node_id)}
+    canonical_node = _canonical_node_id(spatial_node_id)
+    return {"subject_id": subject_id, "timepoint": timepoint, "spatial_node_id": canonical_node, **_direct_state(items, canonical_node)}
 
 @router.post("/api/spatial/summary")
 def hierarchical_summary(request: AggregateRequest):
     items = [i for i in _load() if _matches(i, request.subject_id, request.timepoint)]
-    return {"subject_id": request.subject_id, "timepoint": request.timepoint, **_aggregate(items, _safe_node(request.root_node_id))}
+    canonical_root = _safe_node(request.root_node_id)
+    return {"subject_id": request.subject_id, "timepoint": request.timepoint, **_aggregate(items, canonical_root)}
 
 @router.get("/api/spatial/tree")
 def spatial_tree(subject_id: str = "own_cohort", timepoint: str = "T0"):
     items = [i for i in _load() if _matches(i, subject_id, timepoint)]
     nodes: dict[str, dict[str, Any]] = {"hand": {"node_id": "hand", "level": "macro", "evidence_count": 0}}
     for item in items:
-        node = item["spatial_node_id"]; parts = _node_path(node)
+        node = _canonical_node_id(item.get("spatial_node_id")) or "hand"; parts = _node_path(node)
         for index, part in enumerate(parts):
             level = "macro" if index == 0 else ("tissue" if index == 1 else ("cellular" if index == 2 else "cell"))
             nodes.setdefault(part, {"node_id": part, "level": level, "evidence_count": 0})
