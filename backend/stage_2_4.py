@@ -127,6 +127,33 @@ def _matches(item: dict[str, Any], subject_id: str, timepoint: str) -> bool:
 def _node_matches(item: dict[str, Any], node_id: str | None) -> bool:
     return node_id is None or item.get("spatial_node_id") == node_id
 
+def _node_match_debug(item: dict[str, Any], node_id: str | None) -> dict[str, Any]:
+    """Explain the exact spatial filter decision for one canonical record."""
+    actual = item.get("spatial_node_id")
+    matched = node_id is None or actual == node_id
+    if node_id is None:
+        reason = "no spatial_node_id filter requested"
+    elif actual == node_id:
+        reason = "EXACT_SPATIAL_ID_MATCH"
+    elif actual == "hand" and str(node_id).startswith("hand/"):
+        reason = "ROOT_ONLY_REGISTERED_ASSET_NOT_DEEP_ATTACHED"
+    elif actual is None:
+        reason = "MISSING_SPATIAL_NODE_ID"
+    else:
+        reason = "SPATIAL_ID_MISMATCH"
+    return {
+        "evidence_id": item.get("evidence_id"),
+        "asset_id": item.get("asset_id"),
+        "expected_spatial_node_id": node_id,
+        "actual_spatial_node_id": actual,
+        "matched": matched,
+        "reason": reason,
+        "attachment_status": item.get("attachment_status"),
+        "spatially_localized": item.get("spatially_localized"),
+        "source": item.get("source"),
+        "filename": item.get("filename"),
+    }
+
 def _numeric(values: list[Any]) -> list[float]:
     return [float(v) for v in values if isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(float(v))]
 
@@ -190,9 +217,20 @@ async def attach_evidence(file: UploadFile = File(...), subject_id: str = Form("
     return {"status": "attached", "evidence": item, "state": _direct_state(items, item["spatial_node_id"])}
 
 @router.get("/api/spatial/registry")
-def spatial_registry(subject_id: str = "own_cohort", timepoint: str = "T0", spatial_node_id: str | None = None):
-    items = [i for i in _load() if _matches(i, subject_id, timepoint) and _node_matches(i, spatial_node_id)]
-    return {"subject_id": subject_id, "timepoint": timepoint, "items": items, "count": len(items), "canonical": True}
+def spatial_registry(subject_id: str = "own_cohort", timepoint: str = "T0", spatial_node_id: str | None = None, debug: bool = False):
+    all_items = _load()
+    scoped = [i for i in all_items if _matches(i, subject_id, timepoint)]
+    items = [i for i in scoped if _node_matches(i, spatial_node_id)]
+    response: dict[str, Any] = {"subject_id": subject_id, "timepoint": timepoint, "items": items, "count": len(items), "canonical": True}
+    if debug:
+        response["debug"] = {
+            "filter": {"subject_id": subject_id, "timepoint": timepoint, "spatial_node_id": spatial_node_id},
+            "scoped_count": len(scoped),
+            "returned_count": len(items),
+            "rejected_count": len(scoped) - len(items),
+            "decisions": [_node_match_debug(item, spatial_node_id) for item in scoped],
+        }
+    return response
 
 @router.get("/api/spatial/state")
 def current_state(subject_id: str = "own_cohort", timepoint: str = "T0", spatial_node_id: str | None = None):
