@@ -1,8 +1,7 @@
-"""Coordinate and evidence contracts for the pre-photo Hand Surface pipeline.
+"""Coordinate and evidence contracts for the Hand Surface pipeline.
 
-This module deliberately stops before image-to-mesh projection. It defines the
-stable coordinate contract that real skin photographs will use later, so the
-renderer does not need to change when real observations are introduced.
+The photo-reconstruction flow uses this module as the single canonical view
+vocabulary. Image-to-mesh projection remains a later stage.
 """
 from __future__ import annotations
 
@@ -11,17 +10,12 @@ from typing import Any, Iterable
 
 
 HAND_LANDMARK_COUNT = 21
-SUPPORTED_VIEWS = {"front", "back", "left", "right", "thumb", "unknown"}
+SUPPORTED_VIEWS = ("front", "back", "side_left", "side_right", "thumb")
 
 
 @dataclass(frozen=True)
 class SurfacePoint:
-    """Canonical normalized hand-surface coordinate.
-
-    x/y are normalized image-plane coordinates; z is an optional relative
-    surface-depth coordinate. Values are intentionally unitless until a real
-    calibrated hand mesh is supplied.
-    """
+    """Canonical normalized hand-surface coordinate."""
 
     x: float
     y: float
