@@ -1,7 +1,9 @@
 """Coordinate and evidence contracts for the Hand Surface pipeline.
 
-The photo-reconstruction flow uses this module as the single canonical view
-vocabulary. Image-to-mesh projection remains a later stage.
+Hand Surface owns reusable hand-specific preparation primitives: landmarks,
+segmentation evidence, normalized hand coordinates and per-view registration.
+Photo 3D Reconstruction consumes these contracts and owns only multi-view
+reconstruction. Spatial identity is supplied by ``spatial_contract``.
 """
 from __future__ import annotations
 
@@ -127,4 +129,27 @@ def build_registration(
         status=status,
         quality=quality,
         method=method,
+    )
+
+
+def build_surface_evidence(
+    *,
+    asset_id: str,
+    subject_id: str,
+    timepoint_id: str,
+    uri: str,
+    view: str = "unknown",
+    registration: SurfaceRegistration | None = None,
+) -> SurfaceEvidence:
+    """Create canonical evidence consumed by downstream reconstruction."""
+    from .spatial_contract import make_photo_asset_id
+
+    return SurfaceEvidence(
+        asset_id=make_photo_asset_id(asset_id),
+        subject_id=subject_id,
+        timepoint_id=timepoint_id,
+        spatial_id=f"hand:{subject_id}:{timepoint_id}",
+        uri=uri,
+        view=view if view in SUPPORTED_VIEWS else "unknown",
+        registration=registration,
     )
