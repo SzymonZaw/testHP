@@ -11,7 +11,18 @@
 
   const canonical = value => {
     if (!value || typeof value !== 'string') return value;
-    return ALIASES.get(value) || value;
+    if (ALIASES.has(value)) return ALIASES.get(value);
+
+    // Canonicalize descendants as well, not only the exact legacy node.
+    // Example:
+    // hand/palm/hypothenar-eminence/hypothenar-field-a
+    // -> hand/palm/hypothenar/hypothenar-field-a
+    for (const [legacy, target] of ALIASES) {
+      if (value.startsWith(`${legacy}/`)) {
+        return `${target}${value.slice(legacy.length)}`;
+      }
+    }
+    return value;
   };
 
   const canonicalizeTarget = target => {
@@ -56,11 +67,6 @@
       else if (value && typeof value === 'object') window[key] = canonicalizeTarget(value);
     }
 
-    // body.dataset.spatialTarget is a legacy DOM compatibility channel used
-    // by the hand-surface stages as a fallback. It must not retain an old
-    // alias after canonical viewport navigation has moved deeper into the
-    // spatial tree. Keep it synchronized with the canonical manager target
-    // (or, during boot, with the canonical selected/evidence target).
     const body = document.body;
     if (body?.dataset) {
       const currentBodyTarget = canonical(body.dataset.spatialTarget);
@@ -99,9 +105,6 @@
   install();
   window.addEventListener('testhp:viewport-manager-ready', install);
 
-  // Run after other spatial-layer listeners too, so a legacy writer cannot
-  // leave selectedSpatialNode or the DOM compatibility target behind after
-  // the canonical contract updates.
   const reconcile = () => {
     patchManager(window.spatialViewportManager);
     queueMicrotask(normalizeObservedState);
@@ -111,10 +114,6 @@
   window.addEventListener('testhp:spatial-contract-changed', reconcile);
   window.addEventListener('testhp:spatial-target-changed', reconcile);
 
-  // Some legacy writers update selectedSpatialNode/spatialEvidenceTarget or
-  // body.dataset.spatialTarget after the spatial-layer event without emitting
-  // another event. Observe the actual DOM compatibility channel as well as
-  // polling it, so a late writer cannot reintroduce the alias between polls.
   const bodyObserver = new MutationObserver(() => normalizeObservedState());
   const observeBody = () => {
     if (!document.body) return;
