@@ -1,3 +1,4 @@
+import('./spatial-target-canonicalizer.js?v=canonical-target-1').catch(error => console.error('[Twin navigation] target canonicalizer failed to load', error));
 import('./spatial-writer-debug.js?v=writer-debug-1').catch(error => console.error('[Twin navigation] writer debug failed to load', error));
 
 (() => {
