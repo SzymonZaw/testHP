@@ -21,5 +21,6 @@
 <script src="/digital-twin/hand-surface-simple-ui.js?v=unified-3"></script>
 <script type="module" src="/digital-twin/spatial-root-anatomy-fix.js?v=root-anatomy-2"></script><script src="/digital-twin/i18n-pl.js?v=pl-2"></script>
 <script src="/digital-twin/twin-viewport-debug.js?v=viewport-debug-1"></script>
+<script src="/digital-twin/spatial-target-trace-debug.js?v=target-trace-1"></script>
 <script>(()=>{const removeLegacyHierarchicalSummary=()=>{[...document.querySelectorAll('section,article,aside,div')].forEach(el=>{if(el.closest('.state-panel'))return;const text=(el.textContent||'').replace(/\s+/g,' ').trim();if(/PODSUMOWANIE HIERARCHICZNE/.test(text)&&/ETAP 4/.test(text))el.remove()})};removeLegacyHierarchicalSummary();new MutationObserver(removeLegacyHierarchicalSummary).observe(document.body,{childList:true,subtree:true});new MutationObserver(()=>document.getElementById('evidence-workspace')?.remove()).observe(document.body,{childList:true,subtree:true});})();</script>
 </body></html>
