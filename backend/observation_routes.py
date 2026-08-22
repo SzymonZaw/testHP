@@ -7,6 +7,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
 from .biological_state_routes import biological_state
+from .data_ingestion import registry_status
 from .observation_registry import archive_observation, create_observation, get_observation, list_observations, observation_history, restore_observation, update_observation
 
 router = APIRouter(tags=["biological-observations"])
@@ -63,6 +64,87 @@ def _in_spatial_scope(selected_spatial_id: str, candidate_spatial_id: str, inclu
     if candidate == selected:
         return True
     return include_descendants and candidate.startswith(f"{selected}/")
+
+
+@router.get("/api/spatial/registry")
+def spatial_registry(
+    subject_id: str = "own_cohort",
+    timepoint: str = "T0",
+    spatial_node_id: str | None = None,
+    debug: bool = False,
+):
+    """Return canonical evidence for a spatial target, with per-record match decisions.
+
+    Important: target filtering is deliberately performed after loading the subject/timepoint
+    scope so a missing target attachment cannot hide the record that was rejected.
+    """
+    assets = [
+        dict(item)
+        for item in registry_status()["assets"]
+        if item.get("subject_id") == subject_id and item.get("timepoint") == timepoint
+    ]
+    target = str(spatial_node_id or "").strip().strip("/") or None
+    decisions: list[dict[str, Any]] = []
+    matched: list[dict[str, Any]] = []
+
+    for item in assets:
+        actual = str(item.get("spatial_node_id") or item.get("spatial_id") or item.get("target") or "").strip().strip("/") or None
+        attachment = item.get("attachment_status") or ("explicit" if item.get("spatial_node_id") else "registered_root")
+        localized = item.get("spatially_localized")
+        if target is None:
+            is_match = True
+            reason = "NO_TARGET_REQUESTED"
+        elif actual == target:
+            is_match = True
+            reason = "EXACT_SPATIAL_NODE_MATCH"
+        elif actual and target.startswith(f"{actual}/"):
+            is_match = False
+            reason = "ROOT_OR_ANCESTOR_ATTACHMENT_NOT_DEEP_ATTACHED"
+        elif not actual:
+            is_match = False
+            reason = "MISSING_SPATIAL_NODE_ID"
+        else:
+            is_match = False
+            reason = "SPATIAL_NODE_ID_MISMATCH"
+
+        decision = {
+            "matched": is_match,
+            "reason": reason,
+            "evidence_id": item.get("evidence_id") or item.get("asset_id"),
+            "asset_id": item.get("asset_id"),
+            "filename": item.get("filename"),
+            "actual_spatial_node_id": actual,
+            "expected_spatial_node_id": target,
+            "attachment_status": attachment,
+            "spatially_localized": localized,
+            "subject_id": item.get("subject_id"),
+            "timepoint": item.get("timepoint"),
+            "modality": item.get("modality"),
+            "source": item.get("source"),
+            "status": item.get("status"),
+            "prepared": bool(item.get("prepared") or item.get("prepared_asset") or item.get("prepared_asset_id")),
+        }
+        decisions.append(decision)
+        if is_match:
+            matched.append(item)
+
+    payload: dict[str, Any] = {
+        "subject_id": subject_id,
+        "timepoint": timepoint,
+        "scope": target,
+        "items": matched,
+        "count": len(matched),
+    }
+    if debug:
+        payload["debug"] = {
+            "scoped_count": len(assets),
+            "target_linked_count": len(matched),
+            "accepted_count": sum(1 for d in decisions if d["matched"]),
+            "rejected_count": sum(1 for d in decisions if not d["matched"]),
+            "target": target,
+            "decisions": decisions,
+        }
+    return payload
 
 
 @router.get("/api/observations")
