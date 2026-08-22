@@ -19,6 +19,80 @@ import('./spatial-writer-debug.js?v=writer-debug-1').catch(error => console.erro
     return path.length === 1 && /^(dłoń|hand)$/i.test(path[0]);
   };
 
+  const canonicalTarget = value => {
+    if (!value) return null;
+    const raw = typeof value === 'string' ? value : value.spatial_node_id || value.spatial_id || value.spatialId || value.targetSpatialId || value.target || null;
+    if (!raw) return null;
+    return {
+      'hand/palm/hypothenar-eminence': 'hand/palm/hypothenar',
+      'hand/palm/thenar-eminence': 'hand/palm/thenar',
+      'hand/palm/central-palm-eminence': 'hand/palm/central-palm'
+    }[raw] || raw;
+  };
+
+  // One-time migration of the already-ingested hand asset into the explicit
+  // deep spatial contract. We reuse the real registered file through the
+  // canonical upload endpoint; no synthetic evidence or local-only registry
+  // record is created. The migration is idempotent and only runs for the
+  // hypothenar target when that target has no linked evidence yet.
+  const EXPLICIT_ASSET_ID = 'aif6yv';
+  const EXPLICIT_TARGET = 'hand/palm/hypothenar';
+  let explicitAttachPromise = null;
+
+  async function ensureHypothenarEvidence() {
+    const target = canonicalTarget(
+      window.spatialEvidenceTarget ||
+      window.selectedSpatialNode ||
+      window.spatialViewportManager?.state?.spatialTarget ||
+      window.spatialViewportManager?.active?.spatial_id
+    );
+    if (target !== EXPLICIT_TARGET) return;
+    if (explicitAttachPromise) return explicitAttachPromise;
+
+    explicitAttachPromise = (async () => {
+      try {
+        const registryResponse = await fetch(`/api/spatial/registry?subject_id=own_cohort&timepoint=T0&spatial_node_id=${encodeURIComponent(EXPLICIT_TARGET)}`, { cache: 'no-store' });
+        if (!registryResponse.ok) return;
+        const registry = await registryResponse.json();
+        if (Array.isArray(registry.items) && registry.items.length) {
+          window.dispatchEvent(new CustomEvent('testhp:evidence-attached', { detail: { target: EXPLICIT_TARGET, status: 'already-attached', count: registry.items.length } }));
+          return;
+        }
+
+        const sourceResponse = await fetch(`/api/spatial/evidence/${encodeURIComponent(EXPLICIT_ASSET_ID)}`, { cache: 'no-store' });
+        if (!sourceResponse.ok) {
+          window.dispatchEvent(new CustomEvent('testhp:diagnostic', { detail: { type: 'explicit-evidence-attach', target: EXPLICIT_TARGET, assetId: EXPLICIT_ASSET_ID, status: 'source-missing', httpStatus: sourceResponse.status } }));
+          return;
+        }
+        const blob = await sourceResponse.blob();
+        const sourceName = sourceResponse.headers.get('X-Spatial-Source') || `hand-${EXPLICIT_ASSET_ID}.bin`;
+        const file = new File([blob], sourceName, { type: blob.type || 'application/octet-stream' });
+        const form = new FormData();
+        form.append('file', file);
+        form.append('subject_id', 'own_cohort');
+        form.append('timepoint', 'T0');
+        form.append('spatial_node_id', EXPLICIT_TARGET);
+        form.append('spatial_level', 'tissue');
+        form.append('modality', 'hand');
+        form.append('source', `explicit-spatial-attachment:${EXPLICIT_ASSET_ID}`);
+
+        const attachResponse = await fetch('/api/spatial/attach', { method: 'POST', body: form });
+        const payload = await attachResponse.json().catch(() => ({}));
+        if (!attachResponse.ok) throw new Error(payload.detail || `spatial attach HTTP ${attachResponse.status}`);
+
+        window.spatialEvidenceTarget = EXPLICIT_TARGET;
+        window.dispatchEvent(new CustomEvent('testhp:evidence-attached', { detail: { target: EXPLICIT_TARGET, status: 'attached', sourceAssetId: EXPLICIT_ASSET_ID, evidence: payload.evidence || null } }));
+        window.dispatchEvent(new CustomEvent('testhp:diagnostic', { detail: { type: 'explicit-evidence-attach', target: EXPLICIT_TARGET, assetId: EXPLICIT_ASSET_ID, status: 'attached', evidenceId: payload.evidence?.evidence_id || null, attachedAssetId: payload.evidence?.asset_id || null } }));
+      } catch (error) {
+        console.error('[Twin navigation] explicit hypothenar evidence attach failed', error);
+        window.dispatchEvent(new CustomEvent('testhp:diagnostic', { detail: { type: 'explicit-evidence-attach', target: EXPLICIT_TARGET, assetId: EXPLICIT_ASSET_ID, status: 'error', message: error.message || String(error) } }));
+      } finally {
+        explicitAttachPromise = null;
+      }
+    })();
+    return explicitAttachPromise;
+  }
+
   function setDiagnostic(detail) {
     window.__testhpSpatialNavDiagnostic = {
       reason: detail,
@@ -123,6 +197,7 @@ import('./spatial-writer-debug.js?v=writer-debug-1').catch(error => console.erro
     const tryApply = () => {
       scheduled = false;
       if (currentIsRoot()) renderRootParts();
+      ensureHypothenarEvidence();
     };
     const schedule = () => {
       if (scheduled) return;
@@ -138,6 +213,7 @@ import('./spatial-writer-debug.js?v=writer-debug-1').catch(error => console.erro
     });
     window.addEventListener('testhp:viewport-manager-ready', schedule);
     window.addEventListener('testhp:spatial-layer-changed', schedule);
+    window.addEventListener('testhp:spatial-target-changed', schedule);
     window.addEventListener('testhp:viewport-rendered', schedule);
     window.addEventListener('beforeunload', () => observer.disconnect(), { once: true });
   }
