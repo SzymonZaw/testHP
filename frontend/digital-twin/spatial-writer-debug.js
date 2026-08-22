@@ -24,6 +24,49 @@
     evidenceTarget: window.spatialEvidenceTarget || null
   });
 
+  function installGlobalTargetDebug() {
+    if (window.__testhpSpatialGlobalWriterDebugInstalled) return;
+    window.__testhpSpatialGlobalWriterDebugInstalled = true;
+
+    ['selectedSpatialNode', 'spatialEvidenceTarget', 'testhpSpatialTarget'].forEach(property => {
+      const descriptor = Object.getOwnPropertyDescriptor(window, property);
+      if (descriptor && !descriptor.configurable) {
+        emit('GLOBAL PROPERTY PATCH SKIPPED', { property, reason: 'not-configurable', value: window[property], navigation: nav() });
+        return;
+      }
+      const originalGet = descriptor?.get;
+      const originalSet = descriptor?.set;
+      let value = originalGet ? originalGet.call(window) : descriptor ? descriptor.value : window[property];
+      Object.defineProperty(window, property, {
+        configurable: true,
+        enumerable: descriptor?.enumerable ?? true,
+        get() { return originalGet ? originalGet.call(this) : value; },
+        set(next) {
+          const before = originalGet ? originalGet.call(this) : value;
+          if (before !== next) emit('GLOBAL TARGET WRITE', { property, before, after: next, navigation: nav() });
+          if (originalSet) originalSet.call(this, next); else value = next;
+        }
+      });
+      emit('GLOBAL PROPERTY DEBUG INSTALLED', { property, initial: value, navigation: nav() });
+    });
+  }
+
+  function installBodyTargetDebug() {
+    const body = document.body;
+    if (!body || body.__testhpSpatialBodyWriterDebugInstalled) return;
+    body.__testhpSpatialBodyWriterDebugInstalled = true;
+    const observer = new MutationObserver(records => {
+      records.forEach(record => {
+        if (record.type === 'attributes' && record.attributeName === 'data-spatial-target') {
+          emit('BODY TARGET ATTRIBUTE WRITE', { after: body.dataset.spatialTarget || null, navigation: nav() });
+        }
+      });
+    });
+    observer.observe(body, { attributes: true, attributeFilter: ['data-spatial-target'] });
+    window.addEventListener('beforeunload', () => observer.disconnect(), { once: true });
+    emit('BODY TARGET DEBUG INSTALLED', { value: body.dataset.spatialTarget || null, navigation: nav() });
+  }
+
   function installManagerDebug(manager) {
     if (!manager || manager.__testhpSpatialWriterDebugInstalled) return;
     manager.__testhpSpatialWriterDebugInstalled = true;
@@ -75,6 +118,8 @@
   }
 
   function install() {
+    installGlobalTargetDebug();
+    installBodyTargetDebug();
     const manager = window.spatialViewportManager;
     if (!manager) return false;
     installManagerDebug(manager);
