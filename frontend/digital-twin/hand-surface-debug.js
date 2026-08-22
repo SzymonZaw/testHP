@@ -5,11 +5,28 @@
     const box = document.createElement('section');
     box.id = 'hand-surface-debug-flow';
     box.style.cssText = 'margin:12px 0;padding:12px;border:1px solid #52647a;border-radius:10px;background:#0d1420;color:#dbe7f5;font:12px/1.45 system-ui,sans-serif;';
-    box.innerHTML = '<div style="font-weight:800;letter-spacing:.06em;text-transform:uppercase;margin-bottom:8px">HAND SURFACE · DEBUG FLOW</div><div id="hsd-target" style="margin-bottom:10px"></div><div id="hsd-flow" style="display:grid;gap:6px"></div><div id="hsd-details" style="margin-top:10px;color:#aebed0;font:11px/1.4 ui-monospace,SFMono-Regular,Consolas,monospace"></div><details id="hsd-registry" style="margin-top:10px"><summary style="cursor:pointer;color:#9fc4e8;font-weight:700">REGISTRY / CACHE MISMATCH DIAGNOSTICS</summary><pre id="hsd-registry-body" style="white-space:pre-wrap;margin:8px 0 0;color:#aebed0;font:11px/1.4 ui-monospace,SFMono-Regular,Consolas,monospace"></pre></details>';
+    box.innerHTML = '<div style="font-weight:800;letter-spacing:.06em;text-transform:uppercase;margin-bottom:8px">HAND SURFACE · DEBUG FLOW</div><div id="hsd-target" style="margin-bottom:10px"></div><div id="hsd-flow" style="display:grid;gap:6px"></div><details id="hsd-chain" style="margin-top:10px"><summary style="cursor:pointer;color:#9fc4e8;font-weight:700">TARGET CHAIN / PROVENANCE</summary><pre id="hsd-chain-body" style="white-space:pre-wrap;margin:8px 0 0;color:#aebed0;font:11px/1.4 ui-monospace,SFMono-Regular,Consolas,monospace"></pre></details><details id="hsd-registry" style="margin-top:10px"><summary style="cursor:pointer;color:#9fc4e8;font-weight:700">REGISTRY / CACHE MISMATCH DIAGNOSTICS</summary><pre id="hsd-registry-body" style="white-space:pre-wrap;margin:8px 0 0;color:#aebed0;font:11px/1.4 ui-monospace,SFMono-Regular,Consolas,monospace"></pre></details>';
     panel.appendChild(box);
 
     const esc = v => String(v ?? '').replace(/[&<>\"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;',"'":'&#39;'}[c]));
     const normalize = v => String(v ?? '').trim().replace(/^\/+|\/+$/g, '');
+    const safe = v => { try { return JSON.stringify(v, null, 2); } catch { return String(v); } };
+    const managerSnapshot = () => {
+      const m = window.spatialViewportManager;
+      const s = m?.state || {};
+      const active = m?.active || {};
+      return {
+        activeKey: m?.activeKey || null,
+        activeLayer: m?.activeLayer || null,
+        stateSpatialId: s?.spatial_id || s?.spatialId || s?.spatialTarget || null,
+        stateTarget: typeof s?.target === 'object' ? (s.target?.spatial_id || s.target?.spatialId || s.target?.id || s.target?.target || null) : (s?.target || null),
+        activeSpatialId: active?.spatial_id || active?.spatialId || null,
+        activeId: active?.id || null,
+        activeLabel: active?.label || active?.name || null,
+        managerSpatialTarget: m?.spatialTarget || null,
+        renderer: m?.active?.constructor?.name || null
+      };
+    };
     const managerTarget = () => {
       const manager = window.spatialViewportManager;
       const state = manager?.state || {};
@@ -18,9 +35,6 @@
       return candidate || '';
     };
     const target = () => {
-      // The canonical viewport manager is authoritative for the rendered target.
-      // DOM/evidence globals can lag one render behind and previously caused the
-      // debug panel to report the parent target while the renderer was on a child.
       const managerId = normalize(managerTarget());
       const contract = window.testhpSpatialContract?.getTarget?.();
       const contractId = normalize(typeof contract === 'object' ? (contract.spatial_id || contract.spatialId || contract.id) : contract);
@@ -30,7 +44,7 @@
       const source = managerId ? 'viewport-manager' : contractId ? 'spatial-contract' : selectedId ? 'selectedSpatialNode' : evidenceId ? 'spatialEvidenceTarget' : 'fallback';
       const navNode = document.getElementById('spatial-node');
       const label = navNode?.querySelector('strong')?.textContent?.trim() || (typeof contract === 'object' ? contract.label : '') || id;
-      return {label, id, source, managerId, contractId, selectedId, evidenceId};
+      return {label, id, source, managerId, contractId, selectedId, evidenceId, manager: managerSnapshot(), contract: typeof contract === 'object' ? contract : null};
     };
     const evidence = () => { try { const x=JSON.parse(localStorage.getItem('digitalTwinEvidenceUX.v2')||'{}'); return Array.isArray(x.evidence)?x.evidence.filter(x=>!x.archived):[]; } catch { return []; } };
     const geometry = () => { try { return JSON.parse(localStorage.getItem('digitalTwinHandSurface.v1')||'{}'); } catch { return {}; } };
@@ -38,6 +52,57 @@
     const targetItems = (items,id) => items.filter(x => targetId(x) === id);
     const targetGeometry = (g,id) => targetId(g)===id ? g : {};
     const stage = (name,status,detail) => `<div style="display:grid;grid-template-columns:150px 90px 1fr;gap:8px;align-items:center;padding:7px 9px;border:1px solid #26364b;border-radius:7px;background:#111b29"><strong>${esc(name)}</strong><span style="font-weight:800">${esc(status)}</span><span>${esc(detail)}</span></div>`;
+
+    const renderChain = t => {
+      const body = document.getElementById('hsd-chain-body'); if (!body) return;
+      const d = window.__testhpTwinRegistryDiagnostics || {};
+      const nav = window.__testhpDiagnostics || {};
+      const spatialState = window.__testhpSpatialState || {};
+      const rows = [];
+      const push = (name,value,expected='') => {
+        const v = value == null || value === '' ? 'NULL' : String(value);
+        const e = expected ? String(expected) : '';
+        const verdict = e ? (normalize(v) === normalize(e) ? 'OK' : 'MISMATCH') : '';
+        rows.push(`${name.padEnd(30)} ${v}${verdict ? `  => ${verdict} (expected ${e})` : ''}`);
+      };
+      rows.push('--- VIEWPORT / NAVIGATION ---');
+      push('DOM selectedSpatialNode', t.selectedId, t.id);
+      push('spatialEvidenceTarget', t.evidenceId, t.id);
+      push('spatial contract target', t.contractId, t.id);
+      push('manager state target', t.manager.stateSpatialId, t.id);
+      push('manager active target', t.manager.activeSpatialId, t.id);
+      push('manager active id', t.manager.activeId);
+      push('manager activeKey', t.manager.activeKey);
+      push('manager activeLayer', t.manager.activeLayer);
+      push('manager spatialTarget', t.manager.managerSpatialTarget, t.id);
+      rows.push(`manager renderer                 ${t.manager.renderer || 'NULL'}`);
+      rows.push(`resolved debug target            ${t.id} [${t.source}]`);
+      rows.push('');
+      rows.push('--- CONTRACT / STATE OBJECTS ---');
+      rows.push(`contract object                  ${safe(t.contract)}`);
+      rows.push(`__testhpSpatialState             ${safe(spatialState)}`);
+      rows.push(`__testhpDiagnostics               ${safe(nav)}`);
+      rows.push('');
+      rows.push('--- REGISTRY REQUEST / RESPONSE ---');
+      push('registry requestedTarget', d.requestedTarget, t.id);
+      rows.push(`registry endpoint                ${d.endpoint || 'NULL'}`);
+      rows.push(`registry HTTP                    ${d.status == null ? 'NULL' : d.status} ok=${!!d.ok}`);
+      rows.push(`registry aliasUsed              ${d.matchDebug?.aliasUsed || 'NULL'}`);
+      rows.push(`registry scoped_count            ${d.matchDebug?.scoped_count ?? 'NULL'}`);
+      rows.push(`registry returned_count          ${d.matchDebug?.returned_count ?? d.targetLinked ?? 'NULL'}`);
+      rows.push(`registry rejected_count          ${d.matchDebug?.rejected_count ?? d.matchDebug?.rejectedCount ?? 'NULL'}`);
+      rows.push(`registry prepared                 ${d.prepared ?? 'NULL'}`);
+      const decisions = Array.isArray(d.matchDebug?.decisions) ? d.matchDebug.decisions : [];
+      decisions.slice(0,20).forEach((x,i)=>{
+        rows.push(`decision[${i+1}]                    ${x.matched?'ACCEPT':'REJECT'} reason=${x.reason||'NULL'} expected=${x.expected_spatial_node_id||'NULL'} actual=${x.actual_spatial_node_id||'NULL'} evidence=${x.evidence_id||'NULL'} asset=${x.asset_id||'NULL'} attachment=${x.attachment_status||'NULL'}`);
+      });
+      rows.push('');
+      rows.push('--- NETWORK OBSERVATION (last spatial requests) ---');
+      const resources = performance.getEntriesByType('resource').filter(r => /\/api\/(spatial|observations|biological-state)/.test(r.name)).slice(-20);
+      if (!resources.length) rows.push('no matching PerformanceResourceTiming entries');
+      resources.forEach((r,i)=>rows.push(`[${i+1}] ${r.initiatorType || 'unknown'} ${r.name}`));
+      body.textContent = rows.join('\n');
+    };
 
     const renderRegistryDiagnostics = (t, cacheItems) => {
       const body = document.getElementById('hsd-registry-body');
@@ -57,13 +122,11 @@
       lines.push(`canonical registry: scoped=${d?.matchDebug?.scoped_count ?? d?.total ?? '—'} returned=${d?.matchDebug?.returned_count ?? d?.targetLinked ?? '—'} rejected=${d?.matchDebug?.rejected_count ?? '—'} prepared=${d?.prepared ?? '—'}`);
       lines.push(`localStorage UX cache: total=${cacheItems.length} target-linked=${targetItems(cacheItems,t.id).length}`);
       if (d?.error) lines.push(`ERROR: ${d.error.name}: ${d.error.message}`);
-
       const decisions = Array.isArray(d?.matchDebug?.decisions) ? d.matchDebug.decisions : [];
       if (decisions.length) {
         lines.push('BACKEND TARGET-MATCH DECISIONS (exact rejection point):');
         decisions.forEach((x,i)=>lines.push(`  [${i+1}] ${x.matched?'ACCEPT':'REJECT'} reason=${x.reason} expected=${x.expected_spatial_node_id||'NULL'} actual=${x.actual_spatial_node_id||'NULL'} attachment=${x.attachment_status||'NULL'} localized=${x.spatially_localized} evidence=${x.evidence_id||'NULL'} asset=${x.asset_id||'NULL'} file=${x.filename||'NULL'}`));
       }
-
       const canonical = Array.isArray(d?.targetRecords) ? d.targetRecords : [];
       const cache = targetItems(cacheItems,t.id);
       if (canonical.length) {
@@ -106,6 +169,7 @@
         stage('PAKIET · 22',packageReady?'READY':'WAITING',packageReady?'pakiet dla celu':'pakiet nieutworzony dla celu')
       ].join('<div style="text-align:center;color:#71849b">↓</div>');
       document.getElementById('hsd-details').textContent=`TARGET: ${t.id}\nSOURCE: ${t.source}\nMANAGER: ${t.managerId||'NULL'} | CONTRACT: ${t.contractId||'NULL'} | SELECTED: ${t.selectedId||'NULL'} | EVIDENCE: ${t.evidenceId||'NULL'}\nEVIDENCE: ${all.length} total | ${items.length} target-linked | prepared=${preparedCount}\nVIEWS: ${present.length}/5 target-scoped\nRENDERER: ${window.spatialViewportManager?.active?.constructor?.name||'unknown'} | manager=${window.spatialViewportManager?'present':'missing'}`;
+      renderChain(t);
       renderRegistryDiagnostics(t,all);
     };
 
@@ -113,13 +177,7 @@
     let scheduled=false;
     const schedule=()=>{ if(scheduled)return; scheduled=true; requestAnimationFrame(()=>{scheduled=false;render();}); };
     ['testhp:spatial-layer-changed','testhp:spatial-contract-changed','testhp:spatial-target-changed','testhp:evidence-attached','testhp:hand-surface-ready','testhp:surface-projection-plan-changed','testhp:evidence-registry-debug','testhp:evidence-registry-synced'].forEach(e=>window.addEventListener(e,schedule));
-
-    const refreshCanonical = () => {
-      const t=target();
-      if (typeof window.__testhpCollectRegistryDiagnostics === 'function') {
-        window.__testhpCollectRegistryDiagnostics(t.id).then(schedule).catch(()=>{});
-      }
-    };
+    const refreshCanonical = () => { const t=target(); if (typeof window.__testhpCollectRegistryDiagnostics === 'function') window.__testhpCollectRegistryDiagnostics(t.id).then(schedule).catch(()=>{}); };
     window.addEventListener('testhp:spatial-layer-changed', refreshCanonical);
     window.addEventListener('testhp:spatial-target-changed', refreshCanonical);
     refreshCanonical();
