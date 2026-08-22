@@ -77,4 +77,14 @@
   window.addEventListener('testhp:spatial-layer-changed', reconcile);
   window.addEventListener('testhp:spatial-contract-changed', reconcile);
   window.addEventListener('testhp:spatial-target-changed', reconcile);
+
+  // Some legacy writers update selectedSpatialNode/spatialEvidenceTarget after
+  // the spatial-layer event without emitting another event. Keep the public
+  // target globals canonical in that case as well; this is deliberately cheap
+  // and prevents a late writer from reintroducing target drift.
+  const reconcileTimer = setInterval(() => {
+    patchManager(window.spatialViewportManager);
+    normalizeObservedState();
+  }, 100);
+  window.addEventListener('beforeunload', () => clearInterval(reconcileTimer), { once: true });
 })();
