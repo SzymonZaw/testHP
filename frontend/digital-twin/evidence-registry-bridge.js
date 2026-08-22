@@ -5,27 +5,31 @@
   const STORAGE = 'digitalTwinEvidenceUX.v2';
   const BOOTSTRAP = 'digitalTwinCanonicalEvidenceBootstrap.v1';
 
-  const toUX = (item) => ({
-    id: item.evidence_id || item.asset_id,
-    backendAssetId: item.asset_id || '',
-    type: item.spatial_level === 'cellular' ? 'Cellular' : item.spatial_level === 'tissue' ? 'Tissue' : item.spatial_level === 'cell' ? 'Cellular' : item.modality === 'rna' ? 'Molecular' : 'Macro',
-    sourceType: item.source === 'upload' ? 'upload' : 'dataset',
-    target: item.spatial_node_id || 'hand',
-    subject: item.subject_id || 'own_cohort',
-    timepoint: item.timepoint || 'T0',
-    date: item.created_at ? String(item.created_at).slice(0, 10) : '',
-    modality: item.modality || '',
-    resolution: item.resolution || '',
-    operator: item.operator || '',
-    filename: item.filename || 'Registered observation',
-    fileData: '',
-    signals: Object.entries(item.signals || {}).map(([name, value]) => ({ name, value, unit: '' })),
-    annotations: item.spatially_localized === false ? 'Registered at anatomical root; no deeper spatial localization has been asserted.' : '',
-    comments: item.interpretation_boundary || '',
-    archived: false,
-    history: [{ at: item.created_at || new Date().toISOString(), action: item.attachment_status === 'explicit' ? 'spatially attached' : 'registered from ingestion registry' }],
-    spatiallyLocalized: item.spatially_localized !== false,
-  });
+  const toUX = (item) => {
+    const spatialId = item.spatial_node_id || item.spatial_id || item.target || 'hand';
+    return {
+      id: item.evidence_id || item.asset_id,
+      backendAssetId: item.asset_id || '',
+      type: item.spatial_level === 'cellular' ? 'Cellular' : item.spatial_level === 'tissue' ? 'Tissue' : item.spatial_level === 'cell' ? 'Cellular' : item.modality === 'rna' ? 'Molecular' : 'Macro',
+      sourceType: item.source === 'upload' ? 'upload' : 'dataset',
+      target: spatialId,
+      spatial_id: spatialId,
+      subject: item.subject_id || 'own_cohort',
+      timepoint: item.timepoint || 'T0',
+      date: item.created_at ? String(item.created_at).slice(0, 10) : '',
+      modality: item.modality || '',
+      resolution: item.resolution || '',
+      operator: item.operator || '',
+      filename: item.filename || 'Registered observation',
+      fileData: '',
+      signals: Object.entries(item.signals || {}).map(([name, value]) => ({ name, value, unit: '' })),
+      annotations: item.spatially_localized === false ? 'Registered at anatomical root; no deeper spatial localization has been asserted.' : '',
+      comments: item.interpretation_boundary || '',
+      archived: false,
+      history: [{ at: item.created_at || new Date().toISOString(), action: item.attachment_status === 'explicit' ? 'spatially attached' : 'registered from ingestion registry' }],
+      spatiallyLocalized: item.spatially_localized !== false,
+    };
+  };
 
   async function syncCanonical() {
     try {
