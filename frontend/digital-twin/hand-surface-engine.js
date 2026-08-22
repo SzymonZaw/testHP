@@ -36,7 +36,29 @@ class HandSurfaceEngine{
   bindNavigation(){const sync=()=>{const bc=document.getElementById('spatial-breadcrumb');if(!bc)return;const labels=[...bc.querySelectorAll('button')].map(x=>x.textContent.trim()).filter(Boolean);if(labels.length)this.target=this.pathToId(labels);this.updateFromTarget();};const bc=document.getElementById('spatial-breadcrumb');if(bc)new MutationObserver(sync).observe(bc,{childList:true,subtree:true});window.addEventListener('testhp:spatial-target-changed',e=>{if(e.detail?.spatial_target_id)this.target=e.detail.spatial_target_id;this.updateFromTarget();});}
   pathToId(labels){const map={'Hand':'hand','Palm':'palm','Thenar eminence':'thenar','Hypothenar eminence':'hypothenar','Central palm':'central-palm','Microscopy field A':'field-a','Microscopy field B':'field-b','Microscopy field C':'field-c','Cell target 1':'cell-1','Cell target 2':'cell-2','Cell target 3':'cell-3'};return labels.map((x,i)=>i===0?'hand':(map[x]||x.toLowerCase().replace(/\s+/g,'-'))).join('/');}
 
-  updateFromTarget(){const deep=this.target.split('/').length>2;this.skinOpacity=deep?.42:1;this.skeletonOpacity=deep?.18:0;this.mode=deep?'context':'skin';const skin=this.layers.get('skin');if(skin)skin.traverse(o=>{if(o.material)o.material.opacity=this.skinOpacity;});const sk=this.layers.get('skeleton');if(sk)sk.traverse(o=>{if(o.material)o.material.opacity=this.skeletonOpacity;});this.updateDebug();}
+  ensureGeometryManifest(){
+    const surfaceTarget=this.target==='hand' || this.target==='hand/palm' || this.target.startsWith('hand/palm/') ? 'hand/palm' : null;
+    if(!surfaceTarget || !this.meshes.has('palm'))return;
+    let current={};
+    try{current=JSON.parse(localStorage.getItem('digitalTwinHandSurface.v1')||'{}');}catch{}
+    const existingTarget=current?.spatial_id||current?.spatialId||current?.target;
+    if(existingTarget===surfaceTarget && current.geometry)return;
+    const geometry={
+      schema:'hand-surface-geometry-v1',
+      spatial_id:surfaceTarget,
+      target:surfaceTarget,
+      coordinate_system:'hand-local',
+      source:'procedural-hand-surface-v1',
+      status:'calibrated-procedural',
+      evidence_boundary:'Procedural geometry is a rendering/calibration scaffold; it is not a reconstructed clinical anatomy.',
+      mesh:{type:'procedural',parts:[...this.meshes.keys()]},
+      landmarks:this.landmarks.map(x=>({id:x.id,position:x.position,confidence:x.confidence})),
+      calibration:{scale:1,palm_width:3,palm_length:2.25,thickness:1,smoothness:.5}
+    };
+    localStorage.setItem('digitalTwinHandSurface.v1',JSON.stringify({...current,...geometry,geometry,savedAt:new Date().toISOString()}));
+  }
+
+  updateFromTarget(){const deep=this.target.split('/').length>2;this.skinOpacity=deep?.42:1;this.skeletonOpacity=deep?.18:0;this.mode=deep?'context':'skin';this.ensureGeometryManifest();const skin=this.layers.get('skin');if(skin)skin.traverse(o=>{if(o.material)o.material.opacity=this.skinOpacity;});const sk=this.layers.get('skeleton');if(sk)sk.traverse(o=>{if(o.material)o.material.opacity=this.skeletonOpacity;});this.updateDebug();}
   installDebug(){const host=document.getElementById('twin-viewport-debug-host');if(!host)return;const d=document.createElement('details');d.open=false;d.className='hand-surface-debug';d.innerHTML='<summary>HAND SURFACE · STAGES 0–8</summary><pre id="hand-surface-debug-data"></pre>';host.appendChild(d);this.debug=d;}
   updateDebug(){const el=document.getElementById('hand-surface-debug-data');if(el)el.textContent=JSON.stringify(this.snapshot(),null,2);}
   resize(){if(!this.renderer||!this.viewport)return;const r=this.viewport.getBoundingClientRect(),w=Math.max(1,r.width),h=Math.max(1,r.height);this.renderer.setSize(w,h,false);this.camera.aspect=w/h;this.camera.updateProjectionMatrix();}

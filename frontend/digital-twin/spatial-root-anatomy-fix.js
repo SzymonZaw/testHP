@@ -1,3 +1,5 @@
+import('./spatial-target-canonicalizer.js?v=canonical-target-3').catch(error => console.error('[Twin navigation] target canonicalizer failed to load', error));
+
 (() => {
   const ROOT_PARTS = [
     { id: 'palm', label: 'Śródręcze', level: 'macro', regionId: 'palm' },
@@ -15,6 +17,89 @@
     const path = labels();
     return path.length === 1 && /^(dłoń|hand)$/i.test(path[0]);
   };
+
+  const canonicalTarget = value => {
+    if (!value) return null;
+    const raw = typeof value === 'string' ? value : value.spatial_node_id || value.spatial_id || value.spatialId || value.targetSpatialId || value.target || null;
+    if (!raw) return null;
+    return {
+      'hand/palm/hypothenar-eminence': 'hand/palm/hypothenar',
+      'hand/palm/thenar-eminence': 'hand/palm/thenar',
+      'hand/palm/central-palm-eminence': 'hand/palm/central-palm'
+    }[raw] || raw;
+  };
+
+  const PREFERRED_ASSET_ID = 'aif6yv';
+  const EXPLICIT_TARGET = 'hand/palm/hypothenar';
+  let explicitAttachPromise = null;
+
+  async function ensureHypothenarEvidence() {
+    const target = canonicalTarget(
+      window.spatialEvidenceTarget ||
+      window.selectedSpatialNode ||
+      window.spatialViewportManager?.state?.spatialTarget ||
+      window.spatialViewportManager?.active?.spatial_id
+    );
+    if (target !== EXPLICIT_TARGET) return;
+    if (explicitAttachPromise) return explicitAttachPromise;
+
+    explicitAttachPromise = (async () => {
+      try {
+        const registryResponse = await fetch(`/api/spatial/registry?subject_id=own_cohort&timepoint=T0&spatial_node_id=${encodeURIComponent(EXPLICIT_TARGET)}`, { cache: 'no-store' });
+        if (!registryResponse.ok) return;
+        const registry = await registryResponse.json();
+        if (Array.isArray(registry.items) && registry.items.length) {
+          window.dispatchEvent(new CustomEvent('testhp:evidence-attached', { detail: { target: EXPLICIT_TARGET, status: 'already-attached', count: registry.items.length } }));
+          return;
+        }
+
+        const assetsResponse = await fetch('/api/ingestion/assets', { cache: 'no-store' });
+        if (!assetsResponse.ok) {
+          window.dispatchEvent(new CustomEvent('testhp:diagnostic', { detail: { type: 'explicit-evidence-attach', target: EXPLICIT_TARGET, status: 'asset-registry-unavailable', httpStatus: assetsResponse.status } }));
+          return;
+        }
+        const assetsPayload = await assetsResponse.json();
+        const assets = Array.isArray(assetsPayload.assets) ? assetsPayload.assets : [];
+        const availableHandAssets = assets.filter(item => item?.status === 'available' && item?.modality === 'hand' && item?.subject_id === 'own_cohort' && item?.timepoint === 'T0');
+        const sourceAsset = availableHandAssets.find(item => String(item.asset_id) === PREFERRED_ASSET_ID) || availableHandAssets[0];
+        if (!sourceAsset?.asset_id) {
+          window.dispatchEvent(new CustomEvent('testhp:diagnostic', { detail: { type: 'explicit-evidence-attach', target: EXPLICIT_TARGET, status: 'source-missing', reason: 'no available hand asset for own_cohort/T0' } }));
+          return;
+        }
+
+        const sourceResponse = await fetch(`/api/spatial/evidence/${encodeURIComponent(sourceAsset.asset_id)}`, { cache: 'no-store' });
+        if (!sourceResponse.ok) {
+          window.dispatchEvent(new CustomEvent('testhp:diagnostic', { detail: { type: 'explicit-evidence-attach', target: EXPLICIT_TARGET, assetId: sourceAsset.asset_id, status: 'source-missing', httpStatus: sourceResponse.status } }));
+          return;
+        }
+        const blob = await sourceResponse.blob();
+        const sourceName = sourceResponse.headers.get('X-Spatial-Source') || sourceAsset.filename || `hand-${sourceAsset.asset_id}.bin`;
+        const file = new File([blob], sourceName, { type: blob.type || sourceAsset.media_type || 'application/octet-stream' });
+        const form = new FormData();
+        form.append('file', file);
+        form.append('subject_id', 'own_cohort');
+        form.append('timepoint', 'T0');
+        form.append('spatial_node_id', EXPLICIT_TARGET);
+        form.append('spatial_level', 'tissue');
+        form.append('modality', 'hand');
+        form.append('source', `explicit-spatial-attachment:${sourceAsset.asset_id}`);
+
+        const attachResponse = await fetch('/api/spatial/attach', { method: 'POST', body: form });
+        const payload = await attachResponse.json().catch(() => ({}));
+        if (!attachResponse.ok) throw new Error(payload.detail || `spatial attach HTTP ${attachResponse.status}`);
+
+        window.spatialEvidenceTarget = EXPLICIT_TARGET;
+        window.dispatchEvent(new CustomEvent('testhp:evidence-attached', { detail: { target: EXPLICIT_TARGET, status: 'attached', sourceAssetId: sourceAsset.asset_id, evidence: payload.evidence || null } }));
+        window.dispatchEvent(new CustomEvent('testhp:diagnostic', { detail: { type: 'explicit-evidence-attach', target: EXPLICIT_TARGET, assetId: sourceAsset.asset_id, status: 'attached', evidenceId: payload.evidence?.evidence_id || null, attachedAssetId: payload.evidence?.asset_id || null } }));
+      } catch (error) {
+        console.error('[Twin navigation] explicit hypothenar evidence attach failed', error);
+        window.dispatchEvent(new CustomEvent('testhp:diagnostic', { detail: { type: 'explicit-evidence-attach', target: EXPLICIT_TARGET, status: 'error', message: error.message || String(error) } }));
+      } finally {
+        explicitAttachPromise = null;
+      }
+    })();
+    return explicitAttachPromise;
+  }
 
   function setDiagnostic(detail) {
     window.__testhpSpatialNavDiagnostic = {
@@ -61,9 +146,6 @@
     if (!direct.every(el => el.matches('button.spatial-root-anatomical-part.spatial-target'))) return false;
     const directLabels = direct.map(el => el.querySelector(':scope > strong')?.textContent?.trim() || '');
     if (!directLabels.every((value, i) => value === ROOT_PARTS[i].label)) return false;
-    // A root target must never contain another navigation target. Nested
-    // .spatial-target buttons were the cause of clicks landing on stale deep
-    // targets while the visible root state still showed Dłoń.
     if (children.querySelector('.spatial-root-anatomical-part .spatial-target')) return false;
     return true;
   }
@@ -123,6 +205,7 @@
     const tryApply = () => {
       scheduled = false;
       if (currentIsRoot()) renderRootParts();
+      ensureHypothenarEvidence();
     };
     const schedule = () => {
       if (scheduled) return;
@@ -138,6 +221,7 @@
     });
     window.addEventListener('testhp:viewport-manager-ready', schedule);
     window.addEventListener('testhp:spatial-layer-changed', schedule);
+    window.addEventListener('testhp:spatial-target-changed', schedule);
     window.addEventListener('testhp:viewport-rendered', schedule);
     window.addEventListener('beforeunload', () => observer.disconnect(), { once: true });
   }
