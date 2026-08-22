@@ -1,18 +1,23 @@
 (() => {
   'use strict';
 
-  // Read-only viewport diagnostics. This script must never mutate spatial state.
   const host = document.getElementById('twin-viewport-debug-host');
   if (!host) return;
 
   const startedAt = Date.now();
   const trace = [];
+  const selectedWrites = [];
+  const applyCalls = [];
+  const managerCalls = [];
   const MAX_TRACE = 20;
+  const MAX_TARGET_TRACE = 50;
   let lastNavigation = null;
   let lastClickRoute = null;
   let lastError = null;
   let lastInput = null;
   let minimized = false;
+  let managerHooked = null;
+  let applyHooked = false;
 
   const safe = fn => { try { return fn(); } catch { return null; } };
   const pretty = value => JSON.stringify(value, (key, v) => {
@@ -22,33 +27,50 @@
     return v;
   }, 2);
 
+  const getManager = () => window.spatialViewportManager || window.viewportManager || window.testhpViewportManager || null;
+
+  const compactTarget = value => safe(() => {
+    if (!value) return null;
+    if (typeof value !== 'object') return value;
+    return {
+      level: value.level ?? null,
+      label: value.label ?? value.name ?? null,
+      id: value.id ?? value.regionId ?? null,
+      spatial_id: value.spatial_id ?? value.spatialId ?? null,
+      path: Array.isArray(value.path) ? value.path.slice() : value.path ?? null
+    };
+  });
+
+  const stack = () => safe(() => new Error().stack) || null;
+
   const spatialState = () => safe(() => {
     const target = window.testhpSpatialContract?.getTarget?.() || null;
     const node = window.selectedSpatialNode || null;
-    const manager = window.viewportManager || window.testhpViewportManager || null;
+    const manager = getManager();
     const managerState = manager?.state || null;
     const active = manager?.active || null;
     return {
       level: target?.level || node?.level || managerState?.level || null,
       target: target?.label || target?.name || node?.label || node?.name || managerState?.target || null,
       path: target?.path || node?.path || managerState?.path || null,
-      targetSpatialId: target?.spatial_id || null,
-      selectedSpatialNode: node?.spatial_id || node?.id || node?.regionId || null,
+      targetSpatialId: target?.spatial_id || target?.spatialId || null,
+      selectedSpatialNode: node?.spatial_id || node?.spatialId || node?.id || node?.regionId || null,
       activeKey: manager?.activeKey || managerState?.activeKey || null,
       activeLayer: manager?.activeLayer || managerState?.activeLayer || null,
-      activeTarget: active?.spatial_id || active?.id || active?.regionId || null
+      activeTarget: active?.spatial_id || active?.spatialId || active?.id || active?.regionId || null
     };
   }) || {};
 
   const managerInfo = () => safe(() => {
-    const manager = window.viewportManager || window.testhpViewportManager || null;
+    const manager = getManager();
     const canvas = document.getElementById('twin-canvas');
     return {
       present: !!manager,
+      source: manager === window.spatialViewportManager ? 'spatialViewportManager' : manager === window.viewportManager ? 'viewportManager' : manager ? 'testhpViewportManager' : null,
       keys: manager ? Object.keys(manager).filter(k => !k.startsWith('__')).slice(0, 40) : [],
       activeKey: manager?.activeKey ?? null,
       activeLayer: manager?.activeLayer ?? null,
-      active: manager?.active?.spatial_id || manager?.active?.id || manager?.active?.regionId || manager?.active || null,
+      active: manager?.active?.spatial_id || manager?.active?.spatialId || manager?.active?.id || manager?.active?.regionId || manager?.active || null,
       canvas: canvas ? `${canvas.clientWidth || canvas.width}×${canvas.clientHeight || canvas.height}` : 'missing'
     };
   }) || {};
@@ -84,9 +106,10 @@
       renderer: detail?.renderer || detail?.rendererName || null,
       reason: detail?.reason || null,
       managerPresent: manager.present,
+      managerSource: manager.source,
       activeKey: manager.activeKey,
       activeLayer: manager.activeLayer,
-      spatial_id: detail?.spatial_id || detail?.target?.spatial_id || null
+      spatial_id: detail?.spatial_id || detail?.target?.spatial_id || detail?.target?.spatialId || null
     });
     if (trace.length > MAX_TRACE) trace.shift();
     render();
@@ -98,6 +121,74 @@
     targetId: button.dataset.targetId || button.dataset.target || null,
     onclick: button.getAttribute('onclick') || button.onclick?.toString?.() || null
   }));
+
+  const installSelectedNodeTrace = () => {
+    const descriptor = safe(() => Object.getOwnPropertyDescriptor(window, 'selectedSpatialNode'));
+    if (descriptor?.set && descriptor.set.__testhpWrapped) return;
+    if (descriptor && !descriptor.configurable) return;
+    let current = safe(() => window.selectedSpatialNode);
+    try {
+      Object.defineProperty(window, 'selectedSpatialNode', {
+        configurable: true,
+        enumerable: descriptor?.enumerable ?? true,
+        get() { return descriptor?.get ? descriptor.get.call(window) : current; },
+        set(value) {
+          const before = safe(() => descriptor?.get ? descriptor.get.call(window) : current);
+          selectedWrites.push({ t: Date.now() - startedAt, before: compactTarget(before), after: compactTarget(value), stack: stack() });
+          if (selectedWrites.length > MAX_TARGET_TRACE) selectedWrites.shift();
+          if (descriptor?.set) descriptor.set.call(window, value); else current = value;
+          render();
+        }
+      });
+      Object.defineProperty(window.selectedSpatialNode, '__noop__', { value: true, configurable: true });
+    } catch {}
+  };
+
+  const installApplyTrace = () => {
+    if (applyHooked || typeof window.applySpatialNode !== 'function') return;
+    const original = window.applySpatialNode;
+    if (original.__testhpWrapped) { applyHooked = true; return; }
+    const wrapped = function(...args) {
+      const before = spatialState();
+      const entry = { t: Date.now() - startedAt, args: args.map(compactTarget), before, stack: stack() };
+      applyCalls.push(entry);
+      if (applyCalls.length > MAX_TARGET_TRACE) applyCalls.shift();
+      const result = original.apply(this, args);
+      entry.after = spatialState();
+      render();
+      return result;
+    };
+    Object.defineProperty(wrapped, '__testhpWrapped', { value: true });
+    try { window.applySpatialNode = wrapped; applyHooked = true; } catch {}
+  };
+
+  const installManagerTrace = () => {
+    const manager = getManager();
+    if (!manager || manager === managerHooked) return;
+    const original = manager.setSpatialTarget;
+    if (typeof original === 'function' && !original.__testhpWrapped) {
+      const wrapped = function(...args) {
+        const before = spatialState();
+        const entry = { t: Date.now() - startedAt, args: args.map(compactTarget), before, stack: stack() };
+        managerCalls.push(entry);
+        if (managerCalls.length > MAX_TARGET_TRACE) managerCalls.shift();
+        const result = original.apply(this, args);
+        entry.after = spatialState();
+        render();
+        return result;
+      };
+      Object.defineProperty(wrapped, '__testhpWrapped', { value: true });
+      try { manager.setSpatialTarget = wrapped; } catch {}
+    }
+    managerHooked = manager;
+    render();
+  };
+
+  const installHooks = () => {
+    installSelectedNodeTrace();
+    installApplyTrace();
+    installManagerTrace();
+  };
 
   document.addEventListener('click', event => {
     const button = event.target?.closest?.('#spatial-children button, #spatial-children [role="button"], .spatial-children button');
@@ -129,6 +220,7 @@
         const snapshot = navSnapshot(detail);
         if (snapshot) lastNavigation = snapshot;
       }
+      installHooks();
       record(type, detail);
     }));
 
@@ -152,7 +244,7 @@
       </style>
       <div class="tvd-head"><span class="tvd-title">TWIN VIEWPORT · <span>DEBUG</span></span><button class="tvd-btn" type="button" data-tvd-minimize>${minimized ? 'OPEN' : 'MINIMIZE'}</button></div>
       ${minimized ? '' : `<div class="tvd-body">
-        ${block('RUNTIME', kv('status','READY')+kv('init age',`${elapsed} ms`)+kv('manager',manager.present?'present':'missing')+kv('manager keys',manager.keys.join(', ')||'—')+kv('canvas',manager.canvas))}
+        ${block('RUNTIME', kv('status','READY')+kv('init age',`${elapsed} ms`)+kv('manager',manager.present?`${manager.source||'present'}`:'missing')+kv('manager keys',manager.keys.join(', ')||'—')+kv('canvas',manager.canvas))}
         ${block('SPATIAL STATE',kv('level',state.level)+kv('target',state.target)+kv('path',Array.isArray(state.path)?state.path.join(' > '):state.path)+kv('target spatial_id',state.targetSpatialId)+kv('selectedSpatialNode',state.selectedSpatialNode)+kv('active key',state.activeKey)+kv('active layer',state.activeLayer))}
         ${block('BUTTON ROUTING',routes.length?`<ol class="tvd-list">${routes.map(r=>`<li>${escapeHtml(r.label)} | spatialId=${escapeHtml(r.spatialId||'NULL')} | targetId=${escapeHtml(r.targetId||'NULL')} | onclick=${escapeHtml(r.onclick||'—')}</li>`).join('')}</ol>`:'<span class="tvd-muted">(none)</span>')}
         ${block('LAST NAVIGATION',`<pre class="tvd-pre">${escapeHtml(pretty(lastNavigation||'(none)'))}</pre>`)}
@@ -164,6 +256,12 @@
     host.querySelector('[data-tvd-minimize]')?.addEventListener('click',()=>{minimized=!minimized;render();});
   }
 
+  window.__testhpSpatialTargetTrace = Object.freeze({
+    getSelectedWrites: () => selectedWrites.slice(),
+    getApplyCalls: () => applyCalls.slice(),
+    getManagerCalls: () => managerCalls.slice(),
+    install: () => { installHooks(); return { manager: managerInfo(), applyHooked, managerHooked: !!managerHooked }; }
+  });
   window.__testhpViewportDebug = Object.freeze({
     getState: () => spatialState(),
     getManager: () => managerInfo(),
@@ -173,5 +271,8 @@
     getLastError: () => lastError
   });
 
+  installHooks();
   render();
+  const hookTimer = setInterval(installHooks, 250);
+  window.addEventListener('beforeunload', () => clearInterval(hookTimer), { once: true });
 })();
