@@ -31,19 +31,20 @@
     };
   };
 
-  // Read-only target-focused registry snapshot for Twin debug.
-  // debug=true makes the backend return the exact match/reject decision for
-  // every same-subject/timepoint record, so a missing target cannot look like
-  // a generic renderer/cache failure.
   async function collectRegistryDiagnostics(target = window.spatialEvidenceTarget || window.selectedSpatialNode || 'hand') {
+    const encodedTarget = encodeURIComponent(String(target));
     const diagnostics = {
       requestedTarget: target,
-      endpoint: `/api/spatial/registry?subject_id=own_cohort&timepoint=T0&debug=true`,
+      endpoint: `/api/spatial/registry?subject_id=own_cohort&timepoint=T0&spatial_node_id=${encodedTarget}&debug=true`,
       fetchedAt: new Date().toISOString(), ok: false, status: null,
       total: 0, targetLinked: 0, prepared: 0,
       targetRecords: [], allRecords: [], matchDebug: null, error: null
     };
     try {
+      // Important: the target filter is intentional here. The debug response
+      // still evaluates every subject/timepoint record and exposes the exact
+      // reject reason, while `items` contains only records actually accepted
+      // for the selected target.
       const response = await fetch(diagnostics.endpoint, { cache: 'no-store' });
       diagnostics.status = response.status;
       if (!response.ok) throw new Error(`registry HTTP ${response.status}`);
@@ -64,12 +65,19 @@
         prepared: !!(item.prepared || item.prepared_asset || item.prepared_asset_id),
         prepared_asset_id: item.prepared_asset_id || item.prepared_asset?.id || null
       });
-      diagnostics.total = payload.debug?.scoped_count ?? items.length;
-      diagnostics.allRecords = (payload.debug?.decisions || items).map(summarize);
+      const decisions = Array.isArray(payload.debug?.decisions) ? payload.debug.decisions : [];
+      diagnostics.total = payload.debug?.scoped_count ?? decisions.length;
+      diagnostics.allRecords = decisions.map(summarize);
       diagnostics.targetRecords = items.map(summarize);
-      diagnostics.targetLinked = diagnostics.targetRecords.length;
+      diagnostics.targetLinked = items.length;
       diagnostics.prepared = diagnostics.targetRecords.filter(item => item.prepared).length;
-      diagnostics.matchDebug = payload.debug || null;
+      diagnostics.matchDebug = {
+        ...(payload.debug || {}),
+        accepted: decisions.filter(d => d.matched),
+        rejected: decisions.filter(d => !d.matched),
+        rejectedCount: decisions.filter(d => !d.matched).length,
+        target: target,
+      };
       diagnostics.ok = true;
     } catch (error) {
       diagnostics.error = { name: error.name || 'Error', message: error.message || String(error) };
@@ -81,16 +89,15 @@
 
   window.__testhpCollectRegistryDiagnostics = collectRegistryDiagnostics;
 
-  // Re-run automatically whenever spatial navigation changes, so the console
-  // always contains the exact registry state for the currently selected node.
   window.addEventListener('testhp:spatial-layer-changed', event => {
     const detail = event?.detail || {};
     const target = detail.spatial_id || detail.spatialId || detail.target?.spatial_id || window.spatialEvidenceTarget;
     if (target) collectRegistryDiagnostics(target).then(d => {
       console.groupCollapsed(`[Twin Registry Debug] ${target}`);
-      console.log('summary', { total: d.total, targetLinked: d.targetLinked, prepared: d.prepared, status: d.status });
+      console.log('summary', { total: d.total, targetLinked: d.targetLinked, prepared: d.prepared, rejected: d.matchDebug?.rejectedCount ?? 0, status: d.status });
       console.table(d.matchDebug?.decisions || d.targetRecords);
-      console.log('all registry records', d.allRecords);
+      console.log('accepted', d.matchDebug?.accepted || []);
+      console.log('rejected', d.matchDebug?.rejected || []);
       console.groupEnd();
     });
   });
