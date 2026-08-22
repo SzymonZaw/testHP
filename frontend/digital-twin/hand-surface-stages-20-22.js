@@ -8,9 +8,12 @@
     ['hand/palm/hypothenar-eminence', 'hand/palm/hypothenar'],
     ['hand/palm/central-palm-eminence', 'hand/palm/central-palm']
   ]);
+
   const canonicalSpatialId = value => {
     if (!value) return null;
-    const raw = typeof value === 'string' ? value : value.spatial_id || value.spatialId || value.targetSpatialId || value.target || value.spatialTarget || null;
+    const raw = typeof value === 'string'
+      ? value
+      : value.spatial_id || value.spatialId || value.targetSpatialId || value.target || value.spatialTarget || null;
     if (!raw || typeof raw !== 'string') return raw;
     return CANONICAL_DEEP_IDS.get(raw) || raw;
   };
@@ -21,11 +24,6 @@
   const writeJson = (key, value) => localStorage.setItem(key, JSON.stringify(value));
   const spatialIdOf = value => canonicalSpatialId(value);
 
-  // Keep the last canonical navigation event locally. The evidence cache can
-  // legitimately point at a different target, so it must never win over the
-  // current viewport selection. This also fixes the boot-order case where the
-  // selected node is represented by the manager/event stream rather than a
-  // window global.
   let lastSpatialTarget = null;
   const rememberSpatialTarget = detail => {
     const id = spatialIdOf(detail);
@@ -51,8 +49,6 @@
   };
 
   const surfaceTarget = () => {
-    // Priority is intentional: canonical viewport navigation > manager state
-    // > selected-node compatibility globals > evidence-cache target.
     const value = lastSpatialTarget
       || managerTarget()
       || spatialIdOf(window.selectedSpatialNode)
@@ -120,7 +116,7 @@
     const panel = document.createElement('section');
     panel.id = 'hand-surface-stages-20-22';
     panel.style.cssText = 'margin-top:14px;border:1px solid var(--border,#d8dee8);border-radius:12px;padding:14px;background:var(--panel,#fff)';
-    panel.innerHTML = '<div style="display:flex;justify-content:space-between;gap:10px;align-items:center"><strong>STAGES 20–22 · Projection package</strong><span id="hss2022-status" style="font-size:11px;font-weight:700;text-transform:uppercase;color:#667085">WAITING</span></div><div id="hss2022-body" style="margin-top:10px;font-size:13px"></div>';
+    panel.innerHTML = '<div style="display:flex;justify-content:space-between;gap:10px;align-items:center"><strong>PAKIET BLIŹNIAKA</strong><span id="hss2022-status" style="font-size:11px;font-weight:700;text-transform:uppercase;color:#667085">OCZEKUJE</span></div><div id="hss2022-body" style="margin-top:10px;font-size:13px"></div>';
     studio.appendChild(panel);
     renderPanel();
   }
@@ -131,18 +127,32 @@
     if (!body || !status) return;
     const target = surfaceTarget();
     if (!isSupportedTarget(target)) {
-      status.textContent = 'WAITING';
-      body.textContent = 'Projection remains attached to a supported hand spatial target.';
+      status.textContent = 'OCZEKUJE';
+      body.textContent = 'Wybierz wspierany cel powierzchni dłoni.';
       return;
     }
+
     const surface = readJson(SURFACE_KEY, { geometry: {}, mappings: [], geometryTargets: {} });
     const manifest = surface.geometryTargets?.[target] || surface.geometry?.[target];
-    const mappings = Array.isArray(surface.mappings) ? surface.mappings.filter(m => canonicalSpatialId(m?.spatialTarget) === target) : [];
+    const mappings = Array.isArray(surface.mappings)
+      ? surface.mappings.filter(m => canonicalSpatialId(m?.spatialTarget) === target)
+      : [];
     const registered = VIEWS.filter(v => mappings.some(m => m?.view === v && Number(m?.quality || 0) > 0)).length;
+    const calibrated = !!manifest?.calibrated && manifest?.source !== 'procedural-surface-fallback';
     const plan = readJson(PLAN_KEY, null);
     const planReady = plan?.schema === 'surface-projection-v2' && canonicalSpatialId(plan?.target) === target;
-    status.textContent = planReady ? 'READY' : manifest ? 'GEOMETRY READY' : 'WAITING';
-    body.innerHTML = `<div>Cel: <code>${target}</code></div><div style="margin-top:6px">Geometria: <b>${manifest ? 'GOTOWA' : 'BRAK'}</b> · źródło: <code>${manifest?.source || '—'}</code> · kalibracja: <b>${manifest?.calibrated ? 'TAK' : 'NIE'}</b></div><div style="margin-top:6px">Rejestracja: <b>${registered}/5</b> widoków · plan projekcji: <b>${planReady ? 'TAK' : 'NIE'}</b></div><div style="margin-top:8px;font-size:12px;color:#667085">Proceduralna geometria odblokowuje kontrakt etapu 13, ale nie tworzy sztucznych zdjęć ani rejestracji.</div>`;
+    const packageReady = calibrated && registered === VIEWS.length && planReady;
+
+    status.textContent = packageReady ? 'GOTOWY' : 'NIEGOTOWY';
+    body.innerHTML = `
+      <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px">
+        <div style="padding:9px;border:1px solid var(--border,#d8dee8);border-radius:8px"><strong>WEJŚCIE</strong><div style="margin-top:4px">${registered}/5 widoków z rejestracją</div></div>
+        <div style="padding:9px;border:1px solid var(--border,#d8dee8);border-radius:8px"><strong>PRZETWARZANIE</strong><div style="margin-top:4px">geometria ${calibrated ? 'skalibrowana' : 'nieskalibrowana'} · plan ${planReady ? 'gotowy' : 'brak'}</div></div>
+        <div style="padding:9px;border:1px solid var(--border,#d8dee8);border-radius:8px"><strong>WYNIK</strong><div style="margin-top:4px">${packageReady ? 'pakiet gotowy' : 'pakiet niegotowy'}</div></div>
+      </div>
+      <div style="margin-top:8px;color:#667085;font-size:12px">Cel: <code>${target}</code></div>
+      ${!calibrated ? '<div style="margin-top:8px;padding:8px;border-radius:7px;background:#fff7ed;color:#9a3412">Geometria proceduralna jest tylko wizualizacją. Nie jest traktowana jako rejestracja fotograficzna i nie może sama oznaczać pakietu jako gotowego.</div>' : ''}
+    `;
   }
 
   let reconcileTimer = null;
