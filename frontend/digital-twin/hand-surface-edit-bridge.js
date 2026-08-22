@@ -13,8 +13,7 @@
   }
   window.addEventListener('testhp:edit-evidence',e=>{if(e.detail?.item)open(e.detail.item)});
 
-  // Stages 20–22 are loaded after the existing evidence edit bridge so the
-  // legacy bridge remains stable and the new pipeline can be removed independently.
   const loadStages20to22=()=>{if(document.querySelector('script[data-stages-20-22]'))return;const s=document.createElement('script');s.src='/digital-twin/hand-surface-stages-20-22.js?v=stages-20-22-1';s.dataset.stages20To22='1';document.body.appendChild(s)};
-  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',loadStages20to22,{once:true});else loadStages20to22();
+  const loadSimpleUi=()=>{if(document.querySelector('script[data-hand-surface-simple-ui]'))return;const s=document.createElement('script');s.src='/digital-twin/hand-surface-simple-ui.js?v=simple-ui-1';s.dataset.handSurfaceSimpleUi='1';document.body.appendChild(s)};
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',()=>{loadStages20to22();loadSimpleUi()},{once:true});else{loadStages20to22();loadSimpleUi()}
 })();
