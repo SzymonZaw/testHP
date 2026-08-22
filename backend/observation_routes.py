@@ -9,8 +9,10 @@ from pydantic import BaseModel, Field
 from .biological_state_routes import biological_state
 from .data_ingestion import registry_status
 from .observation_registry import archive_observation, create_observation, get_observation, list_observations, observation_history, restore_observation, update_observation
+from .photo_reconstruction_routes import router as photo_reconstruction_router
 
 router = APIRouter(tags=["biological-observations"])
+router.include_router(photo_reconstruction_router)
 
 
 class ObservationCreateRequest(BaseModel):
