@@ -1,11 +1,12 @@
 import * as THREE from 'three';
+import './hand-surface-photo-stages.js';
 
 (() => {
   const EVIDENCE = 'digitalTwinEvidenceUX.v2';
   const SURFACE = 'digitalTwinHandSurface.v1';
   const VIEWS = ['front','back','side_left','side_right','thumb'];
   const $ = id => document.getElementById(id);
-  const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const esc = v => String(v ?? '').replace(/[&<>\"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;',"'":'&#39;'}[c]));
   const read = (key, fallback) => { try { return JSON.parse(localStorage.getItem(key) || 'null') ?? fallback; } catch { return fallback; } };
   const evidence = () => { const x = read(EVIDENCE, {evidence:[]}); return Array.isArray(x.evidence) ? x.evidence.filter(e => !e.archived) : []; };
   const inferView = e => {
@@ -30,7 +31,7 @@ import * as THREE from 'three';
 
   function renderInputs(){
     const c=$('p3r-inputs'); if(!c)return; let ready=0;
-    c.innerHTML=VIEWS.map(v=>{const e=preparedFor(v); if(e)ready++; return `<div class="p3r-item"><div class="p3r-head"><strong>${esc(v.replaceAll('_',' '))}</strong><span class="p3r-badge ${e?'p3r-good':'p3r-bad'}">${e?'READY':'MISSING'}</span></div><small>${e?esc(e.filename||e.preparedAsset?.name||'prepared image'):'prepare and save this view in Stage 12'}</small></div>`}).join('');
+    c.innerHTML=VIEWS.map(v=>{const e=preparedFor(v); if(e)ready++; return `<div class="p3r-item"><div class="p3r-head"><strong>${esc(v.replaceAll('_',' '))}</strong><span class="p3r-badge ${e?'p3r-good':'p3r-bad'}">${e?'READY':'MISSING'}</span></div><small>${e?esc(e.filename||e.preparedAsset?.name||'prepared image'):'No prepared photograph yet'}</small></div>`}).join('');
     $('p3r-score').textContent=`${ready} / ${VIEWS.length}`; $('p3r-meter').style.width=`${Math.round(ready/VIEWS.length*100)}%`; $('p3r-build').disabled=ready<2; $('p3r-status').textContent=ready<2?'At least two prepared views are required.':'Ready for silhouette reconstruction.';
   }
 
