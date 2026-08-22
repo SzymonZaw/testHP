@@ -44,7 +44,11 @@
         const next = { ...item };
         const source = next.target ?? next.spatial_id ?? next.spatialId;
         const normalized = normalizeId(source);
-        if (normalized && normalized !== source) { next.target = normalized; next.spatial_id = normalized; changed = true; }
+        if (normalized && normalized !== source) {
+          next.target = normalized;
+          next.spatial_id = normalized;
+          changed = true;
+        }
         return next;
       });
       if (changed) localStorage.setItem(key, JSON.stringify(raw));
@@ -76,9 +80,9 @@
     manager?.active?.spatial_id || manager?.active?.spatialId || current.spatial_id
   );
 
-  // Compatibility channels are deliberately synchronized from the canonical
-  // manager ID. This prevents late legacy writers from restoring labels such
-  // as "Microscopy field A" or old hypothenar-eminence paths.
+  // Compatibility channels are synchronized only at explicit lifecycle/target
+  // events. Do not observe the DOM or poll: doing so can react to our own
+  // data-spatial-target write and create a self-triggering reconciliation loop.
   const syncCompatibility = () => {
     const manager = window.spatialViewportManager;
     const canonical = managerSpatialId(manager);
@@ -100,7 +104,9 @@
     window.selectedSpatialNode = canonical;
     window.spatialEvidenceTarget = canonical;
     window.testhpSpatialTarget = canonical;
-    if (document.body?.dataset) document.body.dataset.spatialTarget = canonical;
+    if (document.body?.dataset && document.body.dataset.spatialTarget !== canonical) {
+      document.body.dataset.spatialTarget = canonical;
+    }
     migrateEvidenceTargets();
   };
 
@@ -124,11 +130,8 @@
   window.addEventListener('testhp:spatial-contract-request', event => event?.detail?.callback?.(current));
   window.addEventListener('testhp:viewport-manager-ready', syncCompatibility);
   window.addEventListener('testhp:spatial-target-changed', syncCompatibility);
-  window.addEventListener('testhp:spatial-contract-changed', syncCompatibility);
+  // This event is emitted by publish and is intentionally not used as a
+  // reconciliation trigger; publish already synchronized before dispatch.
 
-  // Reconcile after asynchronous/legacy modules and DOM compatibility writers.
-  const reconcile = () => { syncCompatibility(); queueMicrotask(syncCompatibility); };
-  if (document.body) new MutationObserver(reconcile).observe(document.body, { attributes: true, attributeFilter: ['data-spatial-target'] });
-  setInterval(syncCompatibility, 100);
   publish(current);
 })();
