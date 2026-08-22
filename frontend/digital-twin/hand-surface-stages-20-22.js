@@ -3,16 +3,23 @@
   const PLAN_KEY = 'digitalTwinSurfaceProjection.v2';
   const VIEWS = ['front','back','side_left','side_right','thumb'];
   const TARGET_ROOT = 'hand/palm';
+  const CANONICAL_DEEP_IDS = new Map([
+    ['hand/palm/thenar-eminence', 'hand/palm/thenar'],
+    ['hand/palm/hypothenar-eminence', 'hand/palm/hypothenar'],
+    ['hand/palm/central-palm-eminence', 'hand/palm/central-palm']
+  ]);
+  const canonicalSpatialId = value => {
+    if (!value) return null;
+    const raw = typeof value === 'string' ? value : value.spatial_id || value.spatialId || value.targetSpatialId || value.target || value.spatialTarget || null;
+    if (!raw || typeof raw !== 'string') return raw;
+    return CANONICAL_DEEP_IDS.get(raw) || raw;
+  };
   const readJson = (key, fallback) => {
     try { return JSON.parse(localStorage.getItem(key) || 'null') ?? fallback; }
     catch { return fallback; }
   };
   const writeJson = (key, value) => localStorage.setItem(key, JSON.stringify(value));
-  const spatialIdOf = value => {
-    if (!value) return null;
-    if (typeof value === 'string') return value;
-    return value.spatial_id || value.spatialId || value.targetSpatialId || value.target || value.spatialTarget || null;
-  };
+  const spatialIdOf = value => canonicalSpatialId(value);
 
   // Keep the last canonical navigation event locally. The evidence cache can
   // legitimately point at a different target, so it must never win over the
@@ -49,10 +56,10 @@
     const value = lastSpatialTarget
       || managerTarget()
       || spatialIdOf(window.selectedSpatialNode)
-      || document.body.dataset.spatialTarget
-      || window.spatialEvidenceTarget
+      || canonicalSpatialId(document.body.dataset.spatialTarget)
+      || spatialIdOf(window.spatialEvidenceTarget)
       || TARGET_ROOT;
-    return String(value);
+    return String(canonicalSpatialId(value) || TARGET_ROOT);
   };
 
   function isSupportedTarget(target) {
@@ -130,10 +137,10 @@
     }
     const surface = readJson(SURFACE_KEY, { geometry: {}, mappings: [], geometryTargets: {} });
     const manifest = surface.geometryTargets?.[target] || surface.geometry?.[target];
-    const mappings = Array.isArray(surface.mappings) ? surface.mappings.filter(m => m?.spatialTarget === target) : [];
+    const mappings = Array.isArray(surface.mappings) ? surface.mappings.filter(m => canonicalSpatialId(m?.spatialTarget) === target) : [];
     const registered = VIEWS.filter(v => mappings.some(m => m?.view === v && Number(m?.quality || 0) > 0)).length;
     const plan = readJson(PLAN_KEY, null);
-    const planReady = plan?.schema === 'surface-projection-v2' && plan?.target === target;
+    const planReady = plan?.schema === 'surface-projection-v2' && canonicalSpatialId(plan?.target) === target;
     status.textContent = planReady ? 'READY' : manifest ? 'GEOMETRY READY' : 'WAITING';
     body.innerHTML = `<div>Cel: <code>${target}</code></div><div style="margin-top:6px">Geometria: <b>${manifest ? 'GOTOWA' : 'BRAK'}</b> · źródło: <code>${manifest?.source || '—'}</code> · kalibracja: <b>${manifest?.calibrated ? 'TAK' : 'NIE'}</b></div><div style="margin-top:6px">Rejestracja: <b>${registered}/5</b> widoków · plan projekcji: <b>${planReady ? 'TAK' : 'NIE'}</b></div><div style="margin-top:8px;font-size:12px;color:#667085">Proceduralna geometria odblokowuje kontrakt etapu 13, ale nie tworzy sztucznych zdjęć ani rejestracji.</div>`;
   }
