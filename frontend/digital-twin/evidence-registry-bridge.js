@@ -13,15 +13,10 @@
     window.dispatchEvent(new CustomEvent('testhp:evidence-target-debug', { detail: payload }));
   };
 
-  const normalizeTarget = (value) => {
-    if (value == null) return '';
-    return String(value).trim().replace(/^\/+|\/+$/g, '');
-  };
+  const normalizeTarget = value => value == null ? '' : String(value).trim().replace(/^\/+|\/+$/g, '');
 
   const targetMatches = (record, target) => {
-    const recordTarget = normalizeTarget(
-      record?.spatial_node_id ?? record?.spatialId ?? record?.target
-    );
+    const recordTarget = normalizeTarget(record?.spatial_node_id ?? record?.spatialId ?? record?.target);
     const wanted = normalizeTarget(target);
     const match = !!wanted && recordTarget === wanted;
     debug(match ? 'MATCH' : 'REJECT', {
@@ -38,7 +33,7 @@
     return match;
   };
 
-  const toUX = (item) => ({
+  const toUX = item => ({
     id: item.evidence_id || item.asset_id,
     backendAssetId: item.asset_id || '',
     type: item.spatial_level === 'cellular' ? 'Cellular' : item.spatial_level === 'tissue' ? 'Tissue' : item.spatial_level === 'cell' ? 'Cellular' : item.modality === 'rna' ? 'Molecular' : 'Macro',
@@ -63,15 +58,22 @@
 
   async function syncCanonical() {
     try {
-      const response = await fetch('/api/spatial/registry?subject_id=own_cohort&timepoint=T0', { cache: 'no-store' });
+      const response = await fetch('/api/spatial/registry?subject_id=own_cohort&timepoint=T0&debug=true', { cache: 'no-store' });
       debug('REGISTRY_FETCH', { ok: response.ok, status: response.status });
       if (!response.ok) return;
       const payload = await response.json();
       const canonical = Array.isArray(payload.items) ? payload.items : [];
       debug('REGISTRY_PAYLOAD', {
         count: canonical.length,
+        target: window.spatialEvidenceTarget || null,
         targets: canonical.map(item => ({ id: item.evidence_id || item.asset_id || null, spatial_node_id: item.spatial_node_id || null }))
       });
+      if (payload.debug) {
+        debug('REGISTRY_MATCH_DIAGNOSTICS', payload.debug);
+        payload.debug.records?.filter(record => !record.matched).forEach(record => {
+          debug('REGISTRY_REJECT', record);
+        });
+      }
       if (!canonical.length) return;
 
       let current = {};
@@ -85,7 +87,7 @@
       localStorage.setItem(STORAGE, JSON.stringify({ evidence: merged, target }));
 
       window.dispatchEvent(new CustomEvent('testhp:evidence-registry-synced', {
-        detail: { count: canonical.length, evidence: canonicalUX, canonical: true }
+        detail: { count: canonical.length, evidence: canonicalUX, canonical: true, registryDebug: payload.debug || null }
       }));
 
       if (!sessionStorage.getItem(BOOTSTRAP)) {
@@ -98,13 +100,13 @@
     }
   }
 
-  // Debug-only observation of the spatial target writer. We do not alter its
-  // behavior; we only capture every call and the stack so the second writer
-  // that restores macro|palm can be identified precisely.
+  // Trace the actual canonical viewport manager. The previous probe looked at
+  // legacy manager globals, so it could silently install nowhere while the
+  // application was using window.spatialViewportManager.
   const installSpatialWriterTrace = () => {
-    if (window.__testhpEvidenceTargetWriterTraceInstalled) return;
-    const manager = window.__testhpSpatialManager || window.spatialManager || window.digitalTwinSpatialManager;
-    if (!manager || typeof manager.setSpatialTarget !== 'function') return;
+    if (window.__testhpEvidenceTargetWriterTraceInstalled) return true;
+    const manager = window.spatialViewportManager;
+    if (!manager || typeof manager.setSpatialTarget !== 'function') return false;
     const original = manager.setSpatialTarget;
     manager.setSpatialTarget = function (...args) {
       debug('SPATIAL_WRITER_CALL', {
@@ -129,12 +131,14 @@
     };
     window.__testhpEvidenceTargetWriterTraceInstalled = true;
     debug('WRITER_TRACE_INSTALLED', { managerKeys: Object.keys(manager) });
+    return true;
   };
 
   window.__testhpEvidenceTargetMatches = targetMatches;
   window.__testhpInstallEvidenceTargetWriterTrace = installSpatialWriterTrace;
 
-  window.addEventListener('testhp:evidence-registry-synced', (event) => {
+  window.addEventListener('testhp:viewport-manager-ready', installSpatialWriterTrace);
+  window.addEventListener('testhp:evidence-registry-synced', event => {
     window.dispatchEvent(new CustomEvent('testhp:evidence-ux-refresh', { detail: event.detail || {} }));
   });
 
