@@ -19,6 +19,7 @@
   let managerHooked = null;
   let applyHooked = false;
   let renderQueued = false;
+  let pointerDown = false;
 
   const safe = fn => { try { return fn(); } catch { return null; } };
   const pretty = value => JSON.stringify(value, (key, v) => {
@@ -77,12 +78,17 @@
     return {level:detail?.level||target.level||null,target:target.label||target.name||detail?.targetLabel||null,id:target.id||target.regionId||null,spatial_id:target.spatial_id||target.spatialId||null,path:target.path||detail?.path||null,children:childrenOf(detail)};
   });
 
-  // Render is deliberately throttled. Replacing innerHTML on every event was
-  // resetting the debug panel's scroll position and made the page feel stuck.
+  // The debug panel is diagnostic UI, not an animation. Never rebuild it while
+  // the user is interacting with it: rebuilding DOM nodes destroys text
+  // selection, focus and drag selection. This was the source of the "jumping"
+  // behaviour on the feature branch.
   const scheduleRender = () => {
-    if (renderQueued) return;
+    if (pointerDown || renderQueued) return;
     renderQueued = true;
-    requestAnimationFrame(() => { renderQueued=false; render(); });
+    requestAnimationFrame(() => {
+      renderQueued = false;
+      if (!pointerDown) render();
+    });
   };
 
   const record = (type, detail={}) => {
@@ -98,29 +104,59 @@
     targetId:button.dataset.targetId||button.dataset.target||null,
     onclick:button.getAttribute('onclick')||button.onclick?.toString?.()||null
   }));
+
   const installSelectedNodeTrace = () => {
     const descriptor=safe(()=>Object.getOwnPropertyDescriptor(window,'selectedSpatialNode'));
     if(descriptor?.set?.__testhpWrapped||descriptor&&!descriptor.configurable) return;
     let current=safe(()=>window.selectedSpatialNode);
     try {
-      const setter=function(value){const before=safe(()=>descriptor?.get?descriptor.get.call(window):current);selectedWrites.push({t:Date.now()-startedAt,before:compactTarget(before),after:compactTarget(value),stack:stack()});if(selectedWrites.length>MAX_TARGET_TRACE)selectedWrites.shift();if(descriptor?.set)descriptor.set.call(window,value);else current=value;scheduleRender();};
+      const setter=function(value){
+        const before=safe(()=>descriptor?.get?descriptor.get.call(window):current);
+        selectedWrites.push({t:Date.now()-startedAt,before:compactTarget(before),after:compactTarget(value),stack:stack()});
+        if(selectedWrites.length>MAX_TARGET_TRACE)selectedWrites.shift();
+        if(descriptor?.set)descriptor.set.call(window,value);else current=value;
+        scheduleRender();
+      };
       Object.defineProperty(setter,'__testhpWrapped',{value:true});
       Object.defineProperty(window,'selectedSpatialNode',{configurable:true,enumerable:descriptor?.enumerable??true,get(){return descriptor?.get?descriptor.get.call(window):current;},set:setter});
     } catch {}
   };
+
   const installApplyTrace = () => {
     if(applyHooked||typeof window.applySpatialNode!=='function') return;
     const original=window.applySpatialNode;if(original.__testhpWrapped){applyHooked=true;return;}
-    const wrapped=function(...args){const entry={t:Date.now()-startedAt,args:args.map(compactTarget),before:spatialState(),stack:stack()};applyCalls.push(entry);if(applyCalls.length>MAX_TARGET_TRACE)applyCalls.shift();const result=original.apply(this,args);entry.after=spatialState();scheduleRender();return result;};
+    const wrapped=function(...args){
+      const entry={t:Date.now()-startedAt,args:args.map(compactTarget),before:spatialState(),stack:stack()};
+      applyCalls.push(entry);if(applyCalls.length>MAX_TARGET_TRACE)applyCalls.shift();
+      const result=original.apply(this,args);entry.after=spatialState();scheduleRender();return result;
+    };
     Object.defineProperty(wrapped,'__testhpWrapped',{value:true});try{window.applySpatialNode=wrapped;applyHooked=true;}catch{}
   };
+
   const installManagerTrace = () => {
     const manager=getManager();if(!manager||manager===managerHooked)return;
     const original=manager.setSpatialTarget;
-    if(typeof original==='function'&&!original.__testhpWrapped){const wrapped=function(...args){const entry={t:Date.now()-startedAt,args:args.map(compactTarget),before:spatialState(),stack:stack()};managerCalls.push(entry);if(managerCalls.length>MAX_TARGET_TRACE)managerCalls.shift();const result=original.apply(this,args);entry.after=spatialState();scheduleRender();return result;};Object.defineProperty(wrapped,'__testhpWrapped',{value:true});try{manager.setSpatialTarget=wrapped;}catch{}}
+    if(typeof original==='function'&&!original.__testhpWrapped){
+      const wrapped=function(...args){
+        const entry={t:Date.now()-startedAt,args:args.map(compactTarget),before:spatialState(),stack:stack()};
+        managerCalls.push(entry);if(managerCalls.length>MAX_TARGET_TRACE)managerCalls.shift();
+        const result=original.apply(this,args);entry.after=spatialState();scheduleRender();return result;
+      };
+      Object.defineProperty(wrapped,'__testhpWrapped',{value:true});try{manager.setSpatialTarget=wrapped;}catch{}
+    }
     managerHooked=manager;scheduleRender();
   };
   const installHooks=()=>{installSelectedNodeTrace();installApplyTrace();installManagerTrace();};
+
+  // Keep the panel interactive. In particular, don't rebuild it between
+  // mousedown and mouseup, otherwise browser text selection gets cancelled.
+  host.addEventListener('pointerdown', () => { pointerDown=true; }, true);
+  window.addEventListener('pointerup', () => {
+    if (!pointerDown) return;
+    pointerDown=false;
+    scheduleRender();
+  }, true);
+  window.addEventListener('blur', () => { pointerDown=false; });
 
   document.addEventListener('click',event=>{const button=event.target?.closest?.('#spatial-children button,#spatial-children [role="button"],.spatial-children button');if(!button)return;lastClickRoute={t:Date.now()-startedAt,...routeFromButton(button),spatialState:spatialState()};scheduleRender();},true);
   document.addEventListener('input',event=>{const el=event.target;if(!el||!el.matches?.('input,select,textarea'))return;lastInput={t:Date.now()-startedAt,type:el.type||el.tagName.toLowerCase(),id:el.id||null,name:el.name||null,value:el.type==='password'?'[redacted]':String(el.value??'').slice(0,160)};scheduleRender();},true);
@@ -134,13 +170,14 @@
   const kv=(k,v)=>`<div class="tvd-kv"><span>${escapeHtml(k)}</span><b>${escapeHtml(v??'—')}</b></div>`;
 
   function render(){
+    if(pointerDown) return;
     const previous=host.querySelector('.tvd');
     const previousScroll=previous?previous.scrollTop:0;
     const state=spatialState(),manager=managerInfo(),routes=buttonRoutes(),elapsed=Date.now()-startedAt;
     host.innerHTML=`<div class="tvd ${minimized?'is-minimized':''}">
       <style>
         #twin-viewport-debug-host{pointer-events:none}
-        #twin-viewport-debug-host .tvd{pointer-events:auto;box-sizing:border-box;max-height:min(78vh,760px);overflow:auto;overscroll-behavior:contain;scrollbar-gutter:stable;background:rgba(16,22,28,.96);color:#dce5ea;border:1px solid rgba(255,255,255,.16);border-radius:12px;box-shadow:0 12px 36px rgba(0,0,0,.28);font:11px/1.35 ui-monospace,SFMono-Regular,Consolas,monospace;backdrop-filter:blur(8px)}
+        #twin-viewport-debug-host .tvd{pointer-events:auto;box-sizing:border-box;max-height:min(78vh,760px);overflow:auto;overscroll-behavior:contain;scrollbar-gutter:stable;background:rgba(16,22,28,.96);color:#dce5ea;border:1px solid rgba(255,255,255,.16);border-radius:12px;box-shadow:0 12px 36px rgba(0,0,0,.28);font:11px/1.35 ui-monospace,SFMono-Regular,Consolas,monospace;backdrop-filter:blur(8px);user-select:text}
         #twin-viewport-debug-host .tvd-head{position:sticky;top:0;z-index:2;display:flex;align-items:center;justify-content:space-between;padding:8px 10px;background:rgba(16,22,28,.98);border-bottom:1px solid rgba(255,255,255,.12)}
         #twin-viewport-debug-host .tvd-title{font-weight:800;letter-spacing:.08em}.tvd-title span{opacity:.65}
         #twin-viewport-debug-host .tvd-btn{border:1px solid rgba(255,255,255,.18);background:transparent;color:#dce5ea;border-radius:6px;padding:3px 7px;cursor:pointer}
@@ -158,7 +195,7 @@
       </div>`}
     </div>`;
     const current=host.querySelector('.tvd');
-    if(current&&!minimized){current.scrollTop=previousScroll;requestAnimationFrame(()=>{current.scrollTop=previousScroll;});}
+    if(current&&!minimized){current.scrollTop=previousScroll;}
     host.querySelector('[data-tvd-minimize]')?.addEventListener('click',()=>{minimized=!minimized;render();});
   }
 
