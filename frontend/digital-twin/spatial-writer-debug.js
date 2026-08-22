@@ -1,17 +1,18 @@
 (() => {
-  if (window.__testhpSpatialWriterDebugInstalled) return;
-  window.__testhpSpatialWriterDebugInstalled = true;
+  if (window.__testhpSpatialWriterDebugBootstrapInstalled) return;
+  window.__testhpSpatialWriterDebugBootstrapInstalled = true;
 
   const safe = value => {
     try { return JSON.stringify(value); } catch { return String(value); }
   };
-  const stack = () => (new Error().stack || '').split('\n').slice(2, 9).join(' <- ');
+  const stack = () => (new Error().stack || '').split('\n').slice(2, 12).join(' <- ');
+  const buffer = () => (window.__testhpSpatialWriterDebug ||= []);
   const emit = (kind, detail = {}) => {
     const payload = { kind, at: Math.round(performance.now()), ...detail, stack: stack() };
-    window.__testhpSpatialWriterDebug = window.__testhpSpatialWriterDebug || [];
-    window.__testhpSpatialWriterDebug.push(payload);
-    if (window.__testhpSpatialWriterDebug.length > 100) window.__testhpSpatialWriterDebug.shift();
+    buffer().push(payload);
+    if (buffer().length > 200) buffer().shift();
     window.dispatchEvent(new CustomEvent('testhp:spatial-writer-debug', { detail: payload }));
+    console.debug('[Twin spatial writer debug]', payload);
   };
   const nav = () => ({
     path: [...document.querySelectorAll('#spatial-breadcrumb button')].map(x => x.textContent.trim()).filter(Boolean),
@@ -23,72 +24,95 @@
     evidenceTarget: window.spatialEvidenceTarget || null
   });
 
-  const snapshot = () => safe(nav());
-  let previous = snapshot();
-  const sample = reason => {
-    const current = snapshot();
-    if (current !== previous) {
-      emit('STATE CHANGE', { reason, before: JSON.parse(previous), after: JSON.parse(current) });
-      previous = current;
-    }
-  };
+  function installManagerDebug(manager) {
+    if (!manager || manager.__testhpSpatialWriterDebugInstalled) return;
+    manager.__testhpSpatialWriterDebugInstalled = true;
+    emit('MANAGER DEBUG INSTALLED', { navigation: nav(), managerKeys: Object.keys(manager) });
 
-  const manager = window.spatialViewportManager;
-  if (manager) {
     ['activeKey', 'activeLayer'].forEach(prop => {
-      const descriptor = Object.getOwnPropertyDescriptor(manager, prop);
-      if (!descriptor || !descriptor.configurable) return;
-      let value = manager[prop];
+      let descriptor = Object.getOwnPropertyDescriptor(manager, prop);
+      let owner = manager;
+      while (!descriptor && owner) {
+        owner = Object.getPrototypeOf(owner);
+        descriptor = owner && Object.getOwnPropertyDescriptor(owner, prop);
+      }
+      if (!descriptor || !descriptor.configurable) {
+        emit('PROPERTY PATCH SKIPPED', { property: prop, reason: 'not-configurable-or-not-found', navigation: nav() });
+        return;
+      }
+      const originalGet = descriptor.get;
+      const originalSet = descriptor.set;
+      let value = originalGet ? originalGet.call(manager) : manager[prop];
       Object.defineProperty(manager, prop, {
         configurable: true,
         enumerable: descriptor.enumerable,
-        get() { return value; },
+        get() { return originalGet ? originalGet.call(this) : value; },
         set(next) {
-          const before = value;
+          const before = originalGet ? originalGet.call(this) : value;
           if (before !== next) emit('MANAGER PROPERTY WRITE', { property: prop, before, after: next, navigation: nav() });
-          value = next;
+          if (originalSet) originalSet.call(this, next); else value = next;
         }
       });
     });
+
+    if (typeof manager.setSpatialTarget === 'function' && !manager.setSpatialTarget.__testhpDebugWrapped) {
+      const original = manager.setSpatialTarget.bind(manager);
+      const wrapped = function(target, ...args) {
+        emit('SET SPATIAL TARGET CALL', { target, args, navigation: nav() });
+        let result;
+        try {
+          result = original(target, ...args);
+          emit('SET SPATIAL TARGET RETURN', { target, result, navigation: nav() });
+          return result;
+        } catch (error) {
+          emit('SET SPATIAL TARGET THROW', { target, error: String(error?.stack || error), navigation: nav() });
+          throw error;
+        }
+      };
+      wrapped.__testhpDebugWrapped = true;
+      manager.setSpatialTarget = wrapped;
+    }
   }
 
-  window.addEventListener('testhp:spatial-layer-changed', e => emit('EVENT spatial-layer-changed', { detail: e.detail || {}, navigation: nav() }));
-  window.addEventListener('testhp:spatial-target-changed', e => emit('EVENT spatial-target-changed', { detail: e.detail || {}, navigation: nav() }));
-  window.addEventListener('testhp:viewport-rendered', e => emit('EVENT viewport-rendered', { detail: e.detail || {}, navigation: nav() }));
-  window.addEventListener('testhp:deep-3d-active', e => emit('EVENT deep-3d-active', { detail: e.detail || {}, navigation: nav() }));
+  function install() {
+    const manager = window.spatialViewportManager;
+    if (!manager) return false;
+    installManagerDebug(manager);
+    const snapshot = () => safe(nav());
+    let previous = snapshot();
+    const sample = reason => {
+      const current = snapshot();
+      if (current !== previous) {
+        emit('STATE CHANGE', { reason, before: JSON.parse(previous), after: JSON.parse(current) });
+        previous = current;
+      }
+    };
 
-  document.addEventListener('pointerdown', e => {
-    const button = e.target?.closest?.('.spatial-target');
-    if (!button) return;
-    emit('POINTERDOWN', { button: button.textContent.trim(), spatialId: button.dataset?.spatialId || null, navigation: nav() });
-  }, true);
+    if (!window.__testhpSpatialWriterDebugListenersInstalled) {
+      window.__testhpSpatialWriterDebugListenersInstalled = true;
+      ['spatial-layer-changed','spatial-target-changed','viewport-rendered','deep-3d-active'].forEach(name => {
+        window.addEventListener(`testhp:${name}`, e => emit(`EVENT ${name}`, { detail: e.detail || {}, navigation: nav() }));
+      });
+      document.addEventListener('pointerdown', e => {
+        const button = e.target?.closest?.('.spatial-target');
+        if (button) emit('POINTERDOWN', { button: button.textContent.trim(), spatialId: button.dataset?.spatialId || null, navigation: nav() });
+      }, true);
+      document.addEventListener('click', e => {
+        const button = e.target?.closest?.('.spatial-target');
+        if (button) emit('CLICK', { button: button.textContent.trim(), spatialId: button.dataset?.spatialId || null, navigation: nav() });
+      }, true);
+      ['load','pageshow','pagehide','visibilitychange'].forEach(type => window.addEventListener(type, () => emit(`LIFECYCLE ${type}`, { navigation: nav() }), true));
+      window.__testhpSpatialWriterDebugSnapshot = nav;
+    }
+    sample('manager-install');
+    return true;
+  }
 
-  document.addEventListener('click', e => {
-    const button = e.target?.closest?.('.spatial-target');
-    if (!button) return;
-    emit('CLICK', { button: button.textContent.trim(), spatialId: button.dataset?.spatialId || null, navigation: nav() });
-  }, true);
-
-  const lifecycle = ['load', 'pageshow', 'pagehide', 'visibilitychange'];
-  lifecycle.forEach(type => window.addEventListener(type, () => emit(`LIFECYCLE ${type}`, { navigation: nav() }), true));
-
-  let lastActiveKey = manager?.activeKey || null;
-  let lastPath = snapshot();
+  let attempts = 0;
   const timer = setInterval(() => {
-    const currentKey = manager?.activeKey || null;
-    const currentPath = snapshot();
-    if (currentKey !== lastActiveKey) {
-      emit('ACTIVE KEY CHANGE DETECTED', { before: lastActiveKey, after: currentKey, navigation: nav() });
-      lastActiveKey = currentKey;
-    }
-    if (currentPath !== lastPath) {
-      emit('PATH CHANGE DETECTED', { before: JSON.parse(lastPath), after: JSON.parse(currentPath) });
-      lastPath = currentPath;
-    }
-    sample('poll');
+    attempts += 1;
+    if (install() || attempts >= 240) clearInterval(timer);
   }, 25);
-
   window.addEventListener('beforeunload', () => clearInterval(timer), { once: true });
-  window.__testhpSpatialWriterDebugSnapshot = nav;
-  emit('INSTALLED', { navigation: nav() });
+  emit('BOOTSTRAP INSTALLED', { navigation: nav() });
 })();
