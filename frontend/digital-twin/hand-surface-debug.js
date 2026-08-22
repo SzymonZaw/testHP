@@ -9,11 +9,28 @@
     panel.appendChild(box);
 
     const esc = v => String(v ?? '').replace(/[&<>\"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;',"'":'&#39;'}[c]));
+    const normalize = v => String(v ?? '').trim().replace(/^\/+|\/+$/g, '');
+    const managerTarget = () => {
+      const manager = window.spatialViewportManager;
+      const state = manager?.state || {};
+      const candidate = state.spatialTarget || state.target || manager?.spatialTarget || manager?.target || null;
+      if (candidate && typeof candidate === 'object') return candidate.spatial_node_id || candidate.spatialId || candidate.id || candidate.target || '';
+      return candidate || '';
+    };
     const target = () => {
-      const t = window.testhpSpatialContract?.getTarget?.() || window.selectedSpatialNode || window.spatialEvidenceTarget || 'hand';
-      return typeof t === 'object'
-        ? {label:t.label||t.path?.join(' > ')||t.spatial_id||t.id||'Bieżący cel',id:t.spatial_id||t.spatialId||t.id||'hand'}
-        : {label:String(t),id:String(t)};
+      // The canonical viewport manager is authoritative for the rendered target.
+      // DOM/evidence globals can lag one render behind and previously caused the
+      // debug panel to report the parent target while the renderer was on a child.
+      const managerId = normalize(managerTarget());
+      const contract = window.testhpSpatialContract?.getTarget?.();
+      const contractId = normalize(typeof contract === 'object' ? (contract.spatial_id || contract.spatialId || contract.id) : contract);
+      const selectedId = normalize(window.selectedSpatialNode);
+      const evidenceId = normalize(window.spatialEvidenceTarget);
+      const id = managerId || contractId || selectedId || evidenceId || 'hand';
+      const source = managerId ? 'viewport-manager' : contractId ? 'spatial-contract' : selectedId ? 'selectedSpatialNode' : evidenceId ? 'spatialEvidenceTarget' : 'fallback';
+      const navNode = document.getElementById('spatial-node');
+      const label = navNode?.querySelector('strong')?.textContent?.trim() || (typeof contract === 'object' ? contract.label : '') || id;
+      return {label, id, source, managerId, contractId, selectedId, evidenceId};
     };
     const evidence = () => { try { const x=JSON.parse(localStorage.getItem('digitalTwinEvidenceUX.v2')||'{}'); return Array.isArray(x.evidence)?x.evidence.filter(x=>!x.archived):[]; } catch { return []; } };
     const geometry = () => { try { return JSON.parse(localStorage.getItem('digitalTwinHandSurface.v1')||'{}'); } catch { return {}; } };
@@ -28,6 +45,13 @@
       const d = window.__testhpTwinRegistryDiagnostics;
       const lines = [];
       lines.push(`requested target: ${t.id}`);
+      lines.push(`target source: ${t.source}`);
+      lines.push(`manager target: ${t.managerId || 'NULL'}`);
+      lines.push(`contract target: ${t.contractId || 'NULL'}`);
+      lines.push(`selectedSpatialNode: ${t.selectedId || 'NULL'}`);
+      lines.push(`spatialEvidenceTarget: ${t.evidenceId || 'NULL'}`);
+      const drift = [t.managerId,t.contractId,t.selectedId,t.evidenceId].filter(Boolean).some(x => normalize(x) !== normalize(t.id));
+      if (drift) lines.push('TARGET DRIFT: renderer/manager target differs from one or more legacy target globals.');
       lines.push(`endpoint: ${d?.endpoint || '/api/spatial/registry?subject_id=own_cohort&timepoint=T0&debug=true'}`);
       lines.push(`HTTP: ${d?.status ?? 'not fetched'} | ok=${d?.ok ?? false}`);
       lines.push(`canonical registry: scoped=${d?.matchDebug?.scoped_count ?? d?.total ?? '—'} returned=${d?.matchDebug?.returned_count ?? d?.targetLinked ?? '—'} rejected=${d?.matchDebug?.rejected_count ?? '—'} prepared=${d?.prepared ?? '—'}`);
@@ -70,7 +94,8 @@
       const regReady=present.length===5&&preparedCount>0;
       const projectionReady=!!g.projectionPlan;
       const packageReady=!!g.twinPackage;
-      document.getElementById('hsd-target').innerHTML=`<strong>Aktualny cel:</strong> ${esc(t.label)} <code style="color:#9fc4e8">${esc(t.id)}</code>`;
+      const driftSources=[t.contractId,t.selectedId,t.evidenceId].filter(Boolean).filter(x=>normalize(x)!==normalize(t.id));
+      document.getElementById('hsd-target').innerHTML=`<strong>Aktualny cel:</strong> ${esc(t.label)} <code style="color:#9fc4e8">${esc(t.id)}</code> <span style="color:#71849b">source=${esc(t.source)}</span>${driftSources.length?` <span style="color:#f0b36a;font-weight:800">TARGET DRIFT</span>`:''}`;
       document.getElementById('hsd-flow').innerHTML=[
         stage('ŹRÓDŁA · 11',items.length?'READY':'EMPTY',`${items.length} rekordów dla celu`),
         stage('PRZYGOTOWANIE · 12',preparedCount?'READY':'BLOCKED',preparedCount?`${preparedCount} prepared asset dla celu`:'brak prepared asset dla celu'),
@@ -80,14 +105,14 @@
         stage('PROJEKCJA · 21',projectionReady?'READY':'WAITING',projectionReady?'plan dla celu':'plan nieutworzony dla celu'),
         stage('PAKIET · 22',packageReady?'READY':'WAITING',packageReady?'pakiet dla celu':'pakiet nieutworzony dla celu')
       ].join('<div style="text-align:center;color:#71849b">↓</div>');
-      document.getElementById('hsd-details').textContent=`TARGET: ${t.id}\nEVIDENCE: ${all.length} total | ${items.length} target-linked | prepared=${preparedCount}\nVIEWS: ${present.length}/5 target-scoped\nRENDERER: ${window.spatialViewportManager?.active?.constructor?.name||'unknown'} | manager=${window.spatialViewportManager?'present':'missing'}`;
+      document.getElementById('hsd-details').textContent=`TARGET: ${t.id}\nSOURCE: ${t.source}\nMANAGER: ${t.managerId||'NULL'} | CONTRACT: ${t.contractId||'NULL'} | SELECTED: ${t.selectedId||'NULL'} | EVIDENCE: ${t.evidenceId||'NULL'}\nEVIDENCE: ${all.length} total | ${items.length} target-linked | prepared=${preparedCount}\nVIEWS: ${present.length}/5 target-scoped\nRENDERER: ${window.spatialViewportManager?.active?.constructor?.name||'unknown'} | manager=${window.spatialViewportManager?'present':'missing'}`;
       renderRegistryDiagnostics(t,all);
     };
 
     render();
     let scheduled=false;
     const schedule=()=>{ if(scheduled)return; scheduled=true; requestAnimationFrame(()=>{scheduled=false;render();}); };
-    ['testhp:spatial-layer-changed','testhp:spatial-contract-changed','testhp:evidence-attached','testhp:hand-surface-ready','testhp:surface-projection-plan-changed','testhp:evidence-registry-debug','testhp:evidence-registry-synced'].forEach(e=>window.addEventListener(e,schedule));
+    ['testhp:spatial-layer-changed','testhp:spatial-contract-changed','testhp:spatial-target-changed','testhp:evidence-attached','testhp:hand-surface-ready','testhp:surface-projection-plan-changed','testhp:evidence-registry-debug','testhp:evidence-registry-synced'].forEach(e=>window.addEventListener(e,schedule));
 
     const refreshCanonical = () => {
       const t=target();
@@ -96,6 +121,7 @@
       }
     };
     window.addEventListener('testhp:spatial-layer-changed', refreshCanonical);
+    window.addEventListener('testhp:spatial-target-changed', refreshCanonical);
     refreshCanonical();
     return true;
   };
