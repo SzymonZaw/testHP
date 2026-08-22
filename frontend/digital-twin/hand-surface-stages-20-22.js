@@ -4,7 +4,7 @@
   const PLAN_KEY = 'digitalTwinSurfaceProjection.v2';
   const VIEWS = ['front', 'back', 'side_left', 'side_right', 'thumb'];
   const $ = id => document.getElementById(id);
-  const esc = value => String(value ?? '').replace(/[&<>\"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;',"'":'&#39;'}[c]));
+  const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const readJson = (key, fallback) => { try { return JSON.parse(localStorage.getItem(key) || 'null') ?? fallback; } catch { return fallback; } };
   const surface = () => readJson(SURFACE_KEY, {geometry:{}, prepared:null, mappings:[], selectedView:'front'});
   const evidence = () => { const value = readJson(EVIDENCE_KEY, {evidence:[]}); return Array.isArray(value.evidence) ? value.evidence.filter(x => !x.archived) : []; };
