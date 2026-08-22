@@ -65,7 +65,7 @@
     if (syncing) return;
     const store = read(EVIDENCE);
     const evidence = Array.isArray(store.evidence) ? store.evidence : [];
-    const pending = evidence.filter(x => !x.archived && x.prepared && x.fileData === '' && !x.backendAssetId && x.preparedAsset?.dataUrl);
+    const pending = evidence.filter(x => !x.archived && x.prepared && (x.fileData === '' || x.fileData == null) && !x.backendAssetId && x.preparedAsset?.dataUrl);
     if (!pending.length) return;
 
     syncing = true;
