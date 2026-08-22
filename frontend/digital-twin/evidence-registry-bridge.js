@@ -31,6 +31,61 @@
     };
   };
 
+  // Expose a read-only, target-focused registry snapshot for Twin debug.
+  // This intentionally does not mutate the registry or create synthetic assets.
+  async function collectRegistryDiagnostics(target = window.spatialEvidenceTarget || window.selectedSpatialNode || 'hand') {
+    const diagnostics = {
+      requestedTarget: target,
+      endpoint: '/api/spatial/registry?subject_id=own_cohort&timepoint=T0',
+      fetchedAt: new Date().toISOString(),
+      ok: false,
+      status: null,
+      total: 0,
+      targetLinked: 0,
+      prepared: 0,
+      targetRecords: [],
+      allRecords: [],
+      error: null
+    };
+    try {
+      const response = await fetch(diagnostics.endpoint, { cache: 'no-store' });
+      diagnostics.status = response.status;
+      if (!response.ok) throw new Error(`registry HTTP ${response.status}`);
+      const payload = await response.json();
+      const items = Array.isArray(payload.items) ? payload.items : [];
+      const summarize = item => ({
+        evidence_id: item.evidence_id || null,
+        asset_id: item.asset_id || null,
+        spatial_node_id: item.spatial_node_id || null,
+        spatial_id: item.spatial_id || null,
+        target: item.target || null,
+        spatial_level: item.spatial_level || null,
+        attachment_status: item.attachment_status || null,
+        spatially_localized: item.spatially_localized ?? null,
+        source: item.source || null,
+        modality: item.modality || null,
+        filename: item.filename || null,
+        prepared: !!(item.prepared || item.prepared_asset || item.prepared_asset_id),
+        prepared_asset_id: item.prepared_asset_id || item.prepared_asset?.id || null
+      });
+      diagnostics.total = items.length;
+      diagnostics.allRecords = items.map(summarize);
+      diagnostics.targetRecords = items
+        .filter(item => (item.spatial_node_id || item.spatial_id || item.target || 'hand') === target)
+        .map(summarize);
+      diagnostics.targetLinked = diagnostics.targetRecords.length;
+      diagnostics.prepared = diagnostics.targetRecords.filter(item => item.prepared).length;
+      diagnostics.ok = true;
+    } catch (error) {
+      diagnostics.error = { name: error.name || 'Error', message: error.message || String(error) };
+    }
+    window.__testhpTwinRegistryDiagnostics = diagnostics;
+    window.dispatchEvent(new CustomEvent('testhp:evidence-registry-debug', { detail: diagnostics }));
+    return diagnostics;
+  }
+
+  window.__testhpCollectRegistryDiagnostics = collectRegistryDiagnostics;
+
   async function syncCanonical() {
     try {
       const response = await fetch('/api/spatial/registry?subject_id=own_cohort&timepoint=T0', { cache: 'no-store' });
@@ -53,9 +108,6 @@
         detail: { count: canonical.length, evidence: canonicalUX, canonical: true }
       }));
 
-      // Evidence UX reads its cache during bootstrap. If the cache had to be
-      // replaced, perform exactly one bootstrap reload. A persistent session
-      // marker prevents the reload loop that previously occurred here.
       if (!sessionStorage.getItem(BOOTSTRAP)) {
         sessionStorage.setItem(BOOTSTRAP, '1');
         window.location.reload();
