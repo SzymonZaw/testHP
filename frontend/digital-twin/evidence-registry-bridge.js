@@ -11,6 +11,9 @@
     const payload = { phase, t: Math.round(performance.now()), ...detail };
     console.debug(DEBUG, payload);
     window.dispatchEvent(new CustomEvent('testhp:evidence-target-debug', { detail: payload }));
+    // Also expose the trace through the same event channel consumed by the
+    // Twin Viewport diagnostics panel; console output alone is too easy to miss.
+    window.dispatchEvent(new CustomEvent('testhp:diagnostic', { detail: { type: 'evidence-target', ...payload } }));
   };
 
   const normalizeTarget = value => value == null ? '' : String(value).trim().replace(/^\/+|\/+$/g, '');
@@ -58,14 +61,20 @@
 
   async function syncCanonical() {
     try {
-      const response = await fetch('/api/spatial/registry?subject_id=own_cohort&timepoint=T0&debug=true', { cache: 'no-store' });
-      debug('REGISTRY_FETCH', { ok: response.ok, status: response.status });
+      const target = normalizeTarget(window.spatialEvidenceTarget || window.selectedSpatialNode || document.body.dataset.spatialTarget || 'hand');
+      // IMPORTANT: pass the active spatial target into the canonical matcher.
+      // Without this, debug=true describes the unfiltered registry and cannot
+      // show which records are rejected for the currently selected node.
+      const params = new URLSearchParams({ subject_id: 'own_cohort', timepoint: 'T0', debug: 'true', spatial_node_id: target });
+      debug('REGISTRY_MATCH_REQUEST', { target, url: `/api/spatial/registry?${params.toString()}` });
+      const response = await fetch(`/api/spatial/registry?${params.toString()}`, { cache: 'no-store' });
+      debug('REGISTRY_FETCH', { ok: response.ok, status: response.status, target });
       if (!response.ok) return;
       const payload = await response.json();
       const canonical = Array.isArray(payload.items) ? payload.items : [];
       debug('REGISTRY_PAYLOAD', {
         count: canonical.length,
-        target: window.spatialEvidenceTarget || null,
+        target,
         targets: canonical.map(item => ({ id: item.evidence_id || item.asset_id || null, spatial_node_id: item.spatial_node_id || null }))
       });
       if (payload.debug) {
@@ -74,7 +83,14 @@
           debug('REGISTRY_REJECT', record);
         });
       }
-      if (!canonical.length) return;
+      if (!canonical.length) {
+        debug('REGISTRY_TARGET_EMPTY', {
+          target,
+          rejected: payload.debug?.rejected ?? null,
+          totalSubjectTimepointRecords: payload.debug?.total_subject_timepoint_records ?? null,
+        });
+        return;
+      }
 
       let current = {};
       try { current = JSON.parse(localStorage.getItem(STORAGE) || '{}'); } catch {}
@@ -83,11 +99,10 @@
       const canonicalIds = new Set(canonicalUX.map(x => x.backendAssetId || x.id));
       const manual = existing.filter(x => !canonicalIds.has(x.backendAssetId || x.id));
       const merged = [...canonicalUX, ...manual];
-      const target = current.target || window.spatialEvidenceTarget || 'hand';
       localStorage.setItem(STORAGE, JSON.stringify({ evidence: merged, target }));
 
       window.dispatchEvent(new CustomEvent('testhp:evidence-registry-synced', {
-        detail: { count: canonical.length, evidence: canonicalUX, canonical: true, registryDebug: payload.debug || null }
+        detail: { count: canonical.length, evidence: canonicalUX, canonical: true, target, registryDebug: payload.debug || null }
       }));
 
       if (!sessionStorage.getItem(BOOTSTRAP)) {
