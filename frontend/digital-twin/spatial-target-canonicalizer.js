@@ -113,12 +113,22 @@
 
   // Some legacy writers update selectedSpatialNode/spatialEvidenceTarget or
   // body.dataset.spatialTarget after the spatial-layer event without emitting
-  // another event. Keep all public compatibility channels canonical in that
-  // case as well; this is deliberately cheap and prevents a late writer from
-  // reintroducing target drift.
+  // another event. Observe the actual DOM compatibility channel as well as
+  // polling it, so a late writer cannot reintroduce the alias between polls.
+  const bodyObserver = new MutationObserver(() => normalizeObservedState());
+  const observeBody = () => {
+    if (!document.body) return;
+    bodyObserver.observe(document.body, { attributes: true, attributeFilter: ['data-spatial-target'] });
+  };
+  if (document.body) observeBody();
+  else document.addEventListener('DOMContentLoaded', observeBody, { once: true });
+
   const reconcileTimer = setInterval(() => {
     patchManager(window.spatialViewportManager);
     normalizeObservedState();
   }, 100);
-  window.addEventListener('beforeunload', () => clearInterval(reconcileTimer), { once: true });
+  window.addEventListener('beforeunload', () => {
+    clearInterval(reconcileTimer);
+    bodyObserver.disconnect();
+  }, { once: true });
 })();
