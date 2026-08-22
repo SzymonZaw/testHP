@@ -4,6 +4,39 @@
 (() => {
   const STORAGE = 'digitalTwinEvidenceUX.v2';
   const BOOTSTRAP = 'digitalTwinCanonicalEvidenceBootstrap.v1';
+  const DEBUG = '[testhp:evidence-target-debug]';
+
+  const debug = (phase, detail = {}) => {
+    if (!window.__testhpDiagnosticsInstalled && !window.__testhpSpatialWriterDebugInstalled) return;
+    const payload = { phase, t: Math.round(performance.now()), ...detail };
+    console.debug(DEBUG, payload);
+    window.dispatchEvent(new CustomEvent('testhp:evidence-target-debug', { detail: payload }));
+  };
+
+  const normalizeTarget = (value) => {
+    if (value == null) return '';
+    return String(value).trim().replace(/^\/+|\/+$/g, '');
+  };
+
+  const targetMatches = (record, target) => {
+    const recordTarget = normalizeTarget(
+      record?.spatial_node_id ?? record?.spatialId ?? record?.target
+    );
+    const wanted = normalizeTarget(target);
+    const match = !!wanted && recordTarget === wanted;
+    debug(match ? 'MATCH' : 'REJECT', {
+      target: wanted,
+      recordId: record?.evidence_id || record?.asset_id || record?.id || null,
+      recordTarget,
+      targetFields: {
+        spatial_node_id: record?.spatial_node_id ?? null,
+        spatialId: record?.spatialId ?? null,
+        target: record?.target ?? null,
+      },
+      reason: !recordTarget ? 'missing-record-target' : !wanted ? 'missing-requested-target' : 'spatial-target-mismatch',
+    });
+    return match;
+  };
 
   const toUX = (item) => ({
     id: item.evidence_id || item.asset_id,
@@ -11,6 +44,7 @@
     type: item.spatial_level === 'cellular' ? 'Cellular' : item.spatial_level === 'tissue' ? 'Tissue' : item.spatial_level === 'cell' ? 'Cellular' : item.modality === 'rna' ? 'Molecular' : 'Macro',
     sourceType: item.source === 'upload' ? 'upload' : 'dataset',
     target: item.spatial_node_id || 'hand',
+    spatial_node_id: item.spatial_node_id || '',
     subject: item.subject_id || 'own_cohort',
     timepoint: item.timepoint || 'T0',
     date: item.created_at ? String(item.created_at).slice(0, 10) : '',
@@ -30,9 +64,14 @@
   async function syncCanonical() {
     try {
       const response = await fetch('/api/spatial/registry?subject_id=own_cohort&timepoint=T0', { cache: 'no-store' });
+      debug('REGISTRY_FETCH', { ok: response.ok, status: response.status });
       if (!response.ok) return;
       const payload = await response.json();
       const canonical = Array.isArray(payload.items) ? payload.items : [];
+      debug('REGISTRY_PAYLOAD', {
+        count: canonical.length,
+        targets: canonical.map(item => ({ id: item.evidence_id || item.asset_id || null, spatial_node_id: item.spatial_node_id || null }))
+      });
       if (!canonical.length) return;
 
       let current = {};
@@ -49,25 +88,63 @@
         detail: { count: canonical.length, evidence: canonicalUX, canonical: true }
       }));
 
-      // Evidence UX reads its cache during bootstrap. If the cache had to be
-      // replaced, perform exactly one bootstrap reload. A persistent session
-      // marker prevents the reload loop that previously occurred here.
       if (!sessionStorage.getItem(BOOTSTRAP)) {
         sessionStorage.setItem(BOOTSTRAP, '1');
         window.location.reload();
       }
     } catch (error) {
       console.warn('Canonical evidence registry sync failed', error);
+      debug('REGISTRY_ERROR', { error: String(error?.stack || error) });
     }
   }
+
+  // Debug-only observation of the spatial target writer. We do not alter its
+  // behavior; we only capture every call and the stack so the second writer
+  // that restores macro|palm can be identified precisely.
+  const installSpatialWriterTrace = () => {
+    if (window.__testhpEvidenceTargetWriterTraceInstalled) return;
+    const manager = window.__testhpSpatialManager || window.spatialManager || window.digitalTwinSpatialManager;
+    if (!manager || typeof manager.setSpatialTarget !== 'function') return;
+    const original = manager.setSpatialTarget;
+    manager.setSpatialTarget = function (...args) {
+      debug('SPATIAL_WRITER_CALL', {
+        args,
+        before: {
+          activeKey: manager.activeKey,
+          activeLayer: manager.activeLayer,
+          target: manager.state?.target || manager.state?.spatialTarget || null,
+        },
+        stack: new Error('setSpatialTarget writer').stack,
+      });
+      const result = original.apply(this, args);
+      debug('SPATIAL_WRITER_RESULT', {
+        args,
+        after: {
+          activeKey: manager.activeKey,
+          activeLayer: manager.activeLayer,
+          target: manager.state?.target || manager.state?.spatialTarget || null,
+        },
+      });
+      return result;
+    };
+    window.__testhpEvidenceTargetWriterTraceInstalled = true;
+    debug('WRITER_TRACE_INSTALLED', { managerKeys: Object.keys(manager) });
+  };
+
+  window.__testhpEvidenceTargetMatches = targetMatches;
+  window.__testhpInstallEvidenceTargetWriterTrace = installSpatialWriterTrace;
 
   window.addEventListener('testhp:evidence-registry-synced', (event) => {
     window.dispatchEvent(new CustomEvent('testhp:evidence-ux-refresh', { detail: event.detail || {} }));
   });
 
   if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', syncCanonical, { once: true });
+    document.addEventListener('DOMContentLoaded', () => {
+      installSpatialWriterTrace();
+      syncCanonical();
+    }, { once: true });
   } else {
+    installSpatialWriterTrace();
     syncCanonical();
   }
 })();
