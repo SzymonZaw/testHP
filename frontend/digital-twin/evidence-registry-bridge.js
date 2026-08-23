@@ -87,11 +87,18 @@
     // The manager's canonical spatialTarget is authoritative. Do not fall back
     // to a display label such as "Kciuk"/"Hypothenar eminence", because labels
     // are not registry IDs and cause false 0-result target drift diagnostics.
+    // spatialTarget may be a display label (for example "Cell target 2").
+    // Registry matching must use the canonical spatial path/id instead.
+    const managerSpatialTarget = manager?.spatialTarget && typeof manager.spatialTarget === 'object'
+      ? (manager.spatialTarget.spatial_node_id || manager.spatialTarget.spatial_id || manager.spatialTarget.spatialId)
+      : (typeof manager?.spatialTarget === 'string' && manager.spatialTarget.includes('/') ? manager.spatialTarget : null);
+    const managerStateSpatialTarget = managerState?.spatialTarget && typeof managerState.spatialTarget === 'object'
+      ? (managerState.spatialTarget.spatial_node_id || managerState.spatialTarget.spatial_id || managerState.spatialTarget.spatialId)
+      : (typeof managerState?.spatialTarget === 'string' && managerState.spatialTarget.includes('/') ? managerState.spatialTarget : null);
     const managerTarget = canonicalSpatialId(
-      manager?.spatialTarget ||
-      managerState?.spatialTarget ||
       active?.spatial_node_id || active?.spatial_id || active?.spatialId ||
-      managerState?.spatial_node_id || managerState?.spatial_id || managerState?.spatialId
+      managerState?.spatial_node_id || managerState?.spatial_id || managerState?.spatialId ||
+      managerSpatialTarget || managerStateSpatialTarget
     );
     const contractTarget = canonicalSpatialId(window.testhpSpatialContract?.current?.spatial_node_id || window.testhpSpatialContract?.current?.spatial_id || window.testhpSpatialContract?.current?.spatialId || window.testhpSpatialContract?.current?.label);
     const explicitViewportTarget = canonicalSpatialId(window.__testhpSpatialState?.spatial_id || window.__testhpSpatialState?.spatialId || window.__testhpDiagnostics?.spatial_id || window.__testhpSpatialState?.label);
