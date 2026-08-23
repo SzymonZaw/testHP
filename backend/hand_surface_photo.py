@@ -6,7 +6,6 @@ A photograph becomes usable only after it is explicitly attached to a spatial
 """
 from __future__ import annotations
 
-import hashlib
 import uuid
 from datetime import datetime, timezone
 from typing import Any
@@ -15,6 +14,7 @@ from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from pydantic import BaseModel, Field
 
 from .data_ingestion import ingest_upload, registry_status
+from .photo_reconstruction import prepare_image
 from .spatial_contract import canonical_spatial_id
 from .stage_2_4 import _load as load_spatial_evidence, _save as save_spatial_evidence
 
@@ -56,19 +56,19 @@ def _view(item: dict[str, Any]) -> str | None:
 def _prepared(item: dict[str, Any], asset: dict[str, Any] | None) -> dict[str, Any] | None:
     view = _view(item)
     if not view or not asset: return None
-    prepared_id = f"prepared_{hashlib.sha256(str(asset.get('asset_id')).encode()).hexdigest()[:12]}"
+    prepared_id = f"prepared_{uuid.uuid4().hex[:12]}"
     return {"prepared_asset_id": prepared_id, "asset_id": asset.get("asset_id"), "view": view, "spatial_id": item.get("spatial_node_id"), "status": "ready", "source_path": asset.get("path"), "filename": asset.get("filename"), "prepared_at": _now(), "method": "target-scoped-preparation-v1"}
 
 def _state(request: TargetRequest) -> dict[str, Any]:
     evidence, target = _records(request); assets = _asset_lookup(); prepared=[]; registrations=[]
     for item in evidence:
-        p=item.get("prepared_asset") or _prepared(item, assets.get(str(item.get("asset_id"))))
+        p=item.get("prepared_asset")
         if p:
             prepared.append(p)
             if item.get("registration", {}).get("status") == "registered": registrations.append(item["registration"])
-    prepared_views=sorted({x["view"] for x in prepared if x["view"] in VIEWS}); registered_views=sorted({x["view"] for x in registrations if x.get("view") in VIEWS})
+    prepared_views=sorted({x["view"] for x in prepared if x.get("view") in VIEWS}); registered_views=sorted({x["view"] for x in registrations if x.get("view") in VIEWS})
     recon=next((x for x in evidence if x.get("reconstruction", {}).get("status") == "ready"), None)
-    return {"schema":"hand-photo-reconstruction-state-v2","subject_id":request.subject_id,"timepoint":request.timepoint,"spatial_id":target,"evidence":evidence,"inputs":prepared,"prepared_count":len(prepared_views),"prepared_views":prepared_views,"registered_count":len(registered_views),"registered_views":registered_views,"views":{v:{"prepared":v in prepared_views,"registered":v in registered_views} for v in VIEWS},"reconstruction":recon.get("reconstruction") if recon else None}
+    return {"schema":"hand-photo-reconstruction-state-v3","subject_id":request.subject_id,"timepoint":request.timepoint,"spatial_id":target,"evidence":evidence,"inputs":prepared,"prepared_count":len(prepared_views),"prepared_views":prepared_views,"registered_count":len(registered_views),"registered_views":registered_views,"views":{v:{"prepared":v in prepared_views,"registered":v in registered_views} for v in VIEWS},"reconstruction":recon.get("reconstruction") if recon else None}
 
 @router.get("/state")
 def state(subject_id: str="own_cohort", timepoint: str="T0", spatial_id: str="hand"): return _state(TargetRequest(subject_id=subject_id,timepoint=timepoint,spatial_id=spatial_id))
@@ -92,40 +92,78 @@ def assign(request: AssignRequest):
 def prepare_asset(asset_id: str, spatial_id: str="hand", subject_id: str="own_cohort", timepoint: str="T0"):
     items=load_spatial_evidence(); target=_target(spatial_id); item=next((x for x in items if x.get("asset_id")==asset_id and x.get("subject_id")==subject_id and x.get("timepoint")==timepoint),None)
     if not item or _target(item.get("spatial_node_id")) != target: raise HTTPException(status_code=409,detail="asset is not attached to the requested target")
-    p=_prepared(item,_asset_lookup().get(asset_id))
-    if not p: raise HTTPException(status_code=409,detail="assign a supported view before preparation")
-    item["prepared_asset"]=p; item["prepared"]=True; save_spatial_evidence(items); return {"status":"prepared","prepared_asset":p}
+    view = _view(item)
+    if not view: raise HTTPException(status_code=409,detail="assign a supported view before preparation")
+    # Use the real image-preparation pipeline instead of creating metadata only.
+    # The source file is read-only; the pipeline writes a new prepared PNG.
+    record = {"asset_id": item["asset_id"], "subject_id": item["subject_id"], "timepoint": item["timepoint"], "filename": item["filename"], "path": item["path"], "view": view}
+    try:
+        prepared = prepare_image(record)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=f"source image not found: {exc.args[0]}") from exc
+    except Exception as exc:
+        raise HTTPException(status_code=422, detail=f"image preparation failed: {exc}") from exc
+    prepared_payload = {
+        "prepared_asset_id": prepared["prepared_asset_id"],
+        "asset_id": item["asset_id"],
+        "view": view,
+        "spatial_id": target,
+        "status": "ready",
+        "source_path": item["path"],
+        "prepared_path": prepared["prepared_path"],
+        "filename": prepared.get("filename", item["filename"]),
+        "prepared_at": prepared.get("updated_at", _now()),
+        "method": "target-scoped-preparation-v2",
+        "background_method": prepared.get("background_method"),
+        "quality": prepared.get("quality"),
+        "warnings": prepared.get("warnings", []),
+        "crop": prepared.get("crop"),
+        "width": prepared.get("prepared_width"),
+        "height": prepared.get("prepared_height"),
+    }
+    item["prepared_asset"] = prepared_payload
+    item["prepared"] = True
+    item["prepared_path"] = prepared["prepared_path"]
+    item["prepared_asset_id"] = prepared["prepared_asset_id"]
+    item["preparation"] = {"status": "prepared", "method": prepared_payload["method"], "quality": prepared.get("quality"), "warnings": prepared.get("warnings", []), "source_unchanged": True, "prepared_path": prepared["prepared_path"], "prepared_at": prepared.get("updated_at", _now())}
+    save_spatial_evidence(items)
+    return {"status":"prepared","prepared_asset":prepared_payload,"source_unchanged":True,"spatial_id":target}
 
 @router.post("/prepare")
 def prepare(request: TargetRequest):
     items,target=_records(request)
     if not items: raise HTTPException(status_code=409,detail=f"No explicitly attached evidence for {target}. Root-only evidence is not promoted to a deep target.")
-    assets=_asset_lookup(); changed=0
+    changed=0; warnings=[]
     for item in items:
-        p=_prepared(item,assets.get(str(item.get("asset_id"))))
-        if p and item.get("prepared_asset") != p: item["prepared_asset"]=p; item["prepared"]=True; changed+=1
-    save_spatial_evidence(items); return {**_state(request),"prepared_changed":changed}
+        if not _view(item): continue
+        try:
+            result=prepare_asset(item["asset_id"],request.spatial_id,request.subject_id,request.timepoint)
+            if result.get("status")=="prepared":
+                changed+=1; warnings.extend(result.get("prepared_asset",{}).get("warnings",[]))
+        except HTTPException:
+            continue
+    return {**_state(request),"prepared_changed":changed,"warnings":warnings}
 
 @router.post("/register")
 def register(request: TargetRequest):
-    items,target=_records(request); assets=_asset_lookup()
+    items,target=_records(request)
     if not items: raise HTTPException(status_code=409,detail=f"No target-scoped evidence for {target}.")
     prepared_by_view={}
     for item in items:
-        p=item.get("prepared_asset") or _prepared(item,assets.get(str(item.get("asset_id"))))
+        p=item.get("prepared_asset")
         if p and p.get("view") in VIEWS: prepared_by_view[p["view"]]=p
     if len(prepared_by_view)<2: raise HTTPException(status_code=409,detail="At least two prepared views are required.")
     for view,p in prepared_by_view.items():
-        item=next(x for x in items if (x.get("prepared_asset") or {}).get("view")==view or _view(x)==view)
-        item["prepared_asset"]=p; item["prepared"]=True; item["registration"]={"status":"registered","registration_id":f"reg_{uuid.uuid4().hex[:12]}","asset_id":p["asset_id"],"prepared_asset_id":p["prepared_asset_id"],"view":view,"spatial_id":target,"quality":1.0,"landmarks":21,"method":"deterministic-view-registration-v1","registered_at":_now()}
+        item=next(x for x in items if (x.get("prepared_asset") or {}).get("view")==view)
+        item["registration"]={"status":"registered","registration_id":f"reg_{uuid.uuid4().hex[:12]}","asset_id":p["asset_id"],"prepared_asset_id":p["prepared_asset_id"],"view":view,"spatial_id":target,"quality":1.0,"landmarks":21,"method":"deterministic-view-registration-v1","registered_at":_now()}
     save_spatial_evidence(items); result=_state(request); result["ready_for_projection"]=result["registered_count"]>=2; return result
 
 @router.post("/build")
 def build(request: BuildRequest):
-    items,target=_records(request); assets=_asset_lookup(); views={}
+    items,target=_records(request); views={}
     if not items: raise HTTPException(status_code=409,detail=f"No target-scoped evidence for {target}.")
     for item in items:
-        p=item.get("prepared_asset") or _prepared(item,assets.get(str(item.get("asset_id")))); reg=item.get("registration")
+        p=item.get("prepared_asset"); reg=item.get("registration")
         if p and reg and reg.get("status")=="registered" and p.get("view") in VIEWS: views[p["view"]]=str(p.get("asset_id"))
     if len(views)<request.min_views: raise HTTPException(status_code=409,detail=f"Need {request.min_views} registered views; found {len(views)}.")
     reconstruction={"reconstruction_id":f"recon_{uuid.uuid4().hex[:12]}","status":"ready","method":"target-scoped-multiview-surface-v2","spatial_id":target,"views":sorted(views),"source_asset_ids":views,"vertex_count":0,"face_count":0,"generated_at":_now(),"research_boundary":"Surface reconstruction metadata is not clinical photogrammetry or diagnosis."}
@@ -137,7 +175,7 @@ def build(request: BuildRequest):
 def clear(request: TargetRequest):
     items,_=_records(request)
     for item in items:
-        item.pop("prepared_asset",None); item.pop("prepared",None); item.pop("registration",None); item.pop("reconstruction",None)
+        item.pop("prepared_asset",None); item.pop("prepared",None); item.pop("registration",None); item.pop("reconstruction",None); item.pop("preparation",None)
     save_spatial_evidence(items); return _state(request)
 
 def register_hand_surface_photo_routes(app: Any) -> None: app.include_router(router)
