@@ -42,7 +42,7 @@
       const rows = Array.isArray(payload.items) ? payload.items : Array.isArray(payload.records) ? payload.records : Array.isArray(payload.data) ? payload.data : [];
       const idOf = x => canonical(x?.spatial_node_id || x?.spatial_id || x?.spatialId || x?.target?.spatial_node_id || x?.target?.spatial_id || x?.target?.spatialId);
       const exact = rows.filter(x => idOf(x) === target);
-      return { url, status: response.status, ok: response.ok, raw: rows.length, exact: exact.length, rows, matchDebug: payload.matchDebug || payload.match_debug || payload.diagnostics || null };
+      return { url, status: response.status, ok: response.ok, raw: rows.length, exact: exact.length, matchDebug: payload.matchDebug || payload.match_debug || payload.diagnostics || null };
     } catch (error) {
       return { error: { name: error?.name || 'Error', message: error?.message || String(error) } };
     }
@@ -85,5 +85,6 @@
   window.addEventListener('testhp:spatial-target-changed', schedule);
   window.addEventListener('testhp:spatial-layer-changed', schedule);
   window.addEventListener('testhp:viewport-rendered', schedule);
-  new MutationObserver(schedule).observe(document.body, { childList: true, subtree: true });
+  const timer = setInterval(render, 1500);
+  window.addEventListener('beforeunload', () => clearInterval(timer), { once: true });
 })();
