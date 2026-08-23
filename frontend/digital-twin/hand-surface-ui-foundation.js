@@ -77,11 +77,19 @@
       if (el && !shell.contains(el)) el.style.display = 'none';
     });
   };
+  const ensurePreparationSourceBridge = () => {
+    if (document.getElementById('hand-surface-preparation-source-bridge')) return;
+    const script = document.createElement('script');
+    script.id = 'hand-surface-preparation-source-bridge';
+    script.src = '/digital-twin/hand-surface-preparation-source-bridge.js?v=prep-source-bridge-1';
+    document.head.appendChild(script);
+  };
 
   const run = () => {
     movePhotoPanel();
     hideLegacySurfacePanels();
     ensurePhotoAction();
+    ensurePreparationSourceBridge();
   };
   const schedule = () => requestAnimationFrame(run);
   window.addEventListener('testhp:spatial-layer-changed', schedule);
