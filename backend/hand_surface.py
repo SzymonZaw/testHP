@@ -10,6 +10,7 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass, field
 from typing import Any, Iterable
 
+from .spatial_contract import canonical_spatial_id, make_photo_asset_id
 
 HAND_LANDMARK_COUNT = 21
 SUPPORTED_VIEWS = ("front", "back", "side_left", "side_right", "thumb")
@@ -17,8 +18,6 @@ SUPPORTED_VIEWS = ("front", "back", "side_left", "side_right", "thumb")
 
 @dataclass(frozen=True)
 class SurfacePoint:
-    """Canonical normalized hand-surface coordinate."""
-
     x: float
     y: float
     z: float = 0.0
@@ -36,9 +35,11 @@ class HandLandmark:
 
 @dataclass
 class SurfaceRegistration:
-    """Registration metadata linking one image observation to hand space."""
+    """Registration metadata linking one image observation to one spatial target."""
 
     view: str
+    spatial_id: str = "hand"
+    asset_id: str | None = None
     coordinate_system: str = "hand-surface-v1"
     transform: dict[str, Any] = field(default_factory=dict)
     landmarks: list[HandLandmark] = field(default_factory=list)
@@ -46,13 +47,16 @@ class SurfaceRegistration:
     quality: float | None = None
     method: str = "pending"
 
+    def __post_init__(self) -> None:
+        self.spatial_id = canonical_spatial_id(self.spatial_id)
+
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
 
 
 @dataclass(frozen=True)
 class SurfaceEvidence:
-    """A biological image reference plus its spatial registration."""
+    """A biological image reference plus its canonical spatial registration."""
 
     asset_id: str
     subject_id: str
@@ -63,12 +67,14 @@ class SurfaceEvidence:
     modality: str = "skin_image"
     registration: SurfaceRegistration | None = None
 
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "spatial_id", canonical_spatial_id(self.spatial_id))
+
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
 
 
 def validate_landmarks(landmarks: Iterable[HandLandmark]) -> list[str]:
-    """Return validation errors without rejecting partial research data."""
     errors: list[str] = []
     items = list(landmarks)
     if len(items) > HAND_LANDMARK_COUNT:
@@ -83,17 +89,12 @@ def validate_landmarks(landmarks: Iterable[HandLandmark]) -> list[str]:
 
 
 def normalize_landmarks(points: Iterable[dict[str, float]]) -> list[HandLandmark]:
-    """Convert MediaPipe-style points into the stable surface contract."""
     result: list[HandLandmark] = []
     for index, point in enumerate(points):
         result.append(
             HandLandmark(
                 landmark_id=f"mp-{index:02d}",
-                point=SurfacePoint(
-                    float(point["x"]),
-                    float(point["y"]),
-                    float(point.get("z", 0.0)),
-                ),
+                point=SurfacePoint(float(point["x"]), float(point["y"]), float(point.get("z", 0.0))),
                 confidence=float(point.get("confidence", 1.0)),
             )
         )
@@ -103,30 +104,23 @@ def normalize_landmarks(points: Iterable[dict[str, float]]) -> list[HandLandmark
 def build_registration(
     *,
     view: str,
+    spatial_id: str = "hand",
+    asset_id: str | None = None,
     landmarks: Iterable[dict[str, float]] = (),
     method: str = "pending",
     quality: float | None = None,
     transform: dict[str, Any] | None = None,
 ) -> SurfaceRegistration:
-    """Create a validated registration record ready for later projection."""
     normalized_view = view if view in SUPPORTED_VIEWS else "unknown"
     normalized = normalize_landmarks(landmarks)
     errors = validate_landmarks(normalized)
-    if errors:
-        return SurfaceRegistration(
-            view=normalized_view,
-            transform=dict(transform or {}),
-            landmarks=normalized,
-            status="invalid",
-            quality=quality,
-            method=method,
-        )
-    status = "registered" if normalized else "unregistered"
     return SurfaceRegistration(
         view=normalized_view,
+        spatial_id=canonical_spatial_id(spatial_id),
+        asset_id=asset_id,
         transform=dict(transform or {}),
         landmarks=normalized,
-        status=status,
+        status="invalid" if errors else ("registered" if normalized else "unregistered"),
         quality=quality,
         method=method,
     )
@@ -137,18 +131,20 @@ def build_surface_evidence(
     asset_id: str,
     subject_id: str,
     timepoint_id: str,
+    spatial_id: str = "hand",
     uri: str,
     view: str = "unknown",
     registration: SurfaceRegistration | None = None,
 ) -> SurfaceEvidence:
-    """Create canonical evidence consumed by downstream reconstruction."""
-    from .spatial_contract import make_photo_asset_id
-
+    """Create evidence that stays in the selected spatial scope."""
+    target = canonical_spatial_id(spatial_id)
+    if registration is not None and canonical_spatial_id(registration.spatial_id) != target:
+        raise ValueError("registration spatial_id does not match evidence spatial_id")
     return SurfaceEvidence(
         asset_id=make_photo_asset_id(asset_id),
         subject_id=subject_id,
         timepoint_id=timepoint_id,
-        spatial_id=f"hand:{subject_id}:{timepoint_id}",
+        spatial_id=target,
         uri=uri,
         view=view if view in SUPPORTED_VIEWS else "unknown",
         registration=registration,
