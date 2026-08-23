@@ -8,11 +8,11 @@
     const selected = window.selectedSpatialNode || null;
     const evidence = window.spatialEvidenceTarget || null;
     const manager = window.spatialViewportManager;
-    const managerTarget = manager?.state?.spatial_id || null;
-    const contract = window.testhpSpatialContract?.getTarget?.()?.spatial_id || window.testhpSpatialContract?.getTarget?.()?.spatialId || null;
+    const managerTarget = manager?.state?.spatial_id || manager?.state?.spatialId || manager?.state?.spatialTarget || manager?.spatialTarget || null;
+    const contract = window.testhpSpatialContract?.getTarget?.()?.spatial_id || window.testhpSpatialContract?.getTarget?.()?.spatialId || window.testhpSpatialContract?.getTarget?.()?.spatial_node_id || null;
     const bodyTarget = document.body?.dataset?.spatialTarget || null;
     const navId = node?.dataset?.spatialId || node?.getAttribute('data-spatial-id') || null;
-    const chosen = selected || contract || managerTarget || evidence || navId || bodyTarget || null;
+    const chosen = managerTarget || contract || selected || evidence || navId || bodyTarget || null;
     const candidates = { contract, manager: managerTarget, selectedNode: selected, evidence, navigationNode: navId, body: bodyTarget };
     const distinctIds = [...new Set(Object.values(candidates).filter(Boolean))];
     return {
@@ -39,23 +39,73 @@
       try { payload = await response.json(); } catch { payload = null; }
       return { url, status: response.status, ok: response.ok, ms: Math.round(performance.now() - started), payload };
     } catch (error) {
-      return { url, status: 0, ok: false, ms: 0, error: error?.message || String(error) };
+      return { url, status: 0, ok: false, ms: 0, error: { name: error?.name || 'Error', message: error?.message || String(error) } };
     }
   };
+
+  const rowsFrom = payload => {
+    if (Array.isArray(payload?.items)) return payload.items;
+    if (Array.isArray(payload?.records)) return payload.records;
+    if (Array.isArray(payload?.data)) return payload.data;
+    if (Array.isArray(payload?.evidence)) return payload.evidence;
+    if (Array.isArray(payload?.targetRecords)) return payload.targetRecords;
+    return [];
+  };
+
+  const buildRegistryDiagnostics = (target, registry) => {
+    const payload = registry.payload || {};
+    const rows = rowsFrom(payload);
+    const targetId = String(target || '').replace(/^\/+|\/+$/g, '');
+    const idOf = x => String(x?.spatial_node_id || x?.spatial_id || x?.spatialId || x?.target?.spatial_node_id || x?.target?.spatial_id || x?.target?.spatialId || '').replace(/^\/+|\/+$/g, '');
+    const targetRecords = rows.filter(x => idOf(x) === targetId);
+    const allRecords = rows;
+    const matchDebug = payload.matchDebug || payload.match_debug || payload.diagnostics || null;
+    const prepared = targetRecords.filter(x => x?.prepared === true || x?.preparedAssetId || x?.prepared_asset_id).length;
+    return {
+      requestedTarget: targetId,
+      endpoint: registry.url,
+      status: registry.status,
+      ok: registry.ok,
+      ms: registry.ms,
+      error: registry.error || null,
+      total: rows.length,
+      targetLinked: targetRecords.length,
+      targetRecords,
+      allRecords,
+      prepared,
+      matchDebug,
+      response: payload
+    };
+  };
+
+  const collectRegistryDiagnostics = async target => {
+    const targetId = String(target || '').trim().replace(/^\/+|\/+$/g, '');
+    if (!targetId) return null;
+    const encoded = encodeURIComponent(targetId);
+    const registry = await fetchJson(`/api/spatial/registry?subject_id=own_cohort&timepoint=T0&spatial_node_id=${encoded}&debug=true`);
+    const diagnostics = buildRegistryDiagnostics(targetId, registry);
+    state.last = state.last || {};
+    state.last.registry = diagnostics;
+    window.__testhpTwinRegistryDiagnostics = diagnostics;
+    window.dispatchEvent(new CustomEvent('testhp:evidence-registry-debug', { detail: diagnostics }));
+    return diagnostics;
+  };
+
+  window.__testhpCollectRegistryDiagnostics = collectRegistryDiagnostics;
 
   const probeRegistry = async target => {
     if (!target) return { registry: null, state: null };
     const encoded = encodeURIComponent(target);
-    const [registry, state] = await Promise.all([
+    const [registry, stateResponse] = await Promise.all([
       fetchJson(`/api/spatial/registry?subject_id=own_cohort&timepoint=T0&spatial_node_id=${encoded}`),
       fetchJson(`/api/spatial/state?subject_id=own_cohort&timepoint=T0&spatial_node_id=${encoded}`)
     ]);
-    const registryRows = Array.isArray(registry.payload?.items) ? registry.payload.items : Array.isArray(registry.payload?.records) ? registry.payload.records : [];
+    const registryRows = rowsFrom(registry.payload);
     const registryIds = registryRows.map(item => item.spatial_node_id || item.spatial_id).filter(Boolean);
-    const stateSpatialId = state.payload?.spatial_id || state.payload?.item?.spatial_id || null;
+    const stateSpatialId = stateResponse.payload?.spatial_id || stateResponse.payload?.item?.spatial_id || null;
     return {
       registry: { target, http: { status: registry.status, ok: registry.ok, ms: registry.ms }, recordCount: registryRows.length, targetLinked: registryRows.filter(item => (item.spatial_node_id || item.spatial_id) === target).length, spatialIds: registryIds, response: registry.payload },
-      state: { url: state.url, spatial_id: stateSpatialId, response: state.status, payload: state.payload }
+      state: { url: stateResponse.url, spatial_id: stateSpatialId, response: stateResponse.status, payload: stateResponse.payload }
     };
   };
 
@@ -80,6 +130,7 @@
     window.__testhpTargetChainDiagnostics = state.last;
     window.dispatchEvent(new CustomEvent('testhp:target-chain-diagnostics', { detail: state.last }));
     render(chain, probe);
+    await collectRegistryDiagnostics(chain.selected);
     return state.last;
   };
 
