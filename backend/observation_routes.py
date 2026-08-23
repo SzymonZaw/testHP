@@ -1,6 +1,7 @@
 """HTTP API for explicit, traceable biological observations."""
 from __future__ import annotations
 
+from collections import Counter
 from typing import Any
 
 from fastapi import APIRouter, HTTPException
@@ -71,6 +72,74 @@ def _in_spatial_scope(selected_spatial_id: str, candidate_spatial_id: str, inclu
     return include_descendants and candidate.startswith(f"{selected}/")
 
 
+def _registry_pre_scope_diagnostics(
+    raw_assets: list[dict[str, Any]],
+    subject_id: str,
+    timepoint: str,
+) -> dict[str, Any]:
+    """Explain why assets disappear before spatial matching begins.
+
+    This intentionally runs before the subject/timepoint scope filter. It makes
+    an empty registry scope distinguishable from a real spatial-link mismatch.
+    """
+    subject_counts = Counter(str(item.get("subject_id") or "<missing>") for item in raw_assets)
+    timepoint_counts = Counter(str(item.get("timepoint") or "<missing>") for item in raw_assets)
+    subject_timepoint_counts = Counter(
+        (
+            str(item.get("subject_id") or "<missing>"),
+            str(item.get("timepoint") or "<missing>"),
+        )
+        for item in raw_assets
+    )
+    requested_subject_count = sum(1 for item in raw_assets if item.get("subject_id") == subject_id)
+    requested_timepoint_count = sum(1 for item in raw_assets if item.get("timepoint") == timepoint)
+    requested_scope_count = sum(
+        1
+        for item in raw_assets
+        if item.get("subject_id") == subject_id and item.get("timepoint") == timepoint
+    )
+
+    reason = "SCOPED_ASSETS_AVAILABLE"
+    if not raw_assets:
+        reason = "RAW_INVENTORY_EMPTY"
+    elif requested_scope_count == 0 and requested_subject_count == 0 and requested_timepoint_count == 0:
+        reason = "SUBJECT_AND_TIMEPOINT_MISMATCH"
+    elif requested_scope_count == 0 and requested_subject_count == 0:
+        reason = "SUBJECT_MISMATCH"
+    elif requested_scope_count == 0 and requested_timepoint_count == 0:
+        reason = "TIMEPOINT_MISMATCH"
+    elif requested_scope_count == 0:
+        reason = "SUBJECT_TIMEPOINT_COMBINATION_MISMATCH"
+
+    return {
+        "total_raw_assets": len(raw_assets),
+        "requested": {"subject_id": subject_id, "timepoint": timepoint},
+        "requested_subject_count": requested_subject_count,
+        "requested_timepoint_count": requested_timepoint_count,
+        "requested_subject_timepoint_count": requested_scope_count,
+        "subject_counts": dict(subject_counts),
+        "timepoint_counts": dict(timepoint_counts),
+        "subject_timepoint_counts": {
+            f"{subject}:{tp}": count
+            for (subject, tp), count in subject_timepoint_counts.items()
+        },
+        "diagnosis": reason,
+        "sample_assets": [
+            {
+                "asset_id": item.get("asset_id"),
+                "filename": item.get("filename"),
+                "path": item.get("path"),
+                "subject_id": item.get("subject_id"),
+                "timepoint": item.get("timepoint"),
+                "modality": item.get("modality"),
+                "source": item.get("source"),
+                "status": item.get("status"),
+            }
+            for item in raw_assets[:10]
+        ],
+    }
+
+
 @router.get("/api/spatial/registry")
 def spatial_registry(
     subject_id: str = "own_cohort",
@@ -78,9 +147,12 @@ def spatial_registry(
     spatial_node_id: str | None = None,
     debug: bool = False,
 ):
+    registry = registry_status()
+    raw_assets = [dict(item) for item in registry["assets"]]
+    pre_scope = _registry_pre_scope_diagnostics(raw_assets, subject_id, timepoint)
     assets = [
         dict(item)
-        for item in registry_status()["assets"]
+        for item in raw_assets
         if item.get("subject_id") == subject_id and item.get("timepoint") == timepoint
     ]
     # The registry is an API boundary: normalize both the requested target and
@@ -126,7 +198,16 @@ def spatial_registry(
             matched.append(normalized_item)
     payload: dict[str, Any] = {"subject_id": subject_id, "timepoint": timepoint, "scope": target, "items": matched, "count": len(matched)}
     if debug:
-        payload["debug"] = {"scoped_count": len(assets), "target_linked_count": len(matched), "accepted_count": sum(1 for d in decisions if d["matched"]), "rejected_count": sum(1 for d in decisions if not d["matched"]), "target": target, "decisions": decisions}
+        payload["debug"] = {
+            "raw_count": len(raw_assets),
+            "scoped_count": len(assets),
+            "target_linked_count": len(matched),
+            "accepted_count": sum(1 for d in decisions if d["matched"]),
+            "rejected_count": sum(1 for d in decisions if not d["matched"]),
+            "target": target,
+            "pre_scope": pre_scope,
+            "decisions": decisions,
+        }
     return payload
 
 
