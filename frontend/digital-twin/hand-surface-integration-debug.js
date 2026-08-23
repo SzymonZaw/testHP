@@ -1,8 +1,8 @@
 (() => {
   const PANEL_ID = 'twin-debug-panel';
   const OUT_ID = 'twin-debug-hand-surface-integration';
-  const EVIDENCE_DEBUG_SCRIPT = '/digital-twin/twin-viewport-evidence-debug.js?v=evidence-target-debug-2';
-  const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const EVIDENCE_DEBUG_SCRIPT = '/digital-twin/twin-viewport-evidence-debug.js?v=evidence-target-debug-3';
+  const esc = v => String(v ?? '').replace(/[&<>\"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;',"'":'&#39;'}[c]));
   const text = el => el?.textContent?.trim() || '';
   const normalize = v => String(v ?? '').trim().replace(/^\/+|\/+$/g, '').toLowerCase();
   const target = () => window.testhpSpatialContract?.getTarget?.() || window.selectedSpatialNode || null;
@@ -16,12 +16,16 @@
     document.head.appendChild(script);
   }
 
-  function readEvidence(t) {
+  function readAllEvidence() {
     try {
       const raw = JSON.parse(localStorage.getItem('digitalTwinEvidenceUX.v2') || '{}');
-      const items = Array.isArray(raw.evidence) ? raw.evidence : [];
-      return items.filter(x => normalize(x.spatial_id || x.spatialId || x.target) === targetId(t) && !x.archived);
+      return Array.isArray(raw.evidence) ? raw.evidence.filter(x => !x.archived) : [];
     } catch { return []; }
+  }
+
+  function readEvidence(t) {
+    const id = targetId(t);
+    return readAllEvidence().filter(x => normalize(x.spatial_id || x.spatialId || x.target) === id);
   }
 
   function readJson(key) {
@@ -104,7 +108,7 @@
 
   function evidenceTargetDebugBlock(t) {
     ensureEvidenceDebugHelper();
-    const records = readEvidence(t);
+    const records = readAllEvidence();
     const debug = window.testhpEvidenceTargetDebug;
     if (!debug) return 'EVIDENCE TARGET DEBUG\nhelper: LOADING\nrecords visible in UX cache: ' + records.length;
     const result = debug(records, t?.spatial_id || t?.spatialId || t?.id || t || '');
