@@ -84,12 +84,25 @@
 
   function resolveCanonicalTarget() {
     const manager = window.spatialViewportManager, activeKey = manager?.activeKey || '', managerState = manager?.state || {}, active = manager?.active || {};
-    const managerTarget = canonicalSpatialId(active?.spatial_id || active?.spatialId || managerState?.spatial_id || managerState?.spatialId || managerState?.target?.spatial_id || managerState?.target?.spatialId || active?.label || managerState?.target?.label);
-    const contractTarget = canonicalSpatialId(window.testhpSpatialContract?.current?.spatial_id || window.testhpSpatialContract?.current?.spatialId || window.testhpSpatialContract?.current?.label);
+    // The manager's canonical spatialTarget is authoritative. Do not fall back
+    // to a display label such as "Kciuk"/"Hypothenar eminence", because labels
+    // are not registry IDs and cause false 0-result target drift diagnostics.
+    const managerTarget = canonicalSpatialId(
+      manager?.spatialTarget ||
+      managerState?.spatialTarget ||
+      active?.spatial_node_id || active?.spatial_id || active?.spatialId ||
+      managerState?.spatial_node_id || managerState?.spatial_id || managerState?.spatialId
+    );
+    const contractTarget = canonicalSpatialId(window.testhpSpatialContract?.current?.spatial_node_id || window.testhpSpatialContract?.current?.spatial_id || window.testhpSpatialContract?.current?.spatialId || window.testhpSpatialContract?.current?.label);
     const explicitViewportTarget = canonicalSpatialId(window.__testhpSpatialState?.spatial_id || window.__testhpSpatialState?.spatialId || window.__testhpDiagnostics?.spatial_id || window.__testhpSpatialState?.label);
     const legacyTarget = canonicalSpatialId(window.spatialEvidenceTarget || window.selectedSpatialNode);
-    if (managerTarget) return managerTarget; if (contractTarget) return contractTarget; if (explicitViewportTarget) return explicitViewportTarget;
-    if (activeKey) { const match = activeKey.match(/^(?:macro|tissue|cell|cellular)\|(.+)$/); if (match?.[1]) return canonicalSpatialId(match[1].includes('/') ? match[1] : match[1]); }
+    if (managerTarget) return managerTarget;
+    if (contractTarget) return contractTarget;
+    if (explicitViewportTarget) return explicitViewportTarget;
+    if (activeKey) {
+      const match = activeKey.match(/^(?:macro|tissue|cell|cellular)\|(.+)$/);
+      if (match?.[1]) return canonicalSpatialId(match[1].includes('/') ? match[1] : match[1]);
+    }
     return legacyTarget || 'hand';
   }
 
@@ -98,7 +111,7 @@
   const onSpatialChange = event => { const detail = event?.detail || {}; const target = syncManagerTarget(detail.spatial_id || detail.spatialId || detail.target?.spatial_id || detail.target?.spatialId || detail.target?.label || resolveCanonicalTarget()); if (target) { window.spatialEvidenceTarget = target; collectRegistryDiagnostics(target).then(d => { console.groupCollapsed(`[Twin Registry Debug] ${target}`); console.log('summary', { total: d.total, targetLinked: d.targetLinked, prepared: d.prepared, rejected: d.matchDebug?.rejectedCount ?? 0, status: d.status, aliasUsed: d.matchDebug?.aliasUsed || null }); console.table(d.matchDebug?.decisions || d.targetRecords); console.log('accepted', d.matchDebug?.accepted || []); console.log('rejected', d.matchDebug?.rejected || []); console.groupEnd(); }); } };
   window.addEventListener('testhp:spatial-layer-changed', onSpatialChange); window.addEventListener('testhp:spatial-target-changed', onSpatialChange);
 
-  async function syncCanonical() { try { const response = await fetch('/api/spatial/registry?subject_id=own_cohort&timepoint=T0', { cache: 'no-store' }); if (!response.ok) return; const payload = await response.json(); const canonical = Array.isArray(payload.items) ? payload.items : []; if (!canonical.length) return; let current = {}; try { current = JSON.parse(localStorage.getItem(STORAGE) || '{}'); } catch {} const existing = Array.isArray(current.evidence) ? current.evidence : []; const canonicalUX = canonical.map(toUX); const canonicalIds = new Set(canonicalUX.map(x => x.backendAssetId || x.id)); const manual = existing.filter(x => !canonicalIds.has(x.backendAssetId || x.id)); localStorage.setItem(STORAGE, JSON.stringify({ evidence: [...canonicalUX, ...manual], target: canonicalSpatialId(current.target || resolveCanonicalTarget()) || 'hand' })); window.dispatchEvent(new CustomEvent('testhp:evidence-registry-synced', { detail: { count: canonical.length, evidence: canonicalUX, canonical: true } })); if (!sessionStorage.getItem(BOOTSTRAP)) { sessionStorage.setItem(BOOTSTRAP, '1'); sessionStorage.setItem(BOOTSTRAP, '1'); window.location.reload(); } } catch (error) { console.warn('Canonical evidence registry sync failed', error); } }
+  async function syncCanonical() { try { const response = await fetch('/api/spatial/registry?subject_id=own_cohort&timepoint=T0', { cache: 'no-store' }); if (!response.ok) return; const payload = await response.json(); const canonical = Array.isArray(payload.items) ? payload.items : []; if (!canonical.length) return; let current = {}; try { current = JSON.parse(localStorage.getItem(STORAGE) || '{}'); } catch {} const existing = Array.isArray(current.evidence) ? current.evidence : []; const canonicalUX = canonical.map(toUX); const canonicalIds = new Set(canonicalUX.map(x => x.backendAssetId || x.id)); const manual = existing.filter(x => !canonicalIds.has(x.backendAssetId || x.id)); localStorage.setItem(STORAGE, JSON.stringify({ evidence: [...canonicalUX, ...manual], target: canonicalSpatialId(current.target || resolveCanonicalTarget()) || 'hand' })); window.dispatchEvent(new CustomEvent('testhp:evidence-registry-synced', { detail: { count: canonical.length, evidence: canonicalUX, canonical: true } })); if (!sessionStorage.getItem(BOOTSTRAP)) { sessionStorage.setItem(BOOTSTRAP, '1'); window.location.reload(); } } catch (error) { console.warn('Canonical evidence registry sync failed', error); } }
   window.addEventListener('testhp:evidence-registry-synced', event => window.dispatchEvent(new CustomEvent('testhp:evidence-ux-refresh', { detail: event.detail || {} })));
   const bootDebug = () => setTimeout(debugCurrentTarget, 0);
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', () => { syncCanonical(); syncManagerTarget(resolveCanonicalTarget()); window.spatialEvidenceTarget = resolveCanonicalTarget(); bootDebug(); }, { once: true }); else { syncCanonical(); syncManagerTarget(resolveCanonicalTarget()); window.spatialEvidenceTarget = resolveCanonicalTarget(); bootDebug(); }
