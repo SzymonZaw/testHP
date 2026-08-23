@@ -10,6 +10,7 @@ from .biological_state_routes import biological_state
 from .data_ingestion import registry_status
 from .observation_registry import archive_observation, create_observation, get_observation, list_observations, observation_history, restore_observation, update_observation
 from .photo_reconstruction_routes import router as photo_reconstruction_router
+from .spatial_contract import canonical_spatial_id
 from .spatial_object_routes import router as spatial_object_router
 
 router = APIRouter(tags=["biological-observations"])
@@ -82,11 +83,15 @@ def spatial_registry(
         for item in registry_status()["assets"]
         if item.get("subject_id") == subject_id and item.get("timepoint") == timepoint
     ]
-    target = str(spatial_node_id or "").strip().strip("/") or None
+    # The registry is an API boundary: normalize both the requested target and
+    # stored evidence IDs here so display aliases (e.g. "Palm"/"Śródręcze")
+    # cannot cause a false empty scope.
+    target = canonical_spatial_id(spatial_node_id, fallback="") if spatial_node_id else None
     decisions: list[dict[str, Any]] = []
     matched: list[dict[str, Any]] = []
     for item in assets:
-        actual = str(item.get("spatial_node_id") or item.get("spatial_id") or item.get("target") or "").strip().strip("/") or None
+        actual_raw = item.get("spatial_node_id") or item.get("spatial_id") or item.get("target") or ""
+        actual = canonical_spatial_id(actual_raw, fallback="") or None
         attachment = item.get("attachment_status") or ("explicit" if item.get("spatial_node_id") else "registered_root")
         localized = item.get("spatially_localized")
         if target is None:
@@ -112,7 +117,13 @@ def spatial_registry(
         }
         decisions.append(decision)
         if is_match:
-            matched.append(item)
+            normalized_item = dict(item)
+            normalized_item["spatial_node_id"] = actual
+            if item.get("spatial_id") is not None:
+                normalized_item["spatial_id"] = actual
+            if item.get("target") is not None:
+                normalized_item["target"] = actual
+            matched.append(normalized_item)
     payload: dict[str, Any] = {"subject_id": subject_id, "timepoint": timepoint, "scope": target, "items": matched, "count": len(matched)}
     if debug:
         payload["debug"] = {"scoped_count": len(assets), "target_linked_count": len(matched), "accepted_count": sum(1 for d in decisions if d["matched"]), "rejected_count": sum(1 for d in decisions if not d["matched"]), "target": target, "decisions": decisions}
