@@ -112,6 +112,29 @@
 
   let current = normalizeTarget({ spatial_id: 'hand/palm', id: 'palm', target: 'Śródręcze', level: 'macro', path: ['hand', 'palm'] });
 
+  const managerTarget = manager => {
+    const state = manager?.state || {};
+    const active = manager?.active || {};
+    const candidate = state.target && typeof state.target === 'object'
+      ? state.target
+      : active && typeof active === 'object'
+        ? active
+        : { spatial_id: state.spatial_id || state.spatialId || manager?.spatialTarget };
+    const id = canonicalTargetId(candidate);
+    if (!id) return null;
+    return {
+      ...candidate,
+      spatial_id: id,
+      spatialId: id,
+      id: candidate.id || id.split('/').at(-1),
+      target: candidate.target || candidate.label || labelFor(id, current.label),
+      label: candidate.label || candidate.target || labelFor(id, current.label),
+      level: candidate.level || manager?.activeLayer || current.level,
+      path: Array.isArray(candidate.path) && candidate.path.length ? candidate.path : id.split('/'),
+      children: Array.isArray(candidate.children) ? candidate.children : []
+    };
+  };
+
   const managerSpatialId = manager => canonicalTargetId(
     manager?.state?.spatial_id || manager?.state?.spatialId ||
     manager?.active?.spatial_id || manager?.active?.spatialId || manager?.spatialTarget || current.spatial_id
@@ -119,8 +142,15 @@
 
   const syncCompatibility = () => {
     const manager = window.spatialViewportManager;
-    const canonical = managerSpatialId(manager) || current.spatial_id;
-    current = normalizeTarget({ ...current, spatial_id: canonical, spatialId: canonical, target: labelFor(canonical, current.label) });
+    const observed = managerTarget(manager);
+    const canonical = canonicalTargetId(observed) || managerSpatialId(manager) || current.spatial_id;
+
+    // The viewport manager is authoritative after a navigation. Keep the
+    // contract object itself in sync, not just compatibility globals; otherwise
+    // diagnostics can see a stale contract target while the renderer is correct.
+    if (observed && canonical !== current.spatial_id) current = normalizeTarget(observed);
+    else current = normalizeTarget({ ...current, spatial_id: canonical, spatialId: canonical, target: labelFor(canonical, current.label) });
+
     if (manager?.state && typeof manager.state === 'object') {
       manager.state.spatial_id = canonical;
       manager.state.spatialId = canonical;
