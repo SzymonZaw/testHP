@@ -16,4 +16,17 @@
   window.addEventListener('testhp:biological-state-updated',e=>render(e.detail));
   window.addEventListener('testhp:spatial-contract-changed',refresh);
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',refresh,{once:true});else refresh();
+
+  // Explicit target-source/registry diagnosis. This is intentionally loaded here so it
+  // remains independent from the main hand-surface renderer and cannot change routing.
+  const loadTargetConsistencyDebug = () => {
+    if (window.__testhpTargetConsistencyDebugInstalled || document.getElementById('testhp-target-consistency-debug-script')) return;
+    const script = document.createElement('script');
+    script.id = 'testhp-target-consistency-debug-script';
+    script.src = '/digital-twin/target-consistency-debug.js?v=target-consistency-1';
+    script.async = true;
+    script.onerror = () => window.dispatchEvent(new CustomEvent('testhp:target-consistency-debug-error'));
+    document.head.appendChild(script);
+  };
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',loadTargetConsistencyDebug,{once:true});else loadTargetConsistencyDebug();
 })();
