@@ -8,18 +8,27 @@
     for (const key of keys) if (obj && obj[key] != null && obj[key] !== '') return obj[key];
     return null;
   };
+  const idFrom = value => {
+    if (!value) return '';
+    if (typeof value === 'object') return normalize(first(value, ['spatial_node_id','spatial_id','spatialId','targetSpatialId','id']) || '');
+    const raw = normalize(value);
+    return raw.includes('/') ? raw : '';
+  };
   const managerTarget = () => {
     const manager = window.spatialViewportManager;
     const state = manager?.state || {};
-    const value = state.spatialTarget || state.target || manager?.spatialTarget || manager?.target || null;
-    return normalize(typeof value === 'object' ? first(value, ['spatial_node_id','spatial_id','spatialId','id','target']) : value);
+    const active = manager?.active || {};
+    const candidates = [
+      state.spatial_id, state.spatialId, state.targetSpatialId,
+      state.spatialTarget, state.target,
+      active.spatial_node_id, active.spatial_id, active.spatialId, active.targetSpatialId,
+      manager?.spatialTarget, manager?.target
+    ];
+    return candidates.map(idFrom).find(Boolean) || '';
   };
-  const contractTarget = () => {
-    const value = window.testhpSpatialContract?.getTarget?.();
-    return normalize(typeof value === 'object' ? first(value, ['spatial_node_id','spatial_id','spatialId','id']) : value);
-  };
-  const selectedTarget = () => normalize(window.selectedSpatialNode);
-  const evidenceTarget = () => normalize(window.spatialEvidenceTarget);
+  const contractTarget = () => idFrom(window.testhpSpatialContract?.getTarget?.());
+  const selectedTarget = () => idFrom(window.selectedSpatialNode);
+  const evidenceTarget = () => idFrom(window.spatialEvidenceTarget);
   const currentNode = () => document.getElementById('spatial-node')?.querySelector('strong')?.textContent?.trim() || '';
   const currentPath = () => [...document.querySelectorAll('#spatial-breadcrumb button')].map(x => x.textContent.trim()).filter(Boolean);
   const registry = () => window.__testhpTwinRegistryDiagnostics || {};
@@ -29,7 +38,7 @@
       return Array.isArray(value.evidence) ? value.evidence.filter(x => !x.archived) : [];
     } catch { return []; }
   };
-  const recordTarget = record => normalize(first(record, ['spatial_node_id','spatial_id','spatialId']) || first(record?.target || {}, ['spatial_node_id','spatial_id','spatialId']) || record?.target);
+  const recordTarget = record => idFrom(first(record, ['spatial_node_id','spatial_id','spatialId']) || first(record?.target || {}, ['spatial_node_id','spatial_id','spatialId']) || record?.target);
   const targetEvidence = id => evidence().filter(record => recordTarget(record) === id);
 
   function relation(expected, actual) {
@@ -49,7 +58,7 @@
     const id = manager || contract || selected || evidenceGlobal || '';
     const values = [manager, contract, selected, evidenceGlobal].filter(Boolean);
     const allExact = !!id && values.every(value => value === id);
-    const targetDrift = values.some(value => value !== id);
+    const targetDrift = !!id && values.some(value => value !== id);
     const d = registry();
     const linked = Array.isArray(d.targetRecords) ? d.targetRecords : [];
     const cacheLinked = targetEvidence(id);
@@ -106,10 +115,10 @@
       `  cache-linked  ${result.cacheLinked}\n` +
       `  fingerprint  ${fingerprint(result.id)}\n\n` +
       (result.diagnosis === 'TARGET_DATA_MISSING'
-        ? 'CONCLUSION\n  Target routing is correct. No target-linked registry/evidence record exists.\n'
+        ? 'CONCLUSION\n  Target routing is consistent. No target-linked registry/evidence record exists.\n'
         : result.diagnosis === 'TARGET_DRIFT'
-          ? 'CONCLUSION\n  Target sources disagree. Compare the source marked MISMATCH before inspecting assets.\n'
-          : 'CONCLUSION\n  No target-source drift detected. Continue downstream inspection.\n') +
+          ? 'CONCLUSION\n  Target IDs disagree. Display labels are ignored; compare only ID-bearing sources.\n'
+          : 'CONCLUSION\n  All available ID-bearing target sources agree. Continue downstream inspection.\n') +
       '</pre>';
     panel.appendChild(box);
   }
@@ -122,10 +131,7 @@
 
   function schedule() {
     let tries = 0;
-    const timer = setInterval(() => {
-      render();
-      if (++tries >= 80) clearInterval(timer);
-    }, 250);
+    const timer = setInterval(() => { render(); if (++tries >= 80) clearInterval(timer); }, 250);
     window.addEventListener('testhp:spatial-layer-changed', render);
     window.addEventListener('testhp:spatial-contract-changed', render);
     window.addEventListener('testhp:evidence-registry-updated', render);
