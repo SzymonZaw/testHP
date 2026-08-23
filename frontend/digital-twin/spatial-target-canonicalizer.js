@@ -19,6 +19,15 @@
   // even when the active navigation node already carries the real canonical
   // spatial_id. Resolve that authoritative ID before considering any label.
   const activeViewportSpatialId = manager => {
+    const diagnostics = window.__testhpDiagnostics || {};
+    const navigation = diagnostics.lastNavigation || diagnostics.lastNavigationRoute;
+    const navigationId = navigation?.spatial_id || navigation?.spatialId;
+    if (typeof navigationId === 'string' && navigationId.includes('/')) return canonical(navigationId);
+
+    const clickButton = diagnostics.lastClickRoute?.button;
+    const clickId = clickButton?.spatialId || clickButton?.spatial_id || clickButton?.spatial_node_id;
+    if (typeof clickId === 'string' && clickId.includes('/')) return canonical(clickId);
+
     const direct = manager?.active?.spatial_node_id || manager?.active?.spatial_id || manager?.active?.spatialId;
     if (typeof direct === 'string' && direct) return canonical(direct);
 
@@ -48,15 +57,6 @@
       if (match) return canonical(match);
     }
 
-    const diagnostics = window.__testhpDiagnostics || {};
-    const navigation = diagnostics.lastNavigation || diagnostics.lastNavigationRoute;
-    const navigationId = navigation?.spatial_id || navigation?.spatialId;
-    if (typeof navigationId === 'string' && navigationId.endsWith(`/${leaf}`)) return canonical(navigationId);
-
-    const clickButton = diagnostics.lastClickRoute?.button;
-    const clickId = clickButton?.spatialId || clickButton?.spatial_id || clickButton?.spatial_node_id;
-    if (typeof clickId === 'string' && clickId.endsWith(`/${leaf}`)) return canonical(clickId);
-
     return '';
   };
 
@@ -66,10 +66,9 @@
     const manager = window.spatialViewportManager;
     if (!manager || typeof manager !== 'object') return;
 
-    // Authoritative order: active node ID -> state ID -> object target ID.
-    // Only use a string manager target as a last compatibility fallback, and
-    // never allow a display label to overwrite a canonical path when activeKey
-    // identifies a concrete navigation node.
+    // Authoritative order: explicit navigation ID -> active node ID -> state ID
+    // -> object target ID. A concrete activeKey must never fall back to the
+    // display-label string exposed by manager.spatialTarget.
     const activeId = activeViewportSpatialId(manager);
     const state = manager.state || {};
     const stateTarget = state.target && typeof state.target === 'object'
@@ -78,7 +77,8 @@
     const objectTarget = manager.spatialTarget && typeof manager.spatialTarget === 'object'
       ? (manager.spatialTarget.spatial_node_id || manager.spatialTarget.spatial_id || manager.spatialTarget.spatialId || manager.spatialTarget.id)
       : '';
-    const fallback = stateTarget || objectTarget || (typeof manager.spatialTarget === 'string' ? manager.spatialTarget : '') || (typeof state.spatialTarget === 'string' ? state.spatialTarget : '');
+    const activeKeyPresent = typeof manager.activeKey === 'string' && manager.activeKey.includes('|');
+    const fallback = stateTarget || objectTarget || (!activeKeyPresent && typeof manager.spatialTarget === 'string' ? manager.spatialTarget : '') || (!activeKeyPresent && typeof state.spatialTarget === 'string' ? state.spatialTarget : '');
     const id = canonical(activeId || stateTarget || objectTarget || fallback);
     if (!id) return;
 
