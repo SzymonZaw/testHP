@@ -156,5 +156,7 @@
   window.addEventListener('testhp:spatial-contract-request', event => event?.detail?.callback?.(current));
   window.addEventListener('testhp:viewport-manager-ready', syncCompatibility);
   window.addEventListener('testhp:spatial-target-changed', syncCompatibility);
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', syncCompatibility, { once: true });
+  else setTimeout(syncCompatibility, 0);
   publish(current);
 })();
