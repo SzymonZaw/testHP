@@ -14,21 +14,29 @@ CANONICAL_SPATIAL_IDS = {
     "hand": "hand",
     "palm": "hand/palm",
     "hand/palm": "hand/palm",
+    "śródręcze": "hand/palm",
+    "srodrecze": "hand/palm",
     "thenar": "hand/palm/thenar",
     "hand/palm/thenar": "hand/palm/thenar",
+    "kłąb kciuka": "hand/palm/thenar",
+    "klab kciuka": "hand/palm/thenar",
     "hypothenar": "hand/palm/hypothenar",
     "hand/palm/hypothenar": "hand/palm/hypothenar",
+    "kłębik dłoni": "hand/palm/hypothenar",
+    "klebik dloni": "hand/palm/hypothenar",
     "central-palm": "hand/palm/central-palm",
     "hand/palm/central-palm": "hand/palm/central-palm",
+    "centralna część dłoni": "hand/palm/central-palm",
+    "centralna czesc dloni": "hand/palm/central-palm",
 }
 
 
 def canonical_spatial_id(value: str | None, *, fallback: str = "hand") -> str:
     """Return the one spatial identifier shared by all surface modules.
 
-    Display labels (for example ``Palm`` or ``Śródręcze``) are deliberately
-    not identifiers. Unknown path-like values are retained so the contract
-    does not silently move evidence to a different target.
+    Display labels such as ``Palm`` or ``Śródręcze`` are aliases only. Unknown
+    path-like values are retained so the contract does not silently move
+    evidence to a different target.
     """
     raw = str(value or "").strip().replace("\\", "/").strip("/")
     if not raw:
