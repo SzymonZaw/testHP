@@ -95,21 +95,23 @@
     const managerStateSpatialTarget = managerState?.spatialTarget && typeof managerState.spatialTarget === 'object'
       ? (managerState.spatialTarget.spatial_node_id || managerState.spatialTarget.spatial_id || managerState.spatialTarget.spatialId)
       : (typeof managerState?.spatialTarget === 'string' && managerState.spatialTarget.includes('/') ? managerState.spatialTarget : null);
-    const managerTarget = canonicalSpatialId(
-      active?.spatial_node_id || active?.spatial_id || active?.spatialId ||
-      managerState?.spatial_node_id || managerState?.spatial_id || managerState?.spatialId ||
-      managerSpatialTarget || managerStateSpatialTarget
+    // The viewport manager exposes `spatialTarget` as a display label in the
+    // current runtime (e.g. "Cell target 2"). The active viewport node and
+    // activeKey contain the canonical registry path. Never let a label win.
+    const activeSpatialTarget = canonicalSpatialId(
+      active?.spatial_node_id || active?.spatial_id || active?.spatialId
     );
+    const activeKeyTarget = (() => {
+      const match = activeKey.match(/^(?:macro|tissue|cell|cellular)\|(.+)$/);
+      return match?.[1] ? canonicalSpatialId(match[1]) : null;
+    })();
+    const managerTarget = activeSpatialTarget || activeKeyTarget || managerSpatialTarget || managerStateSpatialTarget;
     const contractTarget = canonicalSpatialId(window.testhpSpatialContract?.current?.spatial_node_id || window.testhpSpatialContract?.current?.spatial_id || window.testhpSpatialContract?.current?.spatialId || window.testhpSpatialContract?.current?.label);
     const explicitViewportTarget = canonicalSpatialId(window.__testhpSpatialState?.spatial_id || window.__testhpSpatialState?.spatialId || window.__testhpDiagnostics?.spatial_id || window.__testhpSpatialState?.label);
     const legacyTarget = canonicalSpatialId(window.spatialEvidenceTarget || window.selectedSpatialNode);
     if (managerTarget) return managerTarget;
     if (contractTarget) return contractTarget;
     if (explicitViewportTarget) return explicitViewportTarget;
-    if (activeKey) {
-      const match = activeKey.match(/^(?:macro|tissue|cell|cellular)\|(.+)$/);
-      if (match?.[1]) return canonicalSpatialId(match[1].includes('/') ? match[1] : match[1]);
-    }
     return legacyTarget || 'hand';
   }
 
