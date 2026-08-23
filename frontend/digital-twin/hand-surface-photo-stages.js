@@ -2,8 +2,34 @@
   const API = '/api/hand/photo-reconstruction';
   const VIEWS = ['front', 'back', 'side_left', 'side_right', 'thumb'];
   const LABELS = { front: 'Front', back: 'Back', side_left: 'Lewa strona', side_right: 'Prawa strona', thumb: 'Kciuk' };
+  const PHOTO_SCOPE = 'digitalTwinPhotoSpatialScope.v1';
   const $ = id => document.getElementById(id);
-  const target = () => ({ subject_id: window.testhpPhotoReconstructionSubject || 'own_cohort', timepoint: window.testhpPhotoReconstructionTimepoint || 'T0' });
+  const canonicalTarget = value => {
+    const shared = window.testhpSpatialContract?.canonicalTargetId;
+    const raw = typeof value === 'string' ? value : value?.spatial_id || value?.spatialId || value?.target || value?.spatialTarget || null;
+    if (!raw) return 'hand';
+    return typeof shared === 'function' ? (shared(raw) || 'hand') : String(raw).replace(/^\/+|\/+$/g, '').toLowerCase();
+  };
+  const target = () => ({
+    subject_id: window.testhpPhotoReconstructionSubject || 'own_cohort',
+    timepoint: window.testhpPhotoReconstructionTimepoint || 'T0',
+    spatial_id: canonicalTarget(window.testhpSpatialContract?.getTarget?.() || window.spatialEvidenceTarget || window.selectedSpatialNode || document.body?.dataset?.spatialTarget || 'hand')
+  });
+  const readScope = () => {
+    try { return JSON.parse(localStorage.getItem(PHOTO_SCOPE) || '{}'); } catch { return {}; }
+  };
+  const writeScope = value => localStorage.setItem(PHOTO_SCOPE, JSON.stringify(value));
+  const rememberAssetTarget = (assetId, spatialId) => {
+    if (!assetId) return;
+    const scope = readScope();
+    scope[assetId] = canonicalTarget(spatialId);
+    writeScope(scope);
+  };
+  const assetTarget = item => canonicalTarget(item?.spatial_id || item?.spatialId || item?.target || readScope()[item?.asset_id] || item?.spatialTarget || 'hand');
+  const filterScopedInputs = (inputs, spatialId) => {
+    const scope = readScope();
+    return (Array.isArray(inputs) ? inputs : []).filter(item => canonicalTarget(item?.spatial_id || item?.spatialId || scope[item?.asset_id] || 'hand') === spatialId);
+  };
   let current = null;
   let syncing = false;
 
@@ -30,7 +56,13 @@
 
   async function loadState() {
     const t = target();
-    current = await request(`/state?subject_id=${encodeURIComponent(t.subject_id)}&timepoint=${encodeURIComponent(t.timepoint)}`);
+    const state = await request(`/state?subject_id=${encodeURIComponent(t.subject_id)}&timepoint=${encodeURIComponent(t.timepoint)}`);
+    current = { ...state, spatial_id: t.spatial_id, inputs: filterScopedInputs(state.inputs, t.spatial_id) };
+    current.assigned_count = current.inputs.filter(x => x.view && x.view !== 'unknown').length;
+    current.prepared_count = current.inputs.filter(x => x.prepared && x.view && x.view !== 'unknown').length;
+    current.ready_views = [...new Set(current.inputs.filter(x => x.prepared && x.view).map(x => x.view))].sort();
+    current.can_register = current.prepared_count >= 2;
+    current.can_reconstruct = current.prepared_count >= 2;
     render();
     await syncLegacyEvidence();
   }
@@ -42,9 +74,9 @@
     const card = panel.querySelector('.p3r-grid > .p3r-card:nth-child(2)');
     if (!card) return false;
     const note = card.querySelector('.p3r-note');
-    if (note) note.textContent = 'Dodaj zdjęcia dłoni, przypisz je do widoków i przygotuj je przed rekonstrukcją. Co najmniej 2 przygotowane widoki są wymagane.';
+    if (note) note.textContent = 'Zdjęcia są przypisane do aktywnego celu przestrzennego. Dodaj zdjęcia, przypisz widoki i przygotuj je przed rekonstrukcją. Co najmniej 2 przygotowane widoki są wymagane.';
     const controls = document.createElement('div');
-    controls.innerHTML = `<div class="p3r-upload"><label class="primary p3r-upload-label" for="p3r-photo-files">Dodaj zdjęcia</label><input id="p3r-photo-files" type="file" accept="image/jpeg,image/png,image/webp,image/tiff" multiple><button id="p3r-register" type="button">Sprawdź przygotowane widoki</button></div><div id="p3r-user-note" class="p3r-user-note"><strong>Przygotowanie zdjęć:</strong> system przygotuje kopię zdjęcia do rekonstrukcji. Oryginał pozostaje bez zmian.</div><div id="p3r-stage-summary" class="p3r-stage-summary"></div><div id="p3r-stage-list" class="p3r-list"></div><div id="p3r-stage-message" class="p3r-status" style="margin-top:10px">Ładowanie zdjęć…</div>`;
+    controls.innerHTML = `<div class="p3r-upload"><label class="primary p3r-upload-label" for="p3r-photo-files">Dodaj zdjęcia</label><input id="p3r-photo-files" type="file" accept="image/jpeg,image/png,image/webp,image/tiff" multiple><button id="p3r-register" type="button">Sprawdź przygotowane widoki</button></div><div id="p3r-user-note" class="p3r-user-note"><strong>Cel zdjęć:</strong> <code>${target().spatial_id}</code>. Zdjęcia dodane tutaj nie są dziedziczone przez inne cele.</div><div id="p3r-stage-summary" class="p3r-stage-summary"></div><div id="p3r-stage-list" class="p3r-list"></div><div id="p3r-stage-message" class="p3r-status" style="margin-top:10px">Ładowanie zdjęć…</div>`;
     note?.insertAdjacentElement('afterend', controls.firstElementChild);
     note?.insertAdjacentElement('afterend', controls.querySelector('#p3r-user-note'));
     const summary = controls.querySelector('#p3r-stage-summary');
@@ -69,16 +101,18 @@
   async function uploadFiles(files) {
     if (!files.length) return;
     const t = target();
-    message(`Przesyłanie ${files.length} ${files.length === 1 ? 'zdjęcia' : 'zdjęć'}…`);
+    message(`Przesyłanie ${files.length} ${files.length === 1 ? 'zdjęcia' : 'zdjęć'} dla ${t.spatial_id}…`);
     try {
       for (const file of files) {
         const form = new FormData();
         form.append('file', file);
         form.append('subject_id', t.subject_id);
         form.append('timepoint', t.timepoint);
-        await request('/upload', { method: 'POST', body: form });
+        form.append('spatial_node_id', t.spatial_id);
+        const result = await request('/upload', { method: 'POST', body: form });
+        rememberAssetTarget(result.asset_id || result.photo?.asset_id, t.spatial_id);
       }
-      message('Zdjęcia dodane. Przypisz widoki i przygotuj każde zdjęcie.');
+      message('Zdjęcia dodane do aktywnego celu. Przypisz widoki i przygotuj każde zdjęcie.');
       await loadState();
     } catch (error) { message(error.message || 'Nie udało się dodać zdjęć.', true); }
     finally { const input = $('p3r-photo-files'); if (input) input.value = ''; }
@@ -87,6 +121,7 @@
   async function assign(assetId, view) {
     try {
       await request('/assign', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({asset_id: assetId, view}) });
+      rememberAssetTarget(assetId, target().spatial_id);
       message(`Przypisano widok: ${LABELS[view]}.`);
       await loadState();
     } catch (error) { message(error.message || 'Nie udało się przypisać widoku.', true); }
@@ -94,6 +129,7 @@
 
   async function prepare(assetId) {
     try {
+      rememberAssetTarget(assetId, target().spatial_id);
       message('Przygotowywanie zdjęcia…');
       await request(`/prepare/${encodeURIComponent(assetId)}`, { method: 'POST' });
       message('Zdjęcie jest gotowe do rekonstrukcji.');
@@ -107,7 +143,7 @@
     try {
       message('Sprawdzanie przygotowanych widoków…');
       const result = await request(`/register?subject_id=${encodeURIComponent(t.subject_id)}&timepoint=${encodeURIComponent(t.timepoint)}`, { method: 'POST' });
-      message(result.ready_for_projection ? `${result.registered_count} widoków jest gotowych do kolejnego etapu.` : 'Rejestracja wymaga jeszcze sprawdzenia.');
+      message(result.ready_for_projection ? `${result.registered_count} widoków jest gotowych do kolejnego etapu dla ${t.spatial_id}.` : 'Rejestracja wymaga jeszcze sprawdzenia.');
       await loadState();
     } catch (error) { message(error.message || 'Nie udało się sprawdzić widoków.', true); }
   }
@@ -119,7 +155,7 @@
     const byView = Object.fromEntries(current.inputs.filter(x => x.view).map(x => [x.view, x]));
     list.innerHTML = VIEWS.map(view => {
       const item = byView[view];
-      if (!item) return `<div class="p3r-item"><div class="p3r-head"><strong>${LABELS[view]}</strong><span class="p3r-badge p3r-bad">BRAK</span></div><small class="p3r-mini">Dodaj zdjęcie i przypisz je do tego widoku.</small></div>`;
+      if (!item) return `<div class="p3r-item"><div class="p3r-head"><strong>${LABELS[view]}</strong><span class="p3r-badge p3r-bad">BRAK</span></div><small class="p3r-mini">Dodaj zdjęcie i przypisz je do tego widoku dla ${esc(current.spatial_id)}.</small></div>`;
       const prepared = !!item.prepared;
       const registered = item.registration?.status === 'registered';
       const image = prepared ? `${API}/file/prepared/${encodeURIComponent(item.prepared_asset_id)}` : `${API}/file/source/${encodeURIComponent(item.asset_id)}`;
@@ -134,11 +170,11 @@
     const prepared = current.prepared_count;
     const registered = current.inputs.filter(x => x.registration?.status === 'registered').length;
     const summary = $('p3r-stage-summary');
-    if (summary) summary.innerHTML = `<span class="p3r-stage-chip">${assigned} / 5 przypisanych</span><span class="p3r-stage-chip ${prepared >= 2 ? 'good' : 'warn'}">${prepared} / 5 przygotowanych</span><span class="p3r-stage-chip ${registered >= 2 ? 'good' : 'warn'}">${registered} / 5 gotowych</span>`;
+    if (summary) summary.innerHTML = `<span class="p3r-stage-chip">${assigned} / 5 przypisanych</span><span class="p3r-stage-chip ${prepared >= 2 ? 'good' : 'warn'}">${prepared} / 5 przygotowanych</span><span class="p3r-stage-chip ${registered >= 2 ? 'good' : 'warn'}">${registered} / 5 gotowych</span><span class="p3r-stage-chip">cel: ${esc(current.spatial_id)}</span>`;
     const build = $('p3r-build');
     if (build) {
       build.disabled = prepared < 2;
-      build.textContent = prepared >= 2 ? 'Zbuduj powierzchnię 3D' : 'Zbuduj powierzchnię 3D';
+      build.textContent = 'Zbuduj powierzchnię 3D';
     }
     const score = $('p3r-score');
     if (score) score.textContent = `${prepared} / ${VIEWS.length}`;
@@ -159,15 +195,24 @@
       try { store = JSON.parse(localStorage.getItem(key) || '{}'); } catch { store = {}; }
       const other = Array.isArray(store.evidence) ? store.evidence.filter(x => x.sourceType !== 'prepared-image') : [];
       const prepared = [];
+      const t = target();
       for (const item of current.inputs.filter(x => x.prepared && x.prepared_asset_id && x.view)) {
         const response = await fetch(`${API}/file/prepared/${encodeURIComponent(item.prepared_asset_id)}`);
         if (!response.ok) continue;
         const dataUrl = await blobToDataUrl(await response.blob());
-        prepared.push({ evidence_id: `photo-prepared-${item.prepared_asset_id}`, asset_id: item.asset_id, sourceType: 'prepared-image', prepared: true, filename: item.filename, view: item.view, preparedAsset: { name: item.filename, view: item.view, dataUrl }, subject_id: item.subject_id, timepoint: item.timepoint, spatial_id: 'hand', updated_at: item.updated_at });
+        const spatialId = assetTarget(item) || t.spatial_id;
+        prepared.push({ evidence_id: `photo-prepared-${item.prepared_asset_id}`, asset_id: item.asset_id, sourceType: 'prepared-image', prepared: true, filename: item.filename, view: item.view, preparedAsset: { name: item.filename, view: item.view, dataUrl, spatialTarget: spatialId }, subject_id: item.subject_id, timepoint: item.timepoint, target: spatialId, spatial_id: spatialId, spatialId, updated_at: item.updated_at });
       }
-      localStorage.setItem(key, JSON.stringify({ ...store, evidence: [...other, ...prepared] }));
+      localStorage.setItem(key, JSON.stringify({ ...store, evidence: [...other, ...prepared], target: t.spatial_id, spatial_id: t.spatial_id }));
     } catch { /* server manifest remains canonical */ }
     finally { syncing = false; }
+  }
+
+  function refreshScope() {
+    if (!$('p3r-stage-list')) return;
+    const note = $('p3r-user-note');
+    if (note) note.innerHTML = `<strong>Cel zdjęć:</strong> <code>${target().spatial_id}</code>. Zdjęcia dodane tutaj nie są dziedziczone przez inne cele.`;
+    loadState().catch(() => {});
   }
 
   function boot() {
@@ -180,6 +225,8 @@
     start();
   }
 
+  window.addEventListener('testhp:spatial-layer-changed', refreshScope);
+  window.addEventListener('testhp:spatial-contract-changed', refreshScope);
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot, { once: true });
   else boot();
 })();
