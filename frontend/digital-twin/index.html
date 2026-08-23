@@ -62,8 +62,17 @@
       if (/PODSUMOWANIE HIERARCHICZNE/.test(text) && /ETAP 4/.test(text)) el.remove();
     });
   };
+  const removeEventTrace = () => {
+    const host = document.getElementById('twin-viewport-debug-host');
+    if (!host) return;
+    [...host.querySelectorAll('section,article,div')].forEach(el => {
+      const heading = el.querySelector('h1,h2,h3,h4,h5,h6,strong');
+      if (heading && /^EVENT TRACE(?:\s*\(|$)/i.test((heading.textContent || '').trim())) el.remove();
+    });
+  };
   removeLegacyHierarchicalSummary();
-  new MutationObserver(removeLegacyHierarchicalSummary).observe(document.body, {childList:true, subtree:true});
+  removeEventTrace();
+  new MutationObserver(() => { removeLegacyHierarchicalSummary(); removeEventTrace(); }).observe(document.body, {childList:true, subtree:true});
   new MutationObserver(() => document.getElementById('evidence-workspace')?.remove()).observe(document.body, {childList:true,subtree:true});
 })();
 </script>
