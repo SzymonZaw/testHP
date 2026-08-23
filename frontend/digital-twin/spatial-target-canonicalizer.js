@@ -24,6 +24,11 @@
     if (!id) return;
     if (manager.state && typeof manager.state === 'object') Object.assign(manager.state,{spatial_id:id,spatialId:id,spatialTarget:id});
     manager.spatialTarget = id;
+    // Keep legacy globals on the same canonical identity. The debug surface
+    // compares these values with the viewport-manager target; aliases such as
+    // `palm` must not be reported as TARGET DRIFT when they mean hand/palm.
+    if (window.selectedSpatialNode) window.selectedSpatialNode = canonical(window.selectedSpatialNode);
+    if (window.spatialEvidenceTarget) window.spatialEvidenceTarget = canonical(window.spatialEvidenceTarget);
   };
   const repairPhotoShell = () => {
     const root = document.getElementById('photo-3d-reconstruction');
