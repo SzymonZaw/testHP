@@ -19,6 +19,7 @@ from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from pydantic import BaseModel
 
 from .data_ingestion import ingest_upload, registry_status, safe_component
+from .spatial_contract import canonical_spatial_id
 
 ROOT = Path(__file__).resolve().parents[1]
 REGISTRY_PATH = ROOT / "data" / "registry" / "spatial_evidence.json"
@@ -98,7 +99,8 @@ def _load() -> list[dict[str, Any]]:
     return _sync_registered_assets(_load_raw())
 
 def _safe_node(node_id: str) -> str:
-    parts = [safe_component(part, "node") for part in node_id.split("/") if part]
+    canonical = canonical_spatial_id(node_id)
+    parts = [safe_component(part, "node") for part in canonical.split("/") if part]
     return "/".join(parts)[:160] or "hand"
 
 def _validate_level(level: str) -> str:
@@ -219,23 +221,25 @@ async def attach_evidence(file: UploadFile = File(...), subject_id: str = Form("
 @router.get("/api/spatial/registry")
 def spatial_registry(subject_id: str = "own_cohort", timepoint: str = "T0", spatial_node_id: str | None = None, debug: bool = False):
     all_items = _load()
+    requested_node = canonical_spatial_id(spatial_node_id) if spatial_node_id else None
     scoped = [i for i in all_items if _matches(i, subject_id, timepoint)]
-    items = [i for i in scoped if _node_matches(i, spatial_node_id)]
-    response: dict[str, Any] = {"subject_id": subject_id, "timepoint": timepoint, "items": items, "count": len(items), "canonical": True}
+    items = [i for i in scoped if _node_matches(i, requested_node)]
+    response: dict[str, Any] = {"subject_id": subject_id, "timepoint": timepoint, "items": items, "count": len(items), "canonical": True, "spatial_node_id": requested_node}
     if debug:
         response["debug"] = {
-            "filter": {"subject_id": subject_id, "timepoint": timepoint, "spatial_node_id": spatial_node_id},
+            "filter": {"subject_id": subject_id, "timepoint": timepoint, "spatial_node_id": requested_node},
             "scoped_count": len(scoped),
             "returned_count": len(items),
             "rejected_count": len(scoped) - len(items),
-            "decisions": [_node_match_debug(item, spatial_node_id) for item in scoped],
+            "decisions": [_node_match_debug(item, requested_node) for item in scoped],
         }
     return response
 
 @router.get("/api/spatial/state")
 def current_state(subject_id: str = "own_cohort", timepoint: str = "T0", spatial_node_id: str | None = None):
+    requested_node = canonical_spatial_id(spatial_node_id) if spatial_node_id else None
     items = [i for i in _load() if _matches(i, subject_id, timepoint)]
-    return {"subject_id": subject_id, "timepoint": timepoint, "spatial_node_id": spatial_node_id, **_direct_state(items, spatial_node_id)}
+    return {"subject_id": subject_id, "timepoint": timepoint, "spatial_node_id": requested_node, **_direct_state(items, requested_node)}
 
 @router.post("/api/spatial/summary")
 def hierarchical_summary(request: AggregateRequest):
