@@ -1,7 +1,6 @@
 (() => {
   // Single source of truth for spatial identity. Human-readable labels are
-  // never valid spatial IDs. Legacy aliases are normalized to the canonical
-  // path used by the viewport manager and backend registry.
+  // display-only; all data flows use the canonical spatial_id path.
   const SEGMENT_RE = /[^a-z0-9_-]+/gi;
   const LEVELS = new Set(['macro', 'tissue', 'cellular', 'molecular', 'cell']);
   const SEGMENT_ALIASES = Object.freeze({
@@ -17,6 +16,15 @@
   const buildSpatialId = path => (Array.isArray(path) ? path : [])
     .map(item => typeof item === 'string' ? item : item?.id)
     .map(normalizeSegment).filter(Boolean).join('/');
+  const canonicalTargetId = target => normalizeId(
+    typeof target === 'object'
+      ? (target?.spatial_id || target?.spatialId || target?.spatial_node_id || target?.targetSpatialId || target?.id)
+      : target
+  );
+  const sameTarget = (a, b) => {
+    const left = canonicalTargetId(a), right = canonicalTargetId(b);
+    return !!left && !!right && left === right;
+  };
   const relation = (selectedId, candidateId) => {
     const selected = normalizeId(selectedId), candidate = normalizeId(candidateId);
     if (!selected || !candidate) return 'unknown';
@@ -47,6 +55,7 @@
         if (normalized && normalized !== source) {
           next.target = normalized;
           next.spatial_id = normalized;
+          next.spatialId = normalized;
           changed = true;
         }
         return next;
@@ -56,14 +65,15 @@
   };
 
   const normalizeTarget = detail => {
-    const source = detail || {};
+    const source = detail && typeof detail === 'object' ? detail : { spatial_id: detail };
     const path = Array.isArray(source.path) ? source.path.map(String) : [];
-    const spatialId = normalizeId(source.spatial_id || source.spatialId || buildSpatialId(path) || source.id || 'hand');
+    const spatialId = canonicalTargetId(source) || normalizeId(buildSpatialId(path)) || 'hand';
     const segments = spatialId.split('/').filter(Boolean);
     const rawLevel = String(source.level || '').toLowerCase();
     const level = LEVELS.has(rawLevel) ? rawLevel : rawLevel === 'single cell' ? 'cell' : rawLevel || 'macro';
     return Object.freeze({
       spatial_id: spatialId,
+      spatialId,
       id: normalizeSegment(source.id || segments.at(-1) || 'hand'),
       label: source.target || source.label || path.at(-1) || segments.at(-1) || 'Hand',
       level,
@@ -75,18 +85,18 @@
 
   let current = normalizeTarget({ spatial_id: 'hand', id: 'hand', target: 'Hand', level: 'macro', path: ['Hand'] });
 
-  const managerSpatialId = manager => normalizeId(
+  const managerSpatialId = manager => canonicalTargetId(
     manager?.state?.spatial_id || manager?.state?.spatialId ||
-    manager?.active?.spatial_id || manager?.active?.spatialId || current.spatial_id
+    manager?.active?.spatial_id || manager?.active?.spatialId || manager?.spatialTarget || current.spatial_id
   );
 
-  // Compatibility channels are synchronized only at explicit lifecycle/target
-  // events. Do not observe the DOM or poll: doing so can react to our own
-  // data-spatial-target write and create a self-triggering reconciliation loop.
+  // Synchronize only explicit lifecycle/target events. No DOM observer or
+  // polling is used here, preventing self-triggering reconciliation loops.
   const syncCompatibility = () => {
     const manager = window.spatialViewportManager;
     const canonical = managerSpatialId(manager);
     if (!canonical) return;
+    current = normalizeTarget({ ...current, spatial_id: canonical, spatialId: canonical });
     if (manager?.state && typeof manager.state === 'object') {
       manager.state.spatial_id = canonical;
       manager.state.spatialId = canonical;
@@ -98,8 +108,8 @@
     }
     if (manager && typeof manager === 'object') manager.spatialTarget = canonical;
     if (manager?.active && typeof manager.active === 'object') {
-      if (typeof manager.active.spatial_id === 'string') manager.active.spatial_id = canonical;
-      if (typeof manager.active.spatialId === 'string') manager.active.spatialId = canonical;
+      manager.active.spatial_id = canonical;
+      manager.active.spatialId = canonical;
     }
     window.selectedSpatialNode = canonical;
     window.spatialEvidenceTarget = canonical;
@@ -118,7 +128,13 @@
   };
 
   window.testhpSpatialContract = Object.freeze({
-    normalizeId, buildSpatialId, relation, inScope, scope,
+    normalizeId,
+    canonicalTargetId,
+    sameTarget,
+    buildSpatialId,
+    relation,
+    inScope,
+    scope,
     getTarget: () => current,
     publish,
     reconcile: syncCompatibility,
@@ -130,8 +146,5 @@
   window.addEventListener('testhp:spatial-contract-request', event => event?.detail?.callback?.(current));
   window.addEventListener('testhp:viewport-manager-ready', syncCompatibility);
   window.addEventListener('testhp:spatial-target-changed', syncCompatibility);
-  // This event is emitted by publish and is intentionally not used as a
-  // reconciliation trigger; publish already synchronized before dispatch.
-
   publish(current);
 })();
