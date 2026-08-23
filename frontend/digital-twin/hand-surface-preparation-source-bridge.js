@@ -10,7 +10,7 @@
   let prepared = null;
 
   const canonical = value => {
-    const raw = typeof value === 'string' ? value : value?.spatial_id || value?.spatialId || value?.spatial_node_id || value?.target || value?.spatialTarget || 'hand';
+    const raw = typeof value === 'string' ? value : value?.spatial_id || value?.spatialId || value?.spatial_node_id || value?.actual_spatial_node_id || value?.target || value?.spatialTarget || 'hand';
     const fn = window.testhpSpatialContract?.canonicalTargetId;
     const aliases = {
       'palm':'hand/palm', 'śródręcze':'hand/palm', 'srodrecze':'hand/palm',
@@ -30,22 +30,23 @@
     const t = target();
     const result = [];
     const add = item => {
-      const id = item.asset_id || item.id || item.backendAssetId || item.sourceAssetId;
+      const id = item.asset_id || item.id || item.backendAssetId || item.sourceAssetId || item.evidence_id;
       if (!id || item.archived) return;
-      const spatial = canonical(item.spatial_id || item.spatialId || item.spatial_node_id || item.target || 'hand');
+      const spatial = canonical(item.spatial_id || item.spatialId || item.spatial_node_id || item.actual_spatial_node_id || item.target || item.expected_spatial_node_id || 'hand');
       if (spatial !== t || result.some(x => x.asset_id === id)) return;
       result.push({ ...item, asset_id:id, spatial_id:spatial, filename:item.filename || item.name || id, timepoint:item.timepoint || 'T0' });
     };
 
-    // The registry diagnostics are the source of truth for eligibility.
-    // Only EXACT canonical spatial matches (ACCEPT) enter preparation.
+    // Registry diagnostics are the source of truth for eligibility.
+    // Only ACCEPT decisions with an exact canonical target enter preparation.
     try {
       const payload = await request(`${REGISTRY}?subject_id=own_cohort&timepoint=T0&spatial_node_id=${encodeURIComponent(t)}&debug=true`, { cache:'no-store' });
       const decisions = Array.isArray(payload.debug?.decisions) ? payload.debug.decisions : [];
-      const accepted = decisions.length
-        ? decisions.filter(x => x.matched === true)
-        : (Array.isArray(payload.items) ? payload.items : []);
-      accepted.forEach(add);
+      if (decisions.length) {
+        decisions.filter(x => x.matched === true).forEach(add);
+      } else if (Array.isArray(payload.items)) {
+        payload.items.forEach(add);
+      }
     } catch {}
 
     // Keep the photo-reconstruction manifest as a secondary source for assets
