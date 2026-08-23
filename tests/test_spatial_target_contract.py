@@ -1,5 +1,6 @@
 from pathlib import Path
 
+from backend.observation_registry import _canonical_spatial_id
 from backend.stage_2_4 import _direct_state, _node_match_debug
 
 
@@ -15,6 +16,16 @@ def test_frontend_contract_keeps_manager_and_legacy_channels_on_one_id():
     assert "window.spatialEvidenceTarget = canonical" in source
     assert "window.testhpSpatialTarget = canonical" in source
     assert "body.dataset.spatialTarget = canonical" in source
+    assert "ROOT_ALIASES" in source
+    assert "digital-twin:target-changed" in source
+
+
+def test_human_spatial_aliases_resolve_to_one_canonical_id():
+    assert _canonical_spatial_id("Palm") == "hand/palm"
+    assert _canonical_spatial_id("Śródręcze") == "hand/palm"
+    assert _canonical_spatial_id("srodrecze") == "hand/palm"
+    assert _canonical_spatial_id("/hand/palm/") == "hand/palm"
+    assert _canonical_spatial_id("hand/palm/thenar-eminence") == "hand/palm/thenar"
 
 
 def test_root_registered_evidence_is_not_treated_as_deep_attachment():
