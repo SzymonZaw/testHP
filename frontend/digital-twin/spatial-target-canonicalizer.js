@@ -14,14 +14,74 @@
     if (id) Object.assign(next,{spatial_id:id,spatialId:id,spatial_node_id:id,targetSpatialId:id});
     return next;
   };
+
+  // The viewport manager can expose a display label through `spatialTarget`
+  // even when the active navigation node already carries the real canonical
+  // spatial_id. Resolve that authoritative ID before considering any label.
+  const activeViewportSpatialId = manager => {
+    const direct = manager?.active?.spatial_node_id || manager?.active?.spatial_id || manager?.active?.spatialId;
+    if (typeof direct === 'string' && direct) return canonical(direct);
+
+    const state = manager?.state || {};
+    const stateId = state.spatial_node_id || state.spatial_id || state.spatialId;
+    if (typeof stateId === 'string' && stateId && stateId.includes('/')) return canonical(stateId);
+
+    const activeKey = typeof manager?.activeKey === 'string' ? manager.activeKey : '';
+    const leaf = activeKey.includes('|') ? activeKey.slice(activeKey.indexOf('|') + 1) : '';
+    if (!leaf) return '';
+
+    // Navigation buttons expose `spatialId` as an own property in the live
+    // viewport. Prefer an exact leaf match so a human-readable target label
+    // can never become the registry key.
+    const nodes = document.querySelectorAll('button,[role="button"]');
+    for (const node of nodes) {
+      const candidates = [
+        node.spatialId,
+        node.spatial_id,
+        node.spatialNodeId,
+        node.dataset?.spatialId,
+        node.dataset?.spatial_id,
+        node.getAttribute?.('data-spatial-id'),
+        node.getAttribute?.('data-spatial_id')
+      ].filter(value => typeof value === 'string' && value);
+      const match = candidates.find(value => value === leaf || value.endsWith(`/${leaf}`));
+      if (match) return canonical(match);
+    }
+
+    const diagnostics = window.__testhpDiagnostics || {};
+    const navigation = diagnostics.lastNavigation || diagnostics.lastNavigationRoute;
+    const navigationId = navigation?.spatial_id || navigation?.spatialId;
+    if (typeof navigationId === 'string' && navigationId.endsWith(`/${leaf}`)) return canonical(navigationId);
+
+    const clickButton = diagnostics.lastClickRoute?.button;
+    const clickId = clickButton?.spatialId || clickButton?.spatial_id || clickButton?.spatial_node_id;
+    if (typeof clickId === 'string' && clickId.endsWith(`/${leaf}`)) return canonical(clickId);
+
+    return '';
+  };
+
   const reconcile = () => {
     const api = contract();
     if (api?.reconcile) api.reconcile();
     const manager = window.spatialViewportManager;
     if (!manager || typeof manager !== 'object') return;
-    // Prefer the actual active node ID. A display label such as Palm must not win.
-    const id = canonical(manager?.active?.spatial_id || manager?.active?.spatialId || manager?.state?.spatial_id || manager?.state?.spatialId || (typeof manager?.spatialTarget === 'string' ? manager.spatialTarget : '') || manager?.state?.spatialTarget);
+
+    // Authoritative order: active node ID -> state ID -> object target ID.
+    // Only use a string manager target as a last compatibility fallback, and
+    // never allow a display label to overwrite a canonical path when activeKey
+    // identifies a concrete navigation node.
+    const activeId = activeViewportSpatialId(manager);
+    const state = manager.state || {};
+    const stateTarget = state.target && typeof state.target === 'object'
+      ? (state.target.spatial_node_id || state.target.spatial_id || state.target.spatialId || state.target.id)
+      : '';
+    const objectTarget = manager.spatialTarget && typeof manager.spatialTarget === 'object'
+      ? (manager.spatialTarget.spatial_node_id || manager.spatialTarget.spatial_id || manager.spatialTarget.spatialId || manager.spatialTarget.id)
+      : '';
+    const fallback = stateTarget || objectTarget || (typeof manager.spatialTarget === 'string' ? manager.spatialTarget : '') || (typeof state.spatialTarget === 'string' ? state.spatialTarget : '');
+    const id = canonical(activeId || stateTarget || objectTarget || fallback);
     if (!id) return;
+
     if (manager.state && typeof manager.state === 'object') Object.assign(manager.state,{spatial_id:id,spatialId:id,spatialTarget:id});
     manager.spatialTarget = id;
     // Keep legacy globals on the same canonical identity. The debug surface
