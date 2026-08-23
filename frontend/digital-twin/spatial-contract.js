@@ -2,17 +2,27 @@
   // Single source of truth for spatial identity. Human-readable labels are
   // display-only; all data flows use the canonical spatial_id path.
   const SEGMENT_RE = /[^a-z0-9_-]+/gi;
-  const LEVELS = new Set(['macro', 'tissue', 'cellular', 'molecular', 'cell']);
+  const LEVELS = new Set(['macro', 'tissue', 'cellular', 'molecular']);
   const SEGMENT_ALIASES = Object.freeze({
     'hypothenar-eminence': 'hypothenar',
     'thenar-eminence': 'thenar',
     'central-palm-eminence': 'central-palm'
   });
+  const ROOT_ALIASES = Object.freeze({
+    palm: 'hand/palm',
+    'śródręcze': 'hand/palm',
+    srodrecze: 'hand/palm'
+  });
   const normalizeSegment = value => {
-    const segment = String(value ?? '').trim().toLowerCase().replaceAll(' ', '-').replace(SEGMENT_RE, '-');
+    const raw = String(value ?? '').trim().toLowerCase();
+    const segment = raw.replaceAll(' ', '-').replace(SEGMENT_RE, '-');
     return SEGMENT_ALIASES[segment] || segment;
   };
-  const normalizeId = value => String(value ?? '').split('/').map(normalizeSegment).filter(Boolean).join('/');
+  const normalizeId = value => {
+    const raw = String(value ?? '').trim().replace(/^\/+|\/+$/g, '').toLowerCase();
+    if (ROOT_ALIASES[raw]) return ROOT_ALIASES[raw];
+    return raw.split('/').map(normalizeSegment).filter(Boolean).join('/');
+  };
   const buildSpatialId = path => (Array.isArray(path) ? path : [])
     .map(item => typeof item === 'string' ? item : item?.id)
     .map(normalizeSegment).filter(Boolean).join('/');
@@ -70,7 +80,7 @@
     const spatialId = canonicalTargetId(source) || normalizeId(buildSpatialId(path)) || 'hand';
     const segments = spatialId.split('/').filter(Boolean);
     const rawLevel = String(source.level || '').toLowerCase();
-    const level = LEVELS.has(rawLevel) ? rawLevel : rawLevel === 'single cell' ? 'cell' : rawLevel || 'macro';
+    const level = LEVELS.has(rawLevel) ? rawLevel : rawLevel === 'single cell' ? 'cellular' : rawLevel || 'macro';
     return Object.freeze({
       spatial_id: spatialId,
       spatialId,
@@ -90,8 +100,6 @@
     manager?.active?.spatial_id || manager?.active?.spatialId || manager?.spatialTarget || current.spatial_id
   );
 
-  // Synchronize only explicit lifecycle/target events. No DOM observer or
-  // polling is used here, preventing self-triggering reconciliation loops.
   const syncCompatibility = () => {
     const manager = window.spatialViewportManager;
     const canonical = managerSpatialId(manager);
@@ -118,6 +126,7 @@
       document.body.dataset.spatialTarget = canonical;
     }
     migrateEvidenceTargets();
+    window.dispatchEvent(new CustomEvent('digital-twin:target-changed', { detail: { id: canonical, spatial_id: canonical, target: current.label, level: current.level } }));
   };
 
   const publish = detail => {
@@ -139,7 +148,8 @@
     publish,
     reconcile: syncCompatibility,
     LEVELS: [...LEVELS],
-    SEGMENT_ALIASES
+    SEGMENT_ALIASES,
+    ROOT_ALIASES
   });
 
   window.addEventListener('testhp:spatial-layer-changed', event => publish(event.detail || {}));
