@@ -101,14 +101,67 @@ class GeometryCalibration:
         return warnings
 
 
+@dataclass(frozen=True)
+class ReconstructionReadiness:
+    spatial_id: str
+    prepared_views: tuple[str, ...] = ()
+    registered_views: tuple[str, ...] = ()
+    expected_views: tuple[str, ...] = SUPPORTED_VIEWS
+    min_registered_views: int = 2
+    status: str = "blocked"
+    reasons: tuple[str, ...] = ()
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "spatial_id", canonical_spatial_id(self.spatial_id))
+
+    @property
+    def ready(self) -> bool:
+        return self.status == "ready"
+
+
+@dataclass(frozen=True)
+class SurfaceAsset:
+    """A reconstructed surface package that can be applied to the 3D model."""
+
+    surface_id: str
+    spatial_id: str
+    reconstruction_id: str
+    coordinate_system: str = COORDINATE_SYSTEM
+    source_views: tuple[str, ...] = ()
+    status: str = "draft"
+    provenance: tuple[dict[str, Any], ...] = ()
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "spatial_id", canonical_spatial_id(self.spatial_id))
+
+    @property
+    def ready(self) -> bool:
+        return self.status == "ready" and bool(self.reconstruction_id) and bool(self.source_views)
+
+
+@dataclass(frozen=True)
+class SurfaceApplication:
+    surface_id: str
+    spatial_id: str
+    applied: bool = False
+    target: str = "spatial-model"
+    reason: str | None = None
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "spatial_id", canonical_spatial_id(self.spatial_id))
+
+
 @dataclass
 class SurfaceRuntimeManifest:
-    schema: str = "hand-surface-stages-16-19"
+    schema: str = "hand-surface-stages-11-16"
     coordinate_system: str = COORDINATE_SYSTEM
     spatial_id: str = "hand"
     segmentation: list[SegmentationMask] = field(default_factory=list)
     cameras: list[CameraView] = field(default_factory=list)
     geometry: GeometryCalibration = field(default_factory=GeometryCalibration)
+    reconstruction: ReconstructionReadiness | None = None
+    surface_asset: SurfaceAsset | None = None
+    application: SurfaceApplication | None = None
     projection_status: str = "not-ready"
     geometry_status: str = "not-calibrated"
     provenance: list[dict[str, Any]] = field(default_factory=list)
@@ -120,6 +173,10 @@ class SurfaceRuntimeManifest:
         data = asdict(self)
         data["projection_status"] = projection_readiness(self.segmentation, self.cameras, self.spatial_id)
         data["geometry_status"] = "valid" if not self.geometry.validate() else "needs-review"
+        data["reconstruction_ready"] = bool(self.reconstruction and self.reconstruction.ready)
+        data["surface_ready"] = bool(self.surface_asset and self.surface_asset.ready)
+        data["surface_applied"] = bool(self.application and self.application.applied)
+        data["consistency"] = runtime_consistency(self.spatial_id, self.surface_asset, self.application)
         return data
 
 
@@ -138,6 +195,31 @@ def projection_readiness(segmentation: Iterable[SegmentationMask], cameras: Iter
     return "ready-for-surface-projection"
 
 
+def reconstruction_readiness(
+    prepared_views: Iterable[str],
+    registered_views: Iterable[str],
+    spatial_id: str = "hand",
+    min_registered_views: int = 2,
+) -> ReconstructionReadiness:
+    prepared = tuple(sorted({v for v in prepared_views if v in SUPPORTED_VIEWS}))
+    registered = tuple(sorted({v for v in registered_views if v in SUPPORTED_VIEWS}))
+    reasons: list[str] = []
+    if len(prepared) < min_registered_views:
+        reasons.append(f"at least {min_registered_views} prepared views are required")
+    if len(registered) < min_registered_views:
+        reasons.append(f"at least {min_registered_views} registered views are required")
+    if not set(registered).issubset(prepared):
+        reasons.append("registered views must also be prepared")
+    return ReconstructionReadiness(
+        spatial_id=spatial_id,
+        prepared_views=prepared,
+        registered_views=registered,
+        min_registered_views=min_registered_views,
+        status="ready" if not reasons else "blocked",
+        reasons=tuple(reasons),
+    )
+
+
 def select_projection_source(candidates: Iterable[ProjectionCandidate], spatial_id: str = "hand") -> dict[str, Any] | None:
     """Select the strongest registered observation for one target and surface point."""
     target = canonical_spatial_id(spatial_id)
@@ -146,6 +228,26 @@ def select_projection_source(candidates: Iterable[ProjectionCandidate], spatial_
         return None
     selected = max(valid, key=lambda candidate: candidate.weight)
     return {"point_id": selected.point_id, "asset_id": selected.asset_id, "view": selected.view, "spatial_id": target, "weight": selected.weight, "method": "weighted-multi-view-v1"}
+
+
+def validate_surface_application(surface: SurfaceAsset, spatial_id: str) -> SurfaceApplication:
+    target = canonical_spatial_id(spatial_id)
+    if not surface.ready:
+        return SurfaceApplication(surface.surface_id, target, False, reason="surface asset is not ready")
+    if canonical_spatial_id(surface.spatial_id) != target:
+        return SurfaceApplication(surface.surface_id, target, False, reason="surface spatial_id does not match model target")
+    if surface.coordinate_system != COORDINATE_SYSTEM:
+        return SurfaceApplication(surface.surface_id, target, False, reason="coordinate system mismatch")
+    return SurfaceApplication(surface.surface_id, target, True)
+
+
+def runtime_consistency(spatial_id: str, surface: SurfaceAsset | None, application: SurfaceApplication | None) -> dict[str, Any]:
+    target = canonical_spatial_id(spatial_id)
+    checks = {
+        "target": not surface or canonical_spatial_id(surface.spatial_id) == target,
+        "application": not application or (canonical_spatial_id(application.spatial_id) == target and application.applied),
+    }
+    return {"status": "consistent" if all(checks.values()) else "inconsistent", "checks": checks, "spatial_id": target}
 
 
 def deformation_distance(before: tuple[float, float, float], after: tuple[float, float, float]) -> float:
@@ -158,20 +260,28 @@ def build_runtime_manifest(
     segmentation: Iterable[SegmentationMask] = (),
     cameras: Iterable[CameraView] = (),
     geometry: GeometryCalibration | None = None,
+    prepared_views: Iterable[str] = (),
+    registered_views: Iterable[str] = (),
+    surface_asset: SurfaceAsset | None = None,
+    application: SurfaceApplication | None = None,
 ) -> dict[str, Any]:
     target = canonical_spatial_id(spatial_id)
     segmentation_items = [x for x in segmentation if canonical_spatial_id(x.spatial_id) == target]
     camera_items = [x for x in cameras if canonical_spatial_id(x.spatial_id) == target]
+    reconstruction = reconstruction_readiness(prepared_views, registered_views, target)
     manifest = SurfaceRuntimeManifest(
         spatial_id=target,
         segmentation=segmentation_items,
         cameras=camera_items,
         geometry=geometry or GeometryCalibration(),
+        reconstruction=reconstruction,
+        surface_asset=surface_asset,
+        application=application,
     )
     manifest.provenance.append({
-        "stage": "16-19",
+        "stage": "11-16",
         "coordinate_system": COORDINATE_SYSTEM,
         "spatial_id": target,
-        "statement": "Runtime metadata records observations and transformations; it does not infer biological state.",
+        "statement": "Runtime metadata records observations, reconstruction readiness and surface application; it does not infer biological state.",
     })
     return manifest.to_dict()
