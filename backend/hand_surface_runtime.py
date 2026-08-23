@@ -11,6 +11,7 @@ from math import sqrt
 from typing import Any, Iterable
 
 from .hand_surface_pipeline import COORDINATE_SYSTEM, SUPPORTED_VIEWS, view_weight
+from .spatial_contract import canonical_spatial_id
 
 
 @dataclass(frozen=True)
@@ -19,18 +20,17 @@ class SegmentationMask:
     width: int
     height: int
     foreground_ratio: float
+    spatial_id: str = "hand"
     method: str = "background-separation-v1"
     confidence: float = 0.0
     edge_quality: float = 0.0
 
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "spatial_id", canonical_spatial_id(self.spatial_id))
+
     @property
     def usable(self) -> bool:
-        return (
-            self.width >= 512
-            and self.height >= 512
-            and 0.02 <= self.foreground_ratio <= 0.98
-            and self.confidence >= 0.5
-        )
+        return self.width >= 512 and self.height >= 512 and 0.02 <= self.foreground_ratio <= 0.98 and self.confidence >= 0.5
 
 
 @dataclass(frozen=True)
@@ -39,8 +39,12 @@ class CameraView:
     view: str
     position: tuple[float, float, float]
     look_at: tuple[float, float, float]
+    spatial_id: str = "hand"
     focal_length: float | None = None
     distortion: tuple[float, ...] = ()
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "spatial_id", canonical_spatial_id(self.spatial_id))
 
     @property
     def valid(self) -> bool:
@@ -62,14 +66,14 @@ class ProjectionCandidate:
     camera_alignment: float
     distance: float
     quality: float
+    spatial_id: str = "hand"
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "spatial_id", canonical_spatial_id(self.spatial_id))
 
     @property
     def weight(self) -> float:
-        return view_weight(
-            camera_alignment=self.camera_alignment,
-            distance=self.distance,
-            quality=self.quality,
-        )
+        return view_weight(camera_alignment=self.camera_alignment, distance=self.distance, quality=self.quality)
 
 
 @dataclass(frozen=True)
@@ -101,6 +105,7 @@ class GeometryCalibration:
 class SurfaceRuntimeManifest:
     schema: str = "hand-surface-stages-16-19"
     coordinate_system: str = COORDINATE_SYSTEM
+    spatial_id: str = "hand"
     segmentation: list[SegmentationMask] = field(default_factory=list)
     cameras: list[CameraView] = field(default_factory=list)
     geometry: GeometryCalibration = field(default_factory=GeometryCalibration)
@@ -108,9 +113,12 @@ class SurfaceRuntimeManifest:
     geometry_status: str = "not-calibrated"
     provenance: list[dict[str, Any]] = field(default_factory=list)
 
+    def __post_init__(self) -> None:
+        self.spatial_id = canonical_spatial_id(self.spatial_id)
+
     def to_dict(self) -> dict[str, Any]:
         data = asdict(self)
-        data["projection_status"] = projection_readiness(self.segmentation, self.cameras)
+        data["projection_status"] = projection_readiness(self.segmentation, self.cameras, self.spatial_id)
         data["geometry_status"] = "valid" if not self.geometry.validate() else "needs-review"
         return data
 
@@ -119,12 +127,10 @@ def _finite(value: float) -> bool:
     return value == value and abs(value) != float("inf")
 
 
-def projection_readiness(
-    segmentation: Iterable[SegmentationMask],
-    cameras: Iterable[CameraView],
-) -> str:
-    masks = [m for m in segmentation if m.usable]
-    views = [c for c in cameras if c.valid]
+def projection_readiness(segmentation: Iterable[SegmentationMask], cameras: Iterable[CameraView], spatial_id: str = "hand") -> str:
+    target = canonical_spatial_id(spatial_id)
+    masks = [m for m in segmentation if m.usable and canonical_spatial_id(m.spatial_id) == target]
+    views = [c for c in cameras if c.valid and canonical_spatial_id(c.spatial_id) == target]
     if not masks:
         return "needs-segmentation"
     if not views:
@@ -132,40 +138,40 @@ def projection_readiness(
     return "ready-for-surface-projection"
 
 
-def select_projection_source(candidates: Iterable[ProjectionCandidate]) -> dict[str, Any] | None:
-    """Select the strongest registered observation for one surface point."""
-    valid = [c for c in candidates if c.view in SUPPORTED_VIEWS]
+def select_projection_source(candidates: Iterable[ProjectionCandidate], spatial_id: str = "hand") -> dict[str, Any] | None:
+    """Select the strongest registered observation for one target and surface point."""
+    target = canonical_spatial_id(spatial_id)
+    valid = [c for c in candidates if c.view in SUPPORTED_VIEWS and c.spatial_id == target]
     if not valid:
         return None
     selected = max(valid, key=lambda candidate: candidate.weight)
-    return {
-        "point_id": selected.point_id,
-        "asset_id": selected.asset_id,
-        "view": selected.view,
-        "weight": selected.weight,
-        "method": "weighted-multi-view-v1",
-    }
+    return {"point_id": selected.point_id, "asset_id": selected.asset_id, "view": selected.view, "spatial_id": target, "weight": selected.weight, "method": "weighted-multi-view-v1"}
 
 
 def deformation_distance(before: tuple[float, float, float], after: tuple[float, float, float]) -> float:
-    """Return a transparent geometry-change metric for calibration QA."""
     return round(sqrt(sum((a - b) ** 2 for a, b in zip(before, after))), 6)
 
 
 def build_runtime_manifest(
     *,
+    spatial_id: str = "hand",
     segmentation: Iterable[SegmentationMask] = (),
     cameras: Iterable[CameraView] = (),
     geometry: GeometryCalibration | None = None,
 ) -> dict[str, Any]:
+    target = canonical_spatial_id(spatial_id)
+    segmentation_items = [x for x in segmentation if canonical_spatial_id(x.spatial_id) == target]
+    camera_items = [x for x in cameras if canonical_spatial_id(x.spatial_id) == target]
     manifest = SurfaceRuntimeManifest(
-        segmentation=list(segmentation),
-        cameras=list(cameras),
+        spatial_id=target,
+        segmentation=segmentation_items,
+        cameras=camera_items,
         geometry=geometry or GeometryCalibration(),
     )
     manifest.provenance.append({
         "stage": "16-19",
         "coordinate_system": COORDINATE_SYSTEM,
+        "spatial_id": target,
         "statement": "Runtime metadata records observations and transformations; it does not infer biological state.",
     })
     return manifest.to_dict()
