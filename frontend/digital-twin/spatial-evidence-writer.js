@@ -7,16 +7,24 @@
   let syncing = false;
 
   const canonical = value => {
-    if (!value) return null;
     const raw = typeof value === 'string'
       ? value
-      : value.spatial_node_id || value.spatial_id || value.spatialId || value.targetSpatialId || value.target || value.spatialTarget || null;
+      : value?.spatial_node_id || value?.spatial_id || value?.spatialId || value?.targetSpatialId || value?.target || value?.spatialTarget || null;
+    if (!raw) return null;
+    const shared = window.testhpSpatialContract?.canonicalTargetId;
+    if (typeof shared === 'function') return shared(raw);
+    const key = String(raw).replace(/^\/+|\/+$/g, '').toLowerCase().replace(/_/g, '-');
     const aliases = {
+      hand: 'hand',
+      palm: 'hand/palm',
+      'hand/palm': 'hand/palm',
+      'śródręcze': 'hand/palm',
+      srodrecze: 'hand/palm',
       'hand/palm/thenar-eminence': 'hand/palm/thenar',
       'hand/palm/hypothenar-eminence': 'hand/palm/hypothenar',
       'hand/palm/central-palm-eminence': 'hand/palm/central-palm'
     };
-    return aliases[String(raw).replace(/^\/+|\/+$/g, '')] || String(raw).replace(/^\/+|\/+$/g, '') || null;
+    return aliases[key] || String(raw).replace(/^\/+|\/+$/g, '') || null;
   };
 
   const currentTarget = () => canonical(
@@ -36,12 +44,8 @@
   const read = key => {
     try { return JSON.parse(localStorage.getItem(key) || '{}'); } catch { return {}; }
   };
-
   const write = (key, value) => localStorage.setItem(key, JSON.stringify(value));
 
-  // Stage 13 keeps its working state in one object. Make the persistence
-  // boundary target-scoped, rather than allowing geometry from one target to
-  // masquerade as geometry for another target.
   const originalSetItem = localStorage.setItem.bind(localStorage);
   localStorage.setItem = (key, value) => {
     if (key === SURFACE) {
@@ -56,10 +60,7 @@
     return originalSetItem(key, value);
   };
 
-  const dataUrlToBlob = async dataUrl => {
-    const response = await fetch(dataUrl);
-    return response.blob();
-  };
+  const dataUrlToBlob = async dataUrl => (await fetch(dataUrl)).blob();
 
   async function syncPreparedEvidence() {
     if (syncing) return;
@@ -90,6 +91,8 @@
         if (evidenceIndex >= 0) {
           evidence[evidenceIndex] = {
             ...evidence[evidenceIndex],
+            target: target,
+            spatial_id: target,
             backendAssetId: payload.evidence?.asset_id || null,
             backendEvidenceId: payload.evidence?.evidence_id || null,
             canonicalSpatialId: payload.evidence?.spatial_node_id || target,
@@ -97,8 +100,8 @@
           };
         }
       }
-      write(EVIDENCE, { ...store, evidence, target: currentTarget() });
-      window.dispatchEvent(new CustomEvent('testhp:evidence-registry-synced', { detail: { source: 'spatial-evidence-writer', count: pending.length } }));
+      write(EVIDENCE, { ...store, evidence, target: currentTarget(), spatial_id: currentTarget() });
+      window.dispatchEvent(new CustomEvent('testhp:evidence-registry-synced', { detail: { source: 'spatial-evidence-writer', count: pending.length, spatial_id: currentTarget() } }));
     } catch (error) {
       window.dispatchEvent(new CustomEvent('testhp:evidence-registry-write-failed', { detail: { error: String(error?.message || error) } }));
       console.warn('[Twin] canonical prepared evidence write failed', error);
@@ -110,6 +113,7 @@
   window.__testhpSyncPreparedEvidence = syncPreparedEvidence;
   window.addEventListener('testhp:evidence-attached', () => setTimeout(syncPreparedEvidence, 0));
   window.addEventListener('testhp:evidence-ux-refresh', () => setTimeout(syncPreparedEvidence, 0));
+  window.addEventListener('testhp:spatial-layer-changed', () => setTimeout(syncPreparedEvidence, 0));
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', syncPreparedEvidence, { once: true });
   else setTimeout(syncPreparedEvidence, 0);
 })();
