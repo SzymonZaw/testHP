@@ -1,6 +1,5 @@
 (() => {
-  // Single source of truth for spatial identity. Human-readable labels are
-  // display-only; all data flows use the canonical spatial_id path.
+  // Single source of truth for spatial identity. Human-readable labels are display-only.
   const SEGMENT_RE = /[^a-z0-9_-]+/gi;
   const LEVELS = new Set(['macro', 'tissue', 'cellular', 'molecular']);
   const SEGMENT_ALIASES = Object.freeze({
@@ -12,6 +11,17 @@
     palm: 'hand/palm',
     'śródręcze': 'hand/palm',
     srodrecze: 'hand/palm'
+  });
+  const LABELS = Object.freeze({
+    'hand/palm': 'Śródręcze',
+    hand: 'Dłoń',
+    wrist: 'Nadgarstek',
+    palm: 'Śródręcze',
+    thumb: 'Kciuk',
+    index: 'Palec wskazujący',
+    middle: 'Palec środkowy',
+    ring: 'Palec serdeczny',
+    little: 'Mały palec'
   });
   const normalizeSegment = value => {
     const raw = String(value ?? '').trim().toLowerCase();
@@ -31,6 +41,12 @@
       ? (target?.spatial_id || target?.spatialId || target?.spatial_node_id || target?.targetSpatialId || target?.id)
       : target
   );
+  const labelFor = (id, fallback) => {
+    const canonical = normalizeId(id);
+    if (LABELS[canonical]) return LABELS[canonical];
+    const leaf = canonical.split('/').at(-1);
+    return LABELS[leaf] || fallback || leaf || 'Region';
+  };
   const sameTarget = (a, b) => {
     const left = canonicalTargetId(a), right = canonicalTargetId(b);
     return !!left && !!right && left === right;
@@ -77,15 +93,16 @@
   const normalizeTarget = detail => {
     const source = detail && typeof detail === 'object' ? detail : { spatial_id: detail };
     const path = Array.isArray(source.path) ? source.path.map(String) : [];
-    const spatialId = canonicalTargetId(source) || normalizeId(buildSpatialId(path)) || 'hand';
+    const spatialId = canonicalTargetId(source) || normalizeId(buildSpatialId(path)) || 'hand/palm';
     const segments = spatialId.split('/').filter(Boolean);
     const rawLevel = String(source.level || '').toLowerCase();
     const level = LEVELS.has(rawLevel) ? rawLevel : rawLevel === 'single cell' ? 'cellular' : rawLevel || 'macro';
+    const label = labelFor(spatialId, source.target || source.label || path.at(-1));
     return Object.freeze({
       spatial_id: spatialId,
       spatialId,
-      id: normalizeSegment(source.id || segments.at(-1) || 'hand'),
-      label: source.target || source.label || path.at(-1) || segments.at(-1) || 'Hand',
+      id: normalizeSegment(source.id || segments.at(-1) || 'palm'),
+      label,
       level,
       path: path.length ? path : segments,
       parent_spatial_id: segments.length > 1 ? segments.slice(0, -1).join('/') : null,
@@ -93,7 +110,7 @@
     });
   };
 
-  let current = normalizeTarget({ spatial_id: 'hand', id: 'hand', target: 'Hand', level: 'macro', path: ['Hand'] });
+  let current = normalizeTarget({ spatial_id: 'hand/palm', id: 'palm', target: 'Śródręcze', level: 'macro', path: ['hand', 'palm'] });
 
   const managerSpatialId = manager => canonicalTargetId(
     manager?.state?.spatial_id || manager?.state?.spatialId ||
@@ -102,9 +119,8 @@
 
   const syncCompatibility = () => {
     const manager = window.spatialViewportManager;
-    const canonical = managerSpatialId(manager);
-    if (!canonical) return;
-    current = normalizeTarget({ ...current, spatial_id: canonical, spatialId: canonical });
+    const canonical = managerSpatialId(manager) || current.spatial_id;
+    current = normalizeTarget({ ...current, spatial_id: canonical, spatialId: canonical, target: labelFor(canonical, current.label) });
     if (manager?.state && typeof manager.state === 'object') {
       manager.state.spatial_id = canonical;
       manager.state.spatialId = canonical;
@@ -139,6 +155,7 @@
   window.testhpSpatialContract = Object.freeze({
     normalizeId,
     canonicalTargetId,
+    labelFor,
     sameTarget,
     buildSpatialId,
     relation,
