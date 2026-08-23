@@ -10,11 +10,39 @@ from typing import Any, Literal
 
 ObjectType = Literal["hand", "generic"]
 
+CANONICAL_SPATIAL_IDS = {
+    "hand": "hand",
+    "palm": "hand/palm",
+    "hand/palm": "hand/palm",
+    "thenar": "hand/palm/thenar",
+    "hand/palm/thenar": "hand/palm/thenar",
+    "hypothenar": "hand/palm/hypothenar",
+    "hand/palm/hypothenar": "hand/palm/hypothenar",
+    "central-palm": "hand/palm/central-palm",
+    "hand/palm/central-palm": "hand/palm/central-palm",
+}
+
+
+def canonical_spatial_id(value: str | None, *, fallback: str = "hand") -> str:
+    """Return the one spatial identifier shared by all surface modules.
+
+    Display labels (for example ``Palm`` or ``Śródręcze``) are deliberately
+    not identifiers. Unknown path-like values are retained so the contract
+    does not silently move evidence to a different target.
+    """
+    raw = str(value or "").strip().replace("\\", "/").strip("/")
+    if not raw:
+        return fallback
+    key = raw.lower().replace("_", "-")
+    return CANONICAL_SPATIAL_IDS.get(key, raw)
+
+
+def same_spatial_target(a: str | None, b: str | None) -> bool:
+    return canonical_spatial_id(a) == canonical_spatial_id(b)
+
 
 @dataclass(frozen=True)
 class SpatialObject:
-    """One canonical spatial entity used by all spatial-facing modules."""
-
     spatial_object_id: str
     object_type: ObjectType = "hand"
     subject_id: str = ""
@@ -33,8 +61,6 @@ class SpatialObject:
 
 @dataclass(frozen=True)
 class ReconstructionAsset:
-    """Persistent identity linking reconstruction output to one spatial object."""
-
     reconstruction_id: str
     spatial_object_id: str
     subject_id: str
@@ -80,7 +106,6 @@ def observation_id(photo_asset_id: str) -> str:
 
 
 def lifecycle(status: str) -> str:
-    """Normalize module-specific status into the shared lifecycle vocabulary."""
     aliases = {
         "uploaded": "created",
         "prepared": "prepared",
