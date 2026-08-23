@@ -11,6 +11,7 @@ from math import exp
 from typing import Any, Iterable
 
 from .hand_surface import SUPPORTED_VIEWS
+from .spatial_contract import canonical_spatial_id
 
 COORDINATE_SYSTEM = "hand-surface-v1"
 
@@ -40,6 +41,7 @@ class PreparedImage:
     asset_id: str
     original_name: str
     prepared_name: str
+    spatial_id: str = "hand"
     view: str = "unknown"
     status: str = "pending"
     width: int = 0
@@ -49,6 +51,9 @@ class PreparedImage:
     quality: ImageQuality | None = None
     warnings: list[str] = field(default_factory=list)
 
+    def __post_init__(self) -> None:
+        self.spatial_id = canonical_spatial_id(self.spatial_id)
+
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
 
@@ -57,12 +62,15 @@ class PreparedImage:
 class ViewRegistration:
     asset_id: str
     view: str
-    spatial_id: str
+    spatial_id: str = "hand"
     quality: float = 0.0
     reprojection_error: float | None = None
     landmarks: int = 0
     method: str = "manual-registration-v1"
     coordinate_system: str = COORDINATE_SYSTEM
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "spatial_id", canonical_spatial_id(self.spatial_id))
 
     @property
     def usable(self) -> bool:
@@ -73,7 +81,6 @@ class ViewRegistration:
 
 
 def validate_prepared_image(image: PreparedImage) -> list[str]:
-    """Return non-fatal warnings so research data is never silently rejected."""
     warnings = list(image.warnings)
     if image.view not in SUPPORTED_VIEWS:
         warnings.append("view is not one of the supported surface views")
@@ -87,7 +94,6 @@ def validate_prepared_image(image: PreparedImage) -> list[str]:
 
 
 def view_weight(*, camera_alignment: float, distance: float, quality: float) -> float:
-    """Score a candidate image for a surface point without inventing geometry."""
     alignment = max(0.0, min(1.0, camera_alignment))
     q = max(0.0, min(1.0, quality))
     d = max(0.0, distance)
@@ -96,7 +102,6 @@ def view_weight(*, camera_alignment: float, distance: float, quality: float) -> 
 
 
 def rank_views(registrations: Iterable[ViewRegistration]) -> list[dict[str, Any]]:
-    """Return stable view records for a future projection worker."""
     items = [r for r in registrations if r.usable]
     return [
         {**r.to_dict(), "priority": round(r.quality * 0.7 + min(1.0, r.landmarks / 21) * 0.3, 4)}
@@ -112,18 +117,27 @@ def build_surface_manifest(
     prepared: Iterable[PreparedImage] = (),
     registrations: Iterable[ViewRegistration] = (),
 ) -> dict[str, Any]:
-    """Create a portable manifest shared by UI, ingestion, and future workers."""
-    prepared_items = list(prepared)
-    registration_items = list(registrations)
+    """Create one target-scoped manifest shared by UI, registry and workers."""
+    target = canonical_spatial_id(spatial_id)
+    prepared_items = [x for x in prepared if canonical_spatial_id(x.spatial_id) == target]
+    registration_items = [x for x in registrations if canonical_spatial_id(x.spatial_id) == target]
+    prepared_views = {x.view for x in prepared_items if x.view in SUPPORTED_VIEWS}
+    registered_views = {x.view for x in registration_items if x.usable}
+    duplicate_prepared = sorted(v for v in prepared_views if sum(x.view == v for x in prepared_items) > 1)
+    duplicate_registered = sorted(v for v in registered_views if sum(x.view == v for x in registration_items) > 1)
     return {
         "schema": "hand-surface-stages-11-15",
         "coordinate_system": COORDINATE_SYSTEM,
         "subject_id": subject_id,
         "timepoint": timepoint,
-        "spatial_id": spatial_id,
+        "spatial_id": target,
         "prepared_images": [x.to_dict() for x in prepared_items],
         "registrations": [x.to_dict() for x in registration_items],
+        "prepared_views": sorted(prepared_views),
+        "registered_views": sorted(registered_views),
+        "counts": {"prepared": len(prepared_views), "registered": len(registered_views), "expected": len(SUPPORTED_VIEWS)},
+        "duplicates": {"prepared": duplicate_prepared, "registered": duplicate_registered},
         "ranked_views": rank_views(registration_items),
-        "projection_status": "ready-for-worker" if registration_items else "not-registered",
+        "projection_status": "ready-for-worker" if len(registered_views) >= 2 and not duplicate_registered else "not-registered",
         "evidence_boundary": "Prepared photographs and registrations are observations; the manifest does not infer anatomy.",
     }
