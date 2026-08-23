@@ -20,10 +20,10 @@ class SegmentationMask:
     width: int
     height: int
     foreground_ratio: float
-    spatial_id: str = "hand"
     method: str = "background-separation-v1"
     confidence: float = 0.0
     edge_quality: float = 0.0
+    spatial_id: str = "hand"
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "spatial_id", canonical_spatial_id(self.spatial_id))
@@ -39,9 +39,9 @@ class CameraView:
     view: str
     position: tuple[float, float, float]
     look_at: tuple[float, float, float]
-    spatial_id: str = "hand"
     focal_length: float | None = None
     distortion: tuple[float, ...] = ()
+    spatial_id: str = "hand"
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "spatial_id", canonical_spatial_id(self.spatial_id))
