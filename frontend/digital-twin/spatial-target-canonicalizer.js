@@ -1,4 +1,5 @@
 (() => {
+  import('./spatial-target-drift-debug-fix.js?v=authoritative-target-1').catch(error => console.error('[Twin diagnostics] authoritative target debug failed to load', error));
   // Stage 1-5: canonical spatial identity is owned by spatial-contract.js.
   const contract = () => window.testhpSpatialContract;
   const canonical = value => {
