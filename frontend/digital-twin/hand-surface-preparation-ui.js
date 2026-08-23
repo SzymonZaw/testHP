@@ -2,145 +2,80 @@
   'use strict';
 
   const API = '/api/hand/photo-reconstruction';
-  const VIEWS = ['front', 'back', 'side_left', 'side_right', 'thumb'];
-  const LABELS = { front: 'Przód', back: 'Tył', side_left: 'Lewa strona', side_right: 'Prawa strona', thumb: 'Kciuk' };
-  const target = () => String(window.testhpSpatialContract?.getTarget?.()?.spatial_id || window.testhpSpatialContract?.getTarget?.() || window.spatialEvidenceTarget || document.body?.dataset?.spatialTarget || 'hand');
-  const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
-  let state = { inputs: [] };
+  const REGISTRY = '/api/spatial/registry';
+  const EVIDENCE = 'digitalTwinEvidenceUX.v2';
+  const VIEWS = {front:'Przód',back:'Tył',side_left:'Lewa strona',side_right:'Prawa strona',thumb:'Kciuk'};
   let observer;
+  let state = {inputs:[]};
+  let prepared = null;
 
-  async function request(path, options) {
-    const r = await fetch(`${API}${path}`, options);
-    const body = await r.json().catch(() => ({}));
-    if (!r.ok) throw new Error(body.detail || `Request failed (${r.status})`);
-    return body;
+  const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const canonical = value => {
+    const raw = typeof value === 'string' ? value : value?.spatial_id || value?.spatialId || value?.actual_spatial_node_id || value?.spatial_node_id || value?.target || value?.spatialTarget || 'hand';
+    const fn = window.testhpSpatialContract?.canonicalTargetId;
+    const aliases = {'palm':'hand/palm','śródręcze':'hand/palm','srodrecze':'hand/palm','thenar eminence':'hand/palm/thenar','kłąb kciuka':'hand/palm/thenar','klab kciuka':'hand/palm/thenar','hypothenar eminence':'hand/palm/hypothenar','kłębik dłoni':'hand/palm/hypothenar','klebik dloni':'hand/palm/hypothenar','central palm':'hand/palm/central-palm','centralna część dłoni':'hand/palm/central-palm','centralna czesc dloni':'hand/palm/central-palm'};
+    const normalized = String(raw).trim().replace(/^\/+|\/+$/g,'').toLowerCase();
+    return String(typeof fn === 'function' ? (fn(normalized) || aliases[normalized] || normalized) : (aliases[normalized] || normalized));
+  };
+  const target = () => canonical(window.testhpSpatialContract?.getTarget?.() || window.spatialEvidenceTarget || document.body?.dataset?.spatialTarget || 'hand');
+  const request = async (url, options) => { const r = await fetch(url, options); const body = await r.json().catch(() => ({})); if(!r.ok) throw new Error(body.detail || `Request failed (${r.status})`); return body; };
+
+  function normalizeItem(item) {
+    const id = item?.asset_id || item?.id || item?.backendAssetId || item?.sourceAssetId || item?.evidence_id;
+    if(!id || item?.archived) return null;
+    const spatial = canonical(item.spatial_id || item.spatialId || item.actual_spatial_node_id || item.spatial_node_id || item.target || item.expected_spatial_node_id);
+    if(spatial !== target()) return null;
+    return {...item, asset_id:id, spatial_id:spatial, filename:item.filename || item.name || id, timepoint:item.timepoint || 'T0'};
   }
 
-  async function load() {
-    const s = await request('/state?subject_id=own_cohort&timepoint=T0');
-    state.inputs = (s.inputs || []).filter(x => String(x.spatial_id || x.spatialId || x.target || target()) === target());
+  async function loadSources() {
+    const t = target();
+    const byId = new Map();
+    try {
+      const payload = await request(`${REGISTRY}?subject_id=own_cohort&timepoint=T0&spatial_node_id=${encodeURIComponent(t)}&debug=true`, {cache:'no-store'});
+      const accepted = Array.isArray(payload.debug?.decisions) ? payload.debug.decisions.filter(x => x.matched === true) : [];
+      for(const raw of accepted) { const item = normalizeItem({...raw, spatial_id:raw.actual_spatial_node_id}); if(item) byId.set(item.asset_id,item); }
+      if(!accepted.length && Array.isArray(payload.items)) for(const raw of payload.items) { const item=normalizeItem(raw); if(item) byId.set(item.asset_id,item); }
+    } catch {}
+    try {
+      const saved = await request(`${API}/state?subject_id=own_cohort&timepoint=T0`, {cache:'no-store'});
+      for(const raw of (saved.inputs || [])) { const item=normalizeItem(raw); if(item) byId.set(item.asset_id,item); }
+    } catch {}
+    try {
+      const raw = JSON.parse(localStorage.getItem(EVIDENCE) || '{}');
+      for(const source of (Array.isArray(raw.evidence) ? raw.evidence : [])) { const item=normalizeItem({asset_id:source.sourceAssetId || source.asset_id, filename:source.filename, spatial_id:source.spatial_id || source.target, view:source.view, timepoint:source.timepoint, prepared:source.prepared, prepared_asset_id:source.preparedAssetId || source.prepared_asset_id}); if(item) byId.set(item.asset_id,{...byId.get(item.asset_id),...item}); }
+    } catch {}
+    state.inputs = [...byId.values()];
   }
 
-  function ensureStyles() {
-    if (document.getElementById('hs-prep-clean-css')) return;
-    const s = document.createElement('style');
-    s.id = 'hs-prep-clean-css';
-    s.textContent = `.hs-prep-clean{display:grid;grid-template-columns:1.1fr .9fr;gap:14px}.hs-prep-box{border:1px solid var(--border,#d8dee8);border-radius:12px;padding:14px;background:var(--panel,#fff)}.hs-prep-select{width:100%;padding:8px;border:1px solid var(--border,#d8dee8);border-radius:8px;background:var(--panel,#fff);color:inherit}.hs-prep-preview{margin-top:10px;min-height:220px;border:1px dashed var(--border,#d8dee8);border-radius:10px;display:grid;place-items:center;overflow:hidden;background:#f7f8fa}.hs-prep-preview img{max-width:100%;max-height:320px;object-fit:contain}.hs-prep-pair{display:grid;grid-template-columns:1fr 1fr;gap:8px}.hs-prep-pair figure{margin:0}.hs-prep-pair img{width:100%;height:220px;object-fit:contain;background:#f7f8fa;border-radius:8px}.hs-prep-pair figcaption{font-size:11px;color:#667085;margin-top:4px}.hs-prep-meta{font-size:12px;color:#667085;line-height:1.5;margin:8px 0}.hs-prep-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}.hs-prep-status{margin-top:10px;font-size:12px}.hs-prep-good{color:#1f6b45}.hs-prep-warn{color:#9a6700}.hs-prep-clean details{margin-top:12px}.hs-prep-clean details label{display:block;margin:8px 0;font-size:12px}.hs-prep-clean input{max-width:120px}`;
-    document.head.appendChild(s);
+  function styles() {
+    if(document.getElementById('hs-prep-clean-css')) return;
+    const s=document.createElement('style'); s.id='hs-prep-clean-css'; s.textContent='.hs-prep-clean{display:grid;grid-template-columns:1.1fr .9fr;gap:14px}.hs-prep-box{border:1px solid var(--border,#d8dee8);border-radius:12px;padding:14px;background:var(--panel,#fff)}.hs-prep-select{width:100%;padding:8px;border:1px solid var(--border,#d8dee8);border-radius:8px;background:var(--panel,#fff);color:inherit}.hs-prep-preview{margin-top:10px;min-height:220px;border:1px dashed var(--border,#d8dee8);border-radius:10px;display:grid;place-items:center;overflow:hidden;background:#f7f8fa}.hs-prep-preview img{max-width:100%;max-height:320px;object-fit:contain}.hs-prep-pair{display:grid;grid-template-columns:1fr 1fr;gap:8px}.hs-prep-pair figure{margin:0}.hs-prep-pair img{width:100%;height:220px;object-fit:contain;background:#f7f8fa;border-radius:8px}.hs-prep-meta,.hs-prep-status{font-size:12px;color:#667085;line-height:1.5;margin-top:8px}.hs-prep-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}.hs-prep-good{color:#1f6b45}.hs-prep-warn{color:#9a6700}.hs-prep-clean details{margin-top:12px}.hs-prep-clean details label{display:block;margin:8px 0;font-size:12px}.hs-prep-clean input{max-width:140px}.hs-prep-upload input{display:none}@media(max-width:800px){.hs-prep-clean,.hs-prep-pair{grid-template-columns:1fr}}'; document.head.appendChild(s);
   }
 
-  function sourceOptions() {
-    return state.inputs.filter(x => !x.archived).map(x => `<option value="${esc(x.asset_id)}">${esc(x.filename || x.asset_id)} · ${esc(LABELS[x.view] || x.view || 'widok nieprzypisany')}</option>`).join('');
-  }
-
-  function replacePrepare() {
-    const content = document.getElementById('hss-content');
-    const active = document.querySelector('#hand-surface-studio .hss-tabs button.active')?.dataset.tab;
-    if (!content || active !== 'prepare') return;
-    if (content.dataset.cleanPreparation === '1') return;
-    content.dataset.cleanPreparation = '1';
-    content.innerHTML = `<div class="hs-prep-clean">
-      <div class="hs-prep-box">
-        <strong>Zdjęcie źródłowe</strong>
-        <p class="hss-note">Wybierz zdjęcie zapisane wcześniej w „Zdjęcia / źródła”. Oryginał nie zostanie zmieniony.</p>
-        <select id="hs-prep-source" class="hs-prep-select"><option value="">Wybierz zapisane zdjęcie…</option>${sourceOptions()}</select>
-        <div id="hs-prep-meta" class="hs-prep-meta"></div>
-        <div id="hs-prep-preview" class="hs-prep-preview"><span class="hss-note">Wybierz zdjęcie, aby rozpocząć.</span></div>
-        <div class="hs-prep-actions"><button id="hs-prep-run" class="primary" disabled>Przygotuj zdjęcie</button></div>
-      </div>
-      <div class="hs-prep-box">
-        <strong>Przygotowanie</strong>
-        <p class="hss-note">System automatycznie usuwa tło, tworzy miękką maskę, przycina pusty obszar i zachowuje informacje potrzebne do późniejszej rejestracji.</p>
-        <div id="hs-prep-result" class="hs-prep-meta">Brak przygotowanego wyniku.</div>
-        <details><summary>Opcje zaawansowane</summary>
-          <label>Tolerancja tła <input id="hs-prep-tol" type="number" min="4" max="80" value="28"></label>
-          <label>Maksymalny wymiar <input id="hs-prep-max" type="number" min="1024" max="8192" value="4096"></label>
-        </details>
-        <div class="hs-prep-actions"><button id="hs-prep-save" disabled>Zapisz przygotowane zdjęcie</button></div>
-        <div id="hs-prep-status" class="hs-prep-status" role="status"></div>
-      </div>
-    </div>`;
-
-    const select = document.getElementById('hs-prep-source');
-    const meta = document.getElementById('hs-prep-meta');
-    const preview = document.getElementById('hs-prep-preview');
-    const result = document.getElementById('hs-prep-result');
-    const run = document.getElementById('hs-prep-run');
-    const save = document.getElementById('hs-prep-save');
-    let prepared = null;
-
-    const selected = () => state.inputs.find(x => x.asset_id === select.value);
-    const update = () => {
-      const item = selected();
-      run.disabled = !item;
-      if (!item) { meta.textContent = ''; preview.innerHTML = '<span class="hss-note">Wybierz zdjęcie, aby rozpocząć.</span>'; return; }
-      const spatial = item.spatial_id || item.spatialId || item.target || target();
-      meta.innerHTML = `<strong>Cel:</strong> <code>${esc(spatial)}</code> · <strong>Widok:</strong> ${esc(LABELS[item.view] || item.view || 'nieprzypisany')} · <strong>Czas:</strong> ${esc(item.timepoint || 'T0')}`;
-      if (item.prepared && item.prepared_asset_id) {
-        result.innerHTML = '<span class="hs-prep-good">✓ To zdjęcie jest już przygotowane.</span>';
-        preview.innerHTML = `<img src="${API}/file/prepared/${encodeURIComponent(item.prepared_asset_id)}" alt="Przygotowane zdjęcie">`;
-      } else {
-        result.textContent = 'Zdjęcie nie jest jeszcze przygotowane.';
-        preview.innerHTML = '<span class="hss-note">Podgląd pojawi się po przygotowaniu.</span>';
-      }
-    };
-
-    select.onchange = update;
-    run.onclick = async () => {
-      const item = selected();
-      if (!item) return;
-      const spatial = item.spatial_id || item.spatialId || item.target || target();
-      const status = document.getElementById('hs-prep-status');
-      if (spatial !== target()) { status.textContent = `Zdjęcie należy do innego celu: ${spatial}.`; status.className = 'hs-prep-status hs-prep-warn'; return; }
-      run.disabled = true; status.textContent = 'Przygotowywanie…'; status.className = 'hs-prep-status';
-      try {
-        prepared = await request(`/prepare/${encodeURIComponent(item.asset_id)}`, { method:'POST' });
-        const id = prepared.prepared_asset_id;
-        if (!id) throw new Error('Brak identyfikatora przygotowanego pliku.');
-        preview.innerHTML = `<div style="width:100%"><div class="hs-prep-pair"><figure><img src="${API}/file/source/${encodeURIComponent(item.asset_id)}" alt="Oryginał"><figcaption>Oryginał</figcaption></figure><figure><img src="${API}/file/prepared/${encodeURIComponent(id)}" alt="Przygotowane"><figcaption>Po przygotowaniu</figcaption></figure></div></div>`;
-        result.innerHTML = `<span class="hs-prep-good">✓ Przygotowane</span><br>Rozmiar: ${prepared.prepared_width || '?'} × ${prepared.prepared_height || '?'} px<br>Crop: zachowany<br>Jakość: ${prepared.quality?.overall ?? '—'}`;
-        save.disabled = false; save.dataset.id = id; save.dataset.source = item.asset_id;
-        status.textContent = '✓ Gotowe. Oryginał pozostał niezmieniony.'; status.className = 'hs-prep-status hs-prep-good';
-        item.prepared = true; item.prepared_asset_id = id; item.prepared_path = prepared.prepared_path; item.quality = prepared.quality; item.crop = prepared.crop;
-      } catch (e) { status.textContent = e.message || 'Nie udało się przygotować zdjęcia.'; status.className = 'hs-prep-status hs-prep-warn'; run.disabled = false; }
-    };
-
-    save.onclick = () => {
-      const item = selected();
-      if (!item || !prepared) return;
-      const evidenceKey = 'digitalTwinEvidenceUX.v2';
-      try {
-        const raw = JSON.parse(localStorage.getItem(evidenceKey) || '{}');
-        const evidence = Array.isArray(raw.evidence) ? raw.evidence : [];
-        const existing = evidence.find(x => x.sourceAssetId === item.asset_id && x.preparedAssetId === prepared.prepared_asset_id);
-        if (!existing) evidence.unshift({ id:`prepared-${prepared.prepared_asset_id}`, type:'Macro', sourceType:'prepared-image', target:target(), spatial_id:target(), timepoint:item.timepoint || 'T0', view:item.view, filename:item.filename, sourceAssetId:item.asset_id, preparedAssetId:prepared.prepared_asset_id, prepared:true, quality:prepared.quality, crop:prepared.crop, provenance:{sourceAssetId:item.asset_id, preparation:'photo-reconstruction/prepare', originalUnchanged:true}, archived:false, history:[{at:new Date().toISOString(),action:'prepared image saved'}] });
-        localStorage.setItem(evidenceKey, JSON.stringify({ ...raw, evidence, target:target() }));
-      } catch {}
-      document.getElementById('hs-prep-status').textContent = '✓ Przygotowane zdjęcie zapisane i gotowe do rejestracji.';
-      document.getElementById('hs-prep-status').className = 'hs-prep-status hs-prep-good';
-      window.dispatchEvent(new CustomEvent('testhp:evidence-attached'));
-    };
+  function render() {
+    const content=document.getElementById('hss-content');
+    const active=document.querySelector('#hand-surface-studio .hss-tabs button.active')?.dataset.tab;
+    if(!content || active!=='prepare') return;
+    styles();
+    const t=target();
+    content.dataset.cleanPreparation='1';
+    content.innerHTML=`<div class="hs-prep-clean"><div class="hs-prep-box"><strong>Zdjęcie źródłowe</strong><p class="hss-note">Wybierz zdjęcie zapisane wcześniej w „Zdjęcia / źródła”. Oryginał nie zostanie zmieniony.</p><select id="hs-prep-source" class="hs-prep-select"><option value="">${state.inputs.length?'Wybierz zapisane zdjęcie…':'Brak zaakceptowanych zdjęć dla tego celu…'}</option>${state.inputs.map(x=>`<option value="${esc(x.asset_id)}">${esc(x.filename)} · ${esc(VIEWS[x.view]||x.view||'widok nieprzypisany')}</option>`).join('')}</select><div id="hs-prep-meta" class="hs-prep-meta"></div><div class="hs-prep-actions"><button id="hs-prep-add" type="button">＋ Dodaj nowe zdjęcie</button><input id="hs-prep-file" class="hs-prep-upload" type="file" accept="image/jpeg,image/png,image/webp,image/tiff" multiple></div><div id="hs-prep-preview" class="hs-prep-preview"><span class="hss-note">Wybierz zdjęcie, aby rozpocząć.</span></div><div class="hs-prep-actions"><button id="hs-prep-run" class="primary" type="button" disabled>Przygotuj zdjęcie</button></div></div><div class="hs-prep-box"><strong>Przygotowanie</strong><p class="hss-note">System automatycznie usuwa tło, tworzy miękką maskę, przycina pusty obszar i zachowuje informacje potrzebne do późniejszej rejestracji. Oryginał pozostaje niezmieniony.</p><div id="hs-prep-result" class="hs-prep-meta">Brak przygotowanego wyniku.</div><details><summary>Opcje zaawansowane</summary><label>Tolerancja tła <input id="hs-prep-tol" type="number" min="4" max="80" value="28"></label><label>Maksymalny wymiar <input id="hs-prep-max" type="number" min="1024" max="8192" value="4096"></label></details><div class="hs-prep-actions"><button id="hs-prep-save" type="button" disabled>Zapisz przygotowane zdjęcie</button></div><div id="hs-prep-status" class="hs-prep-status" role="status"></div></div></div>`;
+    const select=document.getElementById('hs-prep-source'), meta=document.getElementById('hs-prep-meta'), preview=document.getElementById('hs-prep-preview'), run=document.getElementById('hs-prep-run'), save=document.getElementById('hs-prep-save'), status=document.getElementById('hs-prep-status');
+    const selected=()=>state.inputs.find(x=>x.asset_id===select.value);
+    const update=()=>{const item=selected(); run.disabled=!item; if(!item){meta.textContent='';preview.innerHTML='<span class="hss-note">Wybierz zdjęcie, aby rozpocząć.</span>';return;} meta.innerHTML=`<strong>Cel:</strong> <code>${esc(item.spatial_id)}</code> · <strong>Widok:</strong> ${esc(VIEWS[item.view]||item.view||'nieprzypisany')} · <strong>Czas:</strong> ${esc(item.timepoint||'T0')}`; preview.innerHTML='<span class="hss-note">Gotowe do przygotowania.</span>';};
+    select.onchange=update;
+    document.getElementById('hs-prep-add').onclick=()=>document.getElementById('hs-prep-file').click();
+    document.getElementById('hs-prep-file').onchange=async e=>{const files=[...(e.target.files||[])];if(!files.length)return;status.textContent=`Dodawanie ${files.length===1?'zdjęcia':'zdjęć'} dla ${t}…`;try{for(const file of files){const form=new FormData();form.append('file',file);form.append('subject_id','own_cohort');form.append('timepoint','T0');form.append('spatial_node_id',t);await request(`${API}/upload`,{method:'POST',body:form});}await loadSources();status.textContent='✓ Zdjęcia dodane. Wybierz je z listy.';render();}catch(err){status.textContent=err.message||'Nie udało się dodać zdjęcia.';status.className='hs-prep-status hs-prep-warn';}e.target.value='';};
+    run.onclick=async()=>{const item=selected();if(!item)return;run.disabled=true;status.textContent='Przygotowywanie…';status.className='hs-prep-status';try{prepared=await request(`${API}/prepare/${encodeURIComponent(item.asset_id)}`,{method:'POST'});const id=prepared.prepared_asset_id;if(!id)throw new Error('Brak identyfikatora przygotowanego pliku.');preview.innerHTML=`<div class="hs-prep-pair"><figure><img src="${API}/file/source/${encodeURIComponent(item.asset_id)}" alt="Oryginał"><figcaption>Oryginał</figcaption></figure><figure><img src="${API}/file/prepared/${encodeURIComponent(id)}" alt="Przygotowane"><figcaption>Po przygotowaniu</figcaption></figure></div>`;document.getElementById('hs-prep-result').innerHTML=`<span class="hs-prep-good">✓ Przygotowane</span><br>${prepared.prepared_width||'?'} × ${prepared.prepared_height||'?'} px · maska + crop + transformacja zachowane`;save.disabled=false;save.dataset.id=id;save.dataset.source=item.asset_id;status.textContent='✓ Gotowe. Oryginał pozostał niezmieniony.';status.className='hs-prep-status hs-prep-good';}catch(err){status.textContent=err.message||'Nie udało się przygotować zdjęcia.';status.className='hs-prep-status hs-prep-warn';run.disabled=false;}};
+    save.onclick=()=>{const item=selected();if(!item||!prepared)return;try{const raw=JSON.parse(localStorage.getItem(EVIDENCE)||'{}');const evidence=Array.isArray(raw.evidence)?raw.evidence:[];if(!evidence.some(x=>x.sourceAssetId===item.asset_id&&x.preparedAssetId===prepared.prepared_asset_id))evidence.unshift({id:`prepared-${prepared.prepared_asset_id}`,type:'Macro',sourceType:'prepared-image',target:t,spatial_id:t,timepoint:item.timepoint||'T0',view:item.view,filename:item.filename,sourceAssetId:item.asset_id,preparedAssetId:prepared.prepared_asset_id,prepared:true,quality:prepared.quality,crop:prepared.crop,provenance:{sourceAssetId:item.asset_id,preparation:'photo-reconstruction/prepare',originalUnchanged:true},archived:false,history:[{at:new Date().toISOString(),action:'prepared image saved'}]});localStorage.setItem(EVIDENCE,JSON.stringify({...raw,evidence,target:t}));}catch{}status.textContent='✓ Przygotowane zdjęcie zapisane i gotowe do rejestracji.';status.className='hs-prep-status hs-prep-good';window.dispatchEvent(new CustomEvent('testhp:evidence-attached'));};
     update();
   }
 
-  async function boot() {
-    ensureStyles();
-    try { await load(); } catch { state.inputs = []; }
-    replacePrepare();
-  }
-
-  function watch() {
-    if (observer) return;
-    observer = new MutationObserver(() => {
-      const active = document.querySelector('#hand-surface-studio .hss-tabs button.active')?.dataset.tab;
-      const content = document.getElementById('hss-content');
-      if (active === 'prepare' && content && content.dataset.cleanPreparation !== '1') boot();
-      if (active !== 'prepare' && content) delete content.dataset.cleanPreparation;
-    });
-    observer.observe(document.body, { childList:true, subtree:true });
-  }
-
-  window.addEventListener('testhp:spatial-contract-changed', () => { const c=document.getElementById('hss-content'); if(c) delete c.dataset.cleanPreparation; boot(); });
-  window.addEventListener('testhp:spatial-layer-changed', () => { const c=document.getElementById('hss-content'); if(c) delete c.dataset.cleanPreparation; boot(); });
-  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', () => { watch(); boot(); }, {once:true}); else { watch(); boot(); }
+  async function boot(){const active=document.querySelector('#hand-surface-studio .hss-tabs button.active')?.dataset.tab;if(active!=='prepare')return;await loadSources();render();}
+  const schedule=()=>setTimeout(()=>boot(),0);
+  window.addEventListener('testhp:spatial-contract-changed',schedule);window.addEventListener('testhp:spatial-layer-changed',schedule);window.addEventListener('testhp:evidence-attached',schedule);
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',schedule,{once:true});else schedule();
+  observer=new MutationObserver(()=>{const active=document.querySelector('#hand-surface-studio .hss-tabs button.active')?.dataset.tab;const content=document.getElementById('hss-content');if(active==='prepare'&&content&&!content.dataset.cleanPreparation)boot();});
+  if(document.body)observer.observe(document.body,{childList:true,subtree:true});
 })();
