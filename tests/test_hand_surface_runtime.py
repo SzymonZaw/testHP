@@ -39,7 +39,25 @@ def test_runtime_manifest_keeps_research_boundary():
     manifest = build_runtime_manifest()
     assert manifest["schema"] == "hand-surface-stages-16-19"
     assert manifest["coordinate_system"] == "hand-surface-v1"
+    assert manifest["spatial_id"] == "hand"
     assert manifest["provenance"]
+
+
+def test_runtime_projection_is_scoped_to_target():
+    mask = SegmentationMask("front", 2048, 2048, 0.45, confidence=0.9, spatial_id="Palm")
+    camera = CameraView("front", "front", (0, 0, 2), (0, 0, 0), spatial_id="hand/palm")
+    assert projection_readiness([mask], [camera], "hand/palm") == "ready-for-surface-projection"
+    assert projection_readiness([mask], [camera], "hand") == "needs-segmentation"
+
+
+def test_projection_candidate_ignores_other_target():
+    candidates = [
+        ProjectionCandidate("p1", "wrong", "front", 1.0, 0.1, 1.0, spatial_id="hand"),
+        ProjectionCandidate("p1", "right", "front", 0.8, 0.4, 0.8, spatial_id="hand/palm"),
+    ]
+    result = select_projection_source(candidates, "hand/palm")
+    assert result["asset_id"] == "right"
+    assert result["spatial_id"] == "hand/palm"
 
 
 def test_deformation_distance_is_deterministic():
