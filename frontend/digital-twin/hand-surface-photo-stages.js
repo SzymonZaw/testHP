@@ -11,11 +11,7 @@
     const fn = window.testhpSpatialContract?.canonicalTargetId;
     return typeof fn === 'function' ? (fn(raw) || 'hand') : String(raw).replace(/^\/+|\/+$/g, '').toLowerCase();
   };
-  const target = () => ({
-    subject_id: window.testhpPhotoReconstructionSubject || 'own_cohort',
-    timepoint: window.testhpPhotoReconstructionTimepoint || 'T0',
-    spatial_id: canonical(window.testhpSpatialContract?.getTarget?.() || window.spatialEvidenceTarget || window.selectedSpatialNode || document.body?.dataset?.spatialTarget || 'hand')
-  });
+  const target = () => ({ subject_id: window.testhpPhotoReconstructionSubject || 'own_cohort', timepoint: window.testhpPhotoReconstructionTimepoint || 'T0', spatial_id: canonical(window.testhpSpatialContract?.getTarget?.() || window.spatialEvidenceTarget || window.selectedSpatialNode || document.body?.dataset?.spatialTarget || 'hand') });
   const readScope = () => { try { return JSON.parse(localStorage.getItem(SCOPE) || '{}'); } catch { return {}; } };
   const rememberTarget = (assetId, spatialId) => { if (!assetId) return; const scope = readScope(); scope[assetId] = canonical(spatialId); localStorage.setItem(SCOPE, JSON.stringify(scope)); };
   const scoped = (item, id) => canonical(item?.spatial_id || item?.spatialId || item?.target || readScope()[item?.asset_id] || 'hand') === id;
@@ -41,8 +37,7 @@
     if (!panel) return null;
     if ($('p3r-clean-root')) return $('p3r-clean-root');
     const root = document.createElement('div');
-    root.id = 'p3r-clean-root';
-    root.className = 'p3r-clean';
+    root.id = 'p3r-clean-root'; root.className = 'p3r-clean';
     root.innerHTML = `<div class="p3r-clean-upload"><label class="primary" for="p3r-clean-files">＋ Dodaj zdjęcia</label><input id="p3r-clean-files" type="file" accept="image/jpeg,image/png,image/webp,image/tiff" multiple><button id="p3r-clean-register" type="button">Sprawdź przygotowane widoki</button></div><div id="p3r-clean-note" class="p3r-clean-note"></div><div id="p3r-clean-summary" class="p3r-clean-summary"></div><div id="p3r-clean-list" class="p3r-clean-list"></div><div id="p3r-clean-status" class="p3r-clean-status" aria-live="polite"></div>`;
     const note = panel.querySelector('.p3r-note');
     const card = note?.closest('.p3r-card') || panel.querySelector('.p3r-card') || panel;
@@ -58,93 +53,60 @@
     const t = target();
     const raw = await request(`/state?subject_id=${encodeURIComponent(t.subject_id)}&timepoint=${encodeURIComponent(t.timepoint)}`);
     const inputs = (Array.isArray(raw.inputs) ? raw.inputs : []).filter(item => scoped(item, t.spatial_id));
-    state = { ...raw, spatial_id: t.spatial_id, inputs };
-    render();
+    state = { ...raw, spatial_id: t.spatial_id, inputs }; render();
   }
 
   async function upload(files) {
     if (!files.length) return;
-    const t = target();
-    status(`Dodawanie ${files.length} ${files.length === 1 ? 'zdjęcia' : 'zdjęć'} dla ${t.spatial_id}…`);
+    const t = target(); status(`Dodawanie ${files.length} ${files.length === 1 ? 'zdjęcia' : 'zdjęć'} dla ${t.spatial_id}…`);
     try {
       for (const file of files) {
-        const form = new FormData();
-        form.append('file', file);
-        form.append('subject_id', t.subject_id);
-        form.append('timepoint', t.timepoint);
-        form.append('spatial_node_id', t.spatial_id);
+        const form = new FormData(); form.append('file', file); form.append('subject_id', t.subject_id); form.append('timepoint', t.timepoint); form.append('spatial_node_id', t.spatial_id);
         const result = await request('/upload', { method: 'POST', body: form });
         rememberTarget(result.asset_id || result.photo?.asset_id, t.spatial_id);
       }
-      status('Zdjęcia dodane. Teraz przypisz widok i przygotuj każde zdjęcie.');
-      await load();
+      status('Zdjęcia dodane. Teraz przypisz widok i przygotuj każde zdjęcie.'); await load();
     } catch (error) { status(error.message || 'Nie udało się dodać zdjęć.', true); }
     finally { if ($('p3r-clean-files')) $('p3r-clean-files').value = ''; }
   }
 
+  window.addEventListener('testhp:hand-photo-source-add-request', event => {
+    const input = $('p3r-clean-files');
+    if (input) { input.click(); return; }
+    status('Formularz dodawania zdjęć nie jest jeszcze gotowy.', true);
+  });
+
   async function assign(assetId, view) {
-    try {
-      await request('/assign', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ asset_id: assetId, view }) });
-      rememberTarget(assetId, target().spatial_id);
-      status(`Przypisano widok: ${LABELS[view]}.`);
-      await load();
-    } catch (error) { status(error.message || 'Nie udało się przypisać widoku.', true); }
+    try { await request('/assign', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ asset_id: assetId, view }) }); rememberTarget(assetId, target().spatial_id); status(`Przypisano widok: ${LABELS[view]}.`); await load(); }
+    catch (error) { status(error.message || 'Nie udało się przypisać widoku.', true); }
   }
 
   async function prepare(assetId) {
-    try {
-      status('Przygotowywanie zdjęcia…');
-      await request(`/prepare/${encodeURIComponent(assetId)}`, { method: 'POST' });
-      rememberTarget(assetId, target().spatial_id);
-      status('Zdjęcie jest przygotowane.');
-      await load();
-    } catch (error) { status(error.message || 'Nie udało się przygotować zdjęcia.', true); }
+    try { status('Przygotowywanie zdjęcia…'); await request(`/prepare/${encodeURIComponent(assetId)}`, { method: 'POST' }); rememberTarget(assetId, target().spatial_id); status('Zdjęcie jest przygotowane.'); await load(); }
+    catch (error) { status(error.message || 'Nie udało się przygotować zdjęcia.', true); }
   }
 
   async function register() {
-    const t = target();
-    const prepared = state?.inputs?.filter(x => x.prepared && x.view).length || 0;
+    const t = target(); const prepared = state?.inputs?.filter(x => x.prepared && x.view).length || 0;
     if (prepared < 2) { status('Przygotuj co najmniej 2 zdjęcia z różnych widoków.', true); return; }
-    try {
-      status('Sprawdzanie przygotowanych widoków…');
-      const result = await request(`/register?subject_id=${encodeURIComponent(t.subject_id)}&timepoint=${encodeURIComponent(t.timepoint)}`, { method: 'POST' });
-      status(result.ready_for_projection ? `${result.registered_count || 0} widoków jest gotowych do kolejnego etapu.` : 'Rejestracja wymaga jeszcze uzupełnienia.');
-      await load();
-    } catch (error) { status(error.message || 'Nie udało się sprawdzić widoków.', true); }
+    try { status('Sprawdzanie przygotowanych widoków…'); const result = await request(`/register?subject_id=${encodeURIComponent(t.subject_id)}&timepoint=${encodeURIComponent(t.timepoint)}`, { method: 'POST' }); status(result.ready_for_projection ? `${result.registered_count || 0} widoków jest gotowych do kolejnego etapu.` : 'Rejestracja wymaga jeszcze uzupełnienia.'); await load(); }
+    catch (error) { status(error.message || 'Nie udało się sprawdzić widoków.', true); }
   }
 
   function render() {
     if (!state || !$('p3r-clean-list')) return;
-    const byView = {};
-    state.inputs.filter(x => x.view).forEach(x => { byView[x.view] = x; });
+    const byView = {}; state.inputs.filter(x => x.view).forEach(x => { byView[x.view] = x; });
     $('p3r-clean-note').innerHTML = `<strong>Zdjęcia dla:</strong> <code>${esc(state.spatial_id)}</code>. Dodaj co najmniej 2 zdjęcia z różnych stron, przypisz im widoki i przygotuj je.`;
-    const assigned = state.inputs.filter(x => x.view && x.view !== 'unknown').length;
-    const prepared = state.inputs.filter(x => x.prepared && x.view && x.view !== 'unknown').length;
-    const registered = state.inputs.filter(x => x.registration?.status === 'registered').length;
+    const assigned = state.inputs.filter(x => x.view && x.view !== 'unknown').length, prepared = state.inputs.filter(x => x.prepared && x.view && x.view !== 'unknown').length, registered = state.inputs.filter(x => x.registration?.status === 'registered').length;
     $('p3r-clean-summary').innerHTML = `<span class="p3r-clean-chip">${assigned} / 5 przypisanych</span><span class="p3r-clean-chip ${prepared >= 2 ? 'good' : 'warn'}">${prepared} / 5 przygotowanych</span><span class="p3r-clean-chip ${registered >= 2 ? 'good' : 'warn'}">${registered} / 5 gotowych</span>`;
-    $('p3r-clean-list').innerHTML = VIEWS.map(view => {
-      const item = byView[view];
-      if (!item) return `<div class="p3r-clean-item"><div class="p3r-clean-head"><strong>${LABELS[view]}</strong><span class="p3r-clean-meta">Brak zdjęcia</span></div>`;
-      const preparedFlag = !!item.prepared;
-      const ready = item.registration?.status === 'registered';
-      return `<div class="p3r-clean-item"><div class="p3r-clean-head"><strong>${LABELS[view]}</strong><span class="p3r-clean-meta">${ready ? '✓ Gotowe' : preparedFlag ? '✓ Przygotowane' : 'Dodane'}</span></div><div class="p3r-clean-meta">${esc(item.filename || 'Zdjęcie')}</div><select class="p3r-clean-select" data-asset="${esc(item.asset_id)}"><option value="">Wybierz widok…</option>${VIEWS.map(v => `<option value="${v}" ${v === view ? 'selected' : ''}>${LABELS[v]}</option>`).join('')}</select><div class="p3r-clean-actions">${!preparedFlag ? `<button type="button" data-prepare="${esc(item.asset_id)}">Przygotuj zdjęcie</button>` : '<span class="p3r-clean-meta">Zdjęcie gotowe do dalszego etapu</span>'}</div></div>`;
-    }).join('');
+    $('p3r-clean-list').innerHTML = VIEWS.map(view => { const item = byView[view]; if (!item) return `<div class="p3r-clean-item"><div class="p3r-clean-head"><strong>${LABELS[view]}</strong><span class="p3r-clean-meta">Brak zdjęcia</span></div>`; const preparedFlag = !!item.prepared, ready = item.registration?.status === 'registered'; return `<div class="p3r-clean-item"><div class="p3r-clean-head"><strong>${LABELS[view]}</strong><span class="p3r-clean-meta">${ready ? '✓ Gotowe' : preparedFlag ? '✓ Przygotowane' : 'Dodane'}</span></div><div class="p3r-clean-meta">${esc(item.filename || 'Zdjęcie')}</div><select class="p3r-clean-select" data-asset="${esc(item.asset_id)}"><option value="">Wybierz widok…</option>${VIEWS.map(v => `<option value="${v}" ${v === view ? 'selected' : ''}>${LABELS[v]}</option>`).join('')}</select><div class="p3r-clean-actions">${!preparedFlag ? `<button type="button" data-prepare="${esc(item.asset_id)}">Przygotuj zdjęcie</button>` : '<span class="p3r-clean-meta">Zdjęcie gotowe do dalszego etapu</span>'}</div></div>`; }).join('');
     $('p3r-clean-list').querySelectorAll('select[data-asset]').forEach(el => el.addEventListener('change', () => { if (el.value) assign(el.dataset.asset, el.value); }));
     $('p3r-clean-list').querySelectorAll('[data-prepare]').forEach(el => el.addEventListener('click', () => prepare(el.dataset.prepare)));
   }
 
-  function boot() {
-    injectCss();
-    if (!host()) return false;
-    load().catch(error => status(error.message || 'Nie można wczytać zdjęć.', true));
-    return true;
-  }
-
+  function boot() { injectCss(); if (!host()) return false; load().catch(error => status(error.message || 'Nie można wczytać zdjęć.', true)); return true; }
   const schedule = () => setTimeout(boot, 0);
-  window.addEventListener('testhp:spatial-layer-changed', schedule);
-  window.addEventListener('testhp:spatial-contract-changed', schedule);
-  window.addEventListener('testhp:evidence-attached', schedule);
+  window.addEventListener('testhp:spatial-layer-changed', schedule); window.addEventListener('testhp:spatial-contract-changed', schedule); window.addEventListener('testhp:evidence-attached', schedule);
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot, { once: true }); else boot();
-  const observer = new MutationObserver(() => { if (!$('p3r-clean-root')) boot(); });
-  if (document.body) observer.observe(document.body, { childList: true, subtree: true });
+  const observer = new MutationObserver(() => { if (!$('p3r-clean-root')) boot(); }); if (document.body) observer.observe(document.body, { childList: true, subtree: true });
 })();
