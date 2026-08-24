@@ -47,43 +47,22 @@
     const g = {...DEFAULT,...geometry};
     const count = captureBase();
     if (!count) return {ok:false,reason:'canonical meshes unavailable'};
-
-    const applyMesh = (id, fn) => {
-      const m = mesh(id), b = m && base.get(m);
-      if (m && b) fn(m,b);
-    };
-
-    applyMesh('palm',(m,b)=>{
-      m.position.set(b.position.x,b.position.y,b.position.z);
-      m.scale.set(g.palmWidth*b.scale.x,g.palmLength*b.scale.y,g.thickness*b.scale.z);
-    });
-
+    const applyMesh = (id, fn) => { const m = mesh(id), b = m && base.get(m); if (m && b) fn(m,b); };
+    applyMesh('palm',(m,b)=>{ m.position.set(b.position.x,b.position.y,b.position.z); m.scale.set(g.palmWidth*b.scale.x,g.palmLength*b.scale.y,g.thickness*b.scale.z); });
     ['index','middle','ring','little'].forEach(id => applyMesh(id,(m,b)=>{
       m.position.set(b.position.x*g.fingerSpread,b.position.y,b.position.z);
       m.scale.set(g.thickness*b.scale.x,b.scale.y,g.taper*b.scale.z);
       m.rotation.set(b.rotation.x,b.rotation.y,b.rotation.z);
     }));
-
-    applyMesh('thumb',(m,b)=>{
-      m.position.set(b.position.x,b.position.y,b.position.z);
-      m.scale.set(g.thickness*b.scale.x,b.scale.y,b.scale.z);
-      m.rotation.set(b.rotation.x,b.rotation.y,-.82*g.thumbAngle);
-    });
-
-    const render = active()?.renderer;
-    const scene = active()?.scene;
-    const camera = active()?.camera;
+    applyMesh('thumb',(m,b)=>{ m.position.set(b.position.x,b.position.y,b.position.z); m.scale.set(g.thickness*b.scale.x,b.scale.y,b.scale.z); m.rotation.set(b.rotation.x,b.rotation.y,-.82*g.thumbAngle); });
+    const render = active()?.renderer, scene = active()?.scene, camera = active()?.camera;
     if (render && scene && camera) render.render(scene,camera);
     lastSignature = JSON.stringify(g);
     window.dispatchEvent(new CustomEvent('testhp:geometry-canonical-applied',{detail:{geometry:g,reason,meshCount:count}}));
     return {ok:true,meshCount:count,geometry:g};
   }
 
-  function reset() {
-    const result = apply(DEFAULT,'reset');
-    saveState(DEFAULT);
-    return result;
-  }
+  function reset() { const result = apply(DEFAULT,'reset'); saveState(DEFAULT); return result; }
 
   window.digitalTwinGeometry = {
     version:'canonical-geometry-1',
@@ -92,35 +71,46 @@
     setState(next){ const merged={...DEFAULT,...next}; saveState(merged); return apply(merged,'set-state'); },
     reset,
     apply,
-    inspect(){
-      const result={};
-      ['palm','index','middle','ring','little','thumb'].forEach(id=>{const m=mesh(id);if(m)result[id]={position:m.position.toArray(),scale:m.scale.toArray(),rotation:[m.rotation.x,m.rotation.y,m.rotation.z]};});
-      return result;
-    }
+    inspect(){ const result={}; ['palm','index','middle','ring','little','thumb'].forEach(id=>{const m=mesh(id);if(m)result[id]={position:m.position.toArray(),scale:m.scale.toArray(),rotation:[m.rotation.x,m.rotation.y,m.rotation.z]};}); return result; }
   };
+
+  function installCss() {
+    if (document.getElementById('hss-canonical-geometry-css')) return;
+    const style=document.createElement('style');
+    style.id='hss-canonical-geometry-css';
+    style.textContent=`
+      .hss-canonical-geometry-panel .hss-grid{display:block}
+      .hss-canonical-geometry-panel .hss-card{margin-bottom:12px}
+      .hss-canonical-geometry-panel .hss-geometry-apply-note{color:#53616c}
+      .hss-geometry-preview-card{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px;border:1px solid var(--border,#d8dee8);border-radius:10px;background:rgba(79,111,143,.05);margin-bottom:12px}
+      .hss-geometry-preview-card strong{display:block;font-size:13px}
+      .hss-geometry-preview-card span{display:block;font-size:12px;color:#667085;margin-top:3px}
+      .hss-geometry-preview-card button{white-space:nowrap}
+      @media(max-width:700px){.hss-geometry-preview-card{display:block}.hss-geometry-preview-card button{margin-top:8px}}
+    `;
+    document.head.appendChild(style);
+  }
 
   function ensureLayout() {
     const studio = document.getElementById('hand-surface-studio');
-    const twin = document.querySelector('.twin-panel');
-    if (!studio || !twin || studio.parentElement === twin) return;
-    twin.appendChild(studio);
+    if (!studio) return;
+    // The unified surface UI owns this panel. Never pull it back into the 3D viewport.
     studio.classList.add('hss-canonical-geometry-panel');
-    if (!document.getElementById('hss-canonical-geometry-css')) {
-      const style=document.createElement('style');
-      style.id='hss-canonical-geometry-css';
-      style.textContent=`
-        .twin-panel{display:grid;grid-template-columns:minmax(0,1fr) minmax(320px,390px);gap:16px;align-items:start}
-        .twin-panel>.twin-viewport{grid-column:1;grid-row:1}
-        .twin-panel>.spatial-navigator{grid-column:1;grid-row:2}
-        .twin-panel>.hss-canonical-geometry-panel{grid-column:2;grid-row:1 / span 2;margin:0;min-width:0}
-        .hss-canonical-geometry-panel .hss-grid{display:block}
-        .hss-canonical-geometry-panel .hss-card{margin-bottom:12px}
-        .hss-canonical-geometry-panel .hss-preview{min-height:180px}
-        .hss-canonical-geometry-panel .hss-geometry-apply-note{color:#53616c}
-        @media(max-width:1050px){.twin-panel{display:block}.twin-panel>.hss-canonical-geometry-panel{margin-top:16px}}
-      `;
-      document.head.appendChild(style);
-    }
+    installCss();
+  }
+
+  function ensurePreviewLink() {
+    const studio=document.getElementById('hand-surface-studio');
+    const content=document.getElementById('hss-content');
+    if(!studio || !content) return;
+    const tab=studio.querySelector('.hss-tabs button[data-tab="geometry"]');
+    if(!tab?.classList.contains('active')) return;
+    if(content.querySelector('.hss-geometry-preview-card')) return;
+    const card=document.createElement('div');
+    card.className='hss-geometry-preview-card';
+    card.innerHTML='<div><strong>Podgląd modelu 3D</strong><span>Suwaki zmieniają model natychmiast. Model jest w górnej części strony.</span></div><button type="button" class="secondary">Pokaż model 3D</button>';
+    card.querySelector('button').onclick=()=>document.querySelector('.twin-panel')?.scrollIntoView({behavior:'smooth',block:'start'});
+    content.prepend(card);
   }
 
   function wireControls() {
@@ -132,7 +122,6 @@
       if(!input) return;
       const value=Number(input.value);
       window.digitalTwinGeometry.setParameter(input.dataset.g,value);
-      input.parentElement?.nextElementSibling && (input.parentElement.nextElementSibling.value=value);
       const label=studio.querySelector('.hss-geometry-value[data-value-for="'+input.dataset.g+'"]');
       if(label) label.textContent=value.toFixed(2)+'×';
     }, true);
@@ -148,6 +137,7 @@
   function sync() {
     ensureLayout();
     const wired=wireControls();
+    ensurePreviewLink();
     if (active() && base.size===0) captureBase();
     const state=readState();
     if (active() && JSON.stringify(state)!==lastSignature) apply(state,'sync');
