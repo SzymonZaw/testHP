@@ -2,6 +2,14 @@
   const canvas = document.getElementById('twin-canvas');
   if (!canvas) return;
 
+  const loadGeometryBridge = () => {
+    if (document.querySelector('script[data-canonical-geometry-bridge]')) return;
+    const script = document.createElement('script');
+    script.src = '/digital-twin/hand-surface-geometry-canonical-bridge.js?v=canonical-geometry-1';
+    script.dataset.canonicalGeometryBridge = 'true';
+    document.body.appendChild(script);
+  };
+
   // app.js + spatial-root-anatomy-fix.js own the navigator DOM. This bridge
   // only reports viewport state and never writes #spatial-children.
   const read = () => ({
@@ -24,6 +32,7 @@
         activeLayer: manager?.activeLayer || null
       }
     }));
+    loadGeometryBridge();
   };
 
   window.addEventListener('testhp:viewport-manager-ready', () => report('manager-ready'));
