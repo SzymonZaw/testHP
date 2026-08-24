@@ -69,7 +69,17 @@
         const item = normalizeItem({asset_id:sourceId, id:source.id, filename:source.filename, spatial_id:source.spatial_id || source.target, view:savedView, timepoint:source.timepoint, prepared:source.prepared, prepared_asset_id:source.preparedAssetId || source.prepared_asset_id});
         if(item) {
           const existing = byId.get(item.asset_id) || {};
-          const merged = {...existing, ...Object.fromEntries(Object.entries(item).filter(([,value]) => value !== undefined && value !== null && value !== ''))};
+          const localFields = Object.fromEntries(Object.entries(item).filter(([,value]) => value !== undefined && value !== null && value !== ''));
+          const merged = {...existing, ...localFields};
+          // The server is authoritative for preparation state. A stale local
+          // evidence snapshot must never turn a server-prepared asset back
+          // into an unprepared one.
+          if (existing.prepared === true && existing.prepared_asset_id) {
+            merged.prepared = true;
+            merged.prepared_asset_id = existing.prepared_asset_id;
+            if (existing.prepared_asset) merged.prepared_asset = existing.prepared_asset;
+            if (existing.prepared_path) merged.prepared_path = existing.prepared_path;
+          }
           byId.set(item.asset_id,{...merged,view:merged.view || savedViewFor(merged)});
         }
       }
