@@ -84,12 +84,20 @@
     script.src = '/digital-twin/hand-surface-preparation-source-bridge.js?v=prep-source-bridge-1';
     document.head.appendChild(script);
   };
+  const ensureGeometryLive = () => {
+    if (document.getElementById('hand-surface-geometry-live-script')) return;
+    const script = document.createElement('script');
+    script.id = 'hand-surface-geometry-live-script';
+    script.src = '/digital-twin/hand-surface-geometry-live.js?v=geometry-live-1';
+    document.head.appendChild(script);
+  };
 
   const run = () => {
     movePhotoPanel();
     hideLegacySurfacePanels();
     ensurePhotoAction();
     ensurePreparationSourceBridge();
+    ensureGeometryLive();
   };
   const schedule = () => requestAnimationFrame(run);
   window.addEventListener('testhp:spatial-layer-changed', schedule);
