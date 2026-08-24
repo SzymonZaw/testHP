@@ -4,7 +4,8 @@ from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
-from .photo_reconstruction import assign_view, file_for, prepare_by_id, register_prepared, state, upload_photo
+from .photo_reconstruction import assign_view, prepare_by_id, register_prepared, state, upload_photo
+from .photo_reconstruction_file_resolver import resolve_photo_file
 from .reconstruction_orchestrator import clear, get_result, run
 
 router = APIRouter(prefix="/api/hand/photo-reconstruction", tags=["photo-reconstruction"])
@@ -47,10 +48,6 @@ def photo_reconstruction_assign(request: ViewAssignment):
 @router.post("/prepare/{asset_id}")
 def photo_reconstruction_prepare(asset_id: str):
     try:
-        # Preparation is idempotent: if the server already has a prepared
-        # result, return that persisted record instead of generating another
-        # prepared asset. This also makes the endpoint safe when the UI has a
-        # stale local snapshot.
         current = state("own_cohort", "T0")
         existing = next((item for item in current.get("inputs", []) if item.get("asset_id") == asset_id), None)
         if existing and existing.get("prepared") is True and existing.get("prepared_asset_id"):
@@ -96,7 +93,7 @@ def photo_reconstruction_clear(subject_id: str = "own_cohort", timepoint: str = 
 @router.get("/file/source/{asset_id}")
 def photo_reconstruction_source(asset_id: str):
     try:
-        return FileResponse(file_for(asset_id, prepared=False))
+        return FileResponse(resolve_photo_file(asset_id, prepared=False))
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail="source photo not found") from exc
 
@@ -104,6 +101,6 @@ def photo_reconstruction_source(asset_id: str):
 @router.get("/file/prepared/{prepared_asset_id}")
 def photo_reconstruction_prepared(prepared_asset_id: str):
     try:
-        return FileResponse(file_for(prepared_asset_id, prepared=True), media_type="image/png")
+        return FileResponse(resolve_photo_file(prepared_asset_id, prepared=True), media_type="image/png")
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail="prepared photo not found") from exc
