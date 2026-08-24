@@ -59,7 +59,10 @@
     } catch {}
     try {
       const saved = await request(`${API}/state?subject_id=own_cohort&timepoint=T0`, {cache:'no-store'});
-      for(const raw of (saved.inputs || saved.evidence || [])) { const item=withSavedView(normalizeItem(raw)); if(item) byId.set(item.asset_id,item); }
+      for(const raw of (saved.inputs || saved.evidence || [])) {
+        const item=withSavedView(normalizeItem(raw));
+        if(item) byId.set(item.asset_id,item);
+      }
     } catch {}
     try {
       const raw = JSON.parse(localStorage.getItem(EVIDENCE) || '{}');
@@ -88,12 +91,28 @@
     if (!assetId) return;
     try {
       const saved = await request(`${API}/state?subject_id=own_cohort&timepoint=T0`, {cache:'no-store'});
-      const raw = (saved.inputs || saved.evidence || []).find(x => x.asset_id === assetId);
-      const serverItem = withSavedView(normalizeItem(raw));
-      if (!serverItem) return;
+      const records = saved.inputs || saved.evidence || [];
+      const current = state.inputs.find(x => x.asset_id === assetId);
+      const raw = records.find(x => x.asset_id === assetId || (current?.filename && x.filename === current.filename));
+      if (!raw) return;
+
+      // The preparation state endpoint can legitimately describe a source at
+      // the registered root (`hand`) while the UI source is scoped to the
+      // active child target (`hand/palm`). Do not pass this record through
+      // normalizeItem here: doing so discarded the exact prepared state that
+      // the server had already persisted.
+      const serverFields = {
+        prepared: raw.prepared === true,
+        prepared_asset_id: raw.prepared_asset_id || raw.preparedAssetId,
+        prepared_asset: raw.prepared_asset,
+        prepared_path: raw.prepared_path,
+        preparation: raw.preparation,
+        view: raw.view
+      };
+      const merged = {...current, ...Object.fromEntries(Object.entries(serverFields).filter(([,v]) => v !== undefined && v !== null && v !== ''))};
       const index = state.inputs.findIndex(x => x.asset_id === assetId);
-      if (index < 0) state.inputs.push(serverItem);
-      else state.inputs[index] = {...state.inputs[index], ...serverItem};
+      if (index < 0) state.inputs.push(withSavedView({...merged, asset_id:assetId}));
+      else state.inputs[index] = withSavedView(merged);
     } catch {}
   }
 
