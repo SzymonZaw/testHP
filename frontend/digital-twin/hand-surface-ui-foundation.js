@@ -2,7 +2,7 @@
   const target = () => {
     const t = window.testhpSpatialContract?.getTarget?.() || window.selectedSpatialNode || window.spatialEvidenceTarget || 'hand';
     if (t && typeof t === 'object') return { spatial_id: t.spatial_id || t.spatialId || t.id || 'hand', label: t.label || t.path?.join(' > ') || t.spatial_id || t.id || 'Dłoń' };
-    return { spatial_id: String(t || 'hand'), label: String(t || 'hand') };
+    return { spatial_id: String(t || 'hand'), label: String(t || 'Dłoń') };
   };
   const movePhotoPanel = () => {
     const shell = document.getElementById('hand-surface-unified');
