@@ -28,10 +28,32 @@
     const segment = raw.replaceAll(' ', '-').replace(SEGMENT_RE, '-');
     return SEGMENT_ALIASES[segment] || segment;
   };
+
+  // Guard the canonical identity against accidental path accumulation. A
+  // broken writer must not turn hand/palm into hand/palm/hand/palm/... and
+  // thereby create an endless stream of increasingly long API requests.
+  const collapseRepeatedPrefix = segments => {
+    const result = [...segments];
+    for (let size = Math.min(3, Math.floor(result.length / 2)); size >= 1; size -= 1) {
+      let changed = true;
+      while (changed && result.length >= size * 2) {
+        changed = false;
+        const prefix = result.slice(0, size).join('/');
+        const next = result.slice(size, size * 2).join('/');
+        if (prefix && prefix === next) {
+          result.splice(size, size);
+          changed = true;
+        }
+      }
+    }
+    return result;
+  };
+
   const normalizeId = value => {
     const raw = String(value ?? '').trim().replace(/^\/+|\/+$/g, '').toLowerCase();
     if (ROOT_ALIASES[raw]) return ROOT_ALIASES[raw];
-    return raw.split('/').map(normalizeSegment).filter(Boolean).join('/');
+    const segments = raw.split('/').map(normalizeSegment).filter(Boolean);
+    return collapseRepeatedPrefix(segments).join('/');
   };
   const buildSpatialId = path => (Array.isArray(path) ? path : [])
     .map(item => typeof item === 'string' ? item : item?.id)
@@ -145,9 +167,6 @@
     const observed = managerTarget(manager);
     const canonical = canonicalTargetId(observed) || managerSpatialId(manager) || current.spatial_id;
 
-    // The viewport manager is authoritative after a navigation. Keep the
-    // contract object itself in sync, not just compatibility globals; otherwise
-    // diagnostics can see a stale contract target while the renderer is correct.
     if (observed && canonical !== current.spatial_id) current = normalizeTarget(observed);
     else current = normalizeTarget({ ...current, spatial_id: canonical, spatialId: canonical, target: labelFor(canonical, current.label) });
 
