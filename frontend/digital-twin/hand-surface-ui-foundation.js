@@ -30,7 +30,32 @@
   const ensureGeometryStability = () => { if (document.getElementById('hand-surface-geometry-stability-script')) return; const script = document.createElement('script'); script.id = 'hand-surface-geometry-stability-script'; script.src = '/digital-twin/hand-surface-geometry-stability.js?v=geometry-stability-1'; document.head.appendChild(script); };
   const ensureGeometryControlsFix = () => { if (document.getElementById('hand-surface-geometry-controls-fix-script')) return; const script = document.createElement('script'); script.id = 'hand-surface-geometry-controls-fix-script'; script.src = '/digital-twin/hand-surface-geometry-controls-fix.js?v=geometry-controls-fix-1'; document.head.appendChild(script); };
   const ensureGeometryCopyPreviewFix = () => { if (document.getElementById('hand-surface-geometry-copy-preview-fix-script')) return; const script = document.createElement('script'); script.id = 'hand-surface-geometry-copy-preview-fix-script'; script.src = '/digital-twin/hand-surface-geometry-copy-preview-fix.js?v=geometry-copy-preview-fix-1'; document.head.appendChild(script); };
-  const run = () => { movePhotoPanel(); hideLegacySurfacePanels(); ensurePhotoAction(); ensurePreparationSourceBridge(); ensureGeometryLive(); ensureGeometryStability(); ensureGeometryControlsFix(); ensureGeometryCopyPreviewFix(); };
+
+  const ensureDiagnosticsCollapse = () => {
+    const host = document.getElementById('twin-viewport-debug-host');
+    if (!host) return;
+    const panel = host.querySelector('[data-expanded-target-panel]');
+    if (!panel || panel.dataset.collapseReady === '1') return;
+    const heading = panel.querySelector('h4');
+    const body = panel.querySelector('[data-expanded-target-body]');
+    if (!heading || !body) return;
+    panel.dataset.collapseReady = '1';
+    const toggle = document.createElement('button');
+    toggle.type = 'button';
+    toggle.id = 'registry-cache-diagnostics-toggle';
+    toggle.style.cssText = 'margin:0 0 8px;padding:6px 9px;border:1px solid #506070;border-radius:7px;background:#18212a;color:#dce7ef;font:700 11px ui-monospace,SFMono-Regular,Consolas,monospace;cursor:pointer;';
+    let collapsed = false;
+    const sync = () => {
+      body.style.display = collapsed ? 'none' : '';
+      toggle.textContent = collapsed ? 'REGISTRY / CACHE MISMATCH DIAGNOSTICS · ROZWIŃ' : 'REGISTRY / CACHE MISMATCH DIAGNOSTICS · ZWIŃ';
+      toggle.setAttribute('aria-expanded', String(!collapsed));
+    };
+    toggle.addEventListener('click', () => { collapsed = !collapsed; sync(); });
+    heading.insertAdjacentElement('afterend', toggle);
+    sync();
+  };
+
+  const run = () => { movePhotoPanel(); hideLegacySurfacePanels(); ensurePhotoAction(); ensurePreparationSourceBridge(); ensureGeometryLive(); ensureGeometryStability(); ensureGeometryControlsFix(); ensureGeometryCopyPreviewFix(); ensureDiagnosticsCollapse(); };
   const schedule = () => requestAnimationFrame(run);
   window.addEventListener('testhp:spatial-layer-changed', schedule); window.addEventListener('testhp:spatial-contract-changed', schedule); window.addEventListener('testhp:evidence-attached', schedule);
   const observer = new MutationObserver(schedule); if (document.body) observer.observe(document.body, { childList: true, subtree: true });
