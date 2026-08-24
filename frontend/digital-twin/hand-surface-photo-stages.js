@@ -3,6 +3,7 @@
   const VIEWS = ['front', 'back', 'side_left', 'side_right', 'thumb'];
   const LABELS = { front: 'Przód', back: 'Tył', side_left: 'Lewa strona', side_right: 'Prawa strona', thumb: 'Kciuk' };
   const SCOPE = 'digitalTwinPhotoSpatialScope.v1';
+  const VIEW_STORE = 'digitalTwinEvidenceUX.views.v1';
   const $ = id => document.getElementById(id);
   const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const canonical = value => {
@@ -13,7 +14,10 @@
   };
   const target = () => ({ subject_id: window.testhpPhotoReconstructionSubject || 'own_cohort', timepoint: window.testhpPhotoReconstructionTimepoint || 'T0', spatial_id: canonical(window.testhpSpatialContract?.getTarget?.() || window.spatialEvidenceTarget || window.selectedSpatialNode || document.body?.dataset?.spatialTarget || 'hand') });
   const readScope = () => { try { return JSON.parse(localStorage.getItem(SCOPE) || '{}'); } catch { return {}; } };
+  const readViewStore = () => { try { const value = JSON.parse(localStorage.getItem(VIEW_STORE) || '{}'); return value && typeof value === 'object' && !Array.isArray(value) ? value : {}; } catch { return {}; } };
   const rememberTarget = (assetId, spatialId) => { if (!assetId) return; const scope = readScope(); scope[assetId] = canonical(spatialId); localStorage.setItem(SCOPE, JSON.stringify(scope)); };
+  const savedViewFor = item => item?.asset_id ? readViewStore()[item.asset_id] || (item.id ? readViewStore()[item.id] : null) : (item?.id ? readViewStore()[item.id] : null);
+  const withSavedViews = items => (Array.isArray(items) ? items : []).map(item => { const savedView = savedViewFor(item); return !item?.view && savedView ? { ...item, view: savedView } : item; });
   const scoped = (item, id) => canonical(item?.spatial_id || item?.spatialId || item?.target || readScope()[item?.asset_id] || 'hand') === id;
   let state = null;
 
@@ -52,7 +56,7 @@
   async function load() {
     const t = target();
     const raw = await request(`/state?subject_id=${encodeURIComponent(t.subject_id)}&timepoint=${encodeURIComponent(t.timepoint)}`);
-    const inputs = (Array.isArray(raw.inputs) ? raw.inputs : []).filter(item => scoped(item, t.spatial_id));
+    const inputs = withSavedViews((Array.isArray(raw.inputs) ? raw.inputs : []).filter(item => scoped(item, t.spatial_id)));
     state = { ...raw, spatial_id: t.spatial_id, inputs }; render();
   }
 
@@ -82,7 +86,12 @@
   }
 
   async function prepare(assetId) {
-    try { status('Przygotowywanie zdjęcia…'); await request(`/prepare/${encodeURIComponent(assetId)}`, { method: 'POST' }); rememberTarget(assetId, target().spatial_id); status('Zdjęcie jest przygotowane.'); await load(); }
+    try {
+      const item = state?.inputs?.find(x => x.asset_id === assetId);
+      const savedView = savedViewFor(item);
+      if (savedView) await request('/assign', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ asset_id: assetId, view: savedView }) });
+      status('Przygotowywanie zdjęcia…'); await request(`/prepare/${encodeURIComponent(assetId)}`, { method: 'POST' }); rememberTarget(assetId, target().spatial_id); status('Zdjęcie jest przygotowane.'); await load();
+    }
     catch (error) { status(error.message || 'Nie udało się przygotować zdjęcia.', true); }
   }
 
