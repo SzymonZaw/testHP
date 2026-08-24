@@ -47,6 +47,14 @@ def photo_reconstruction_assign(request: ViewAssignment):
 @router.post("/prepare/{asset_id}")
 def photo_reconstruction_prepare(asset_id: str):
     try:
+        # Preparation is idempotent: if the server already has a prepared
+        # result, return that persisted record instead of generating another
+        # prepared asset. This also makes the endpoint safe when the UI has a
+        # stale local snapshot.
+        current = state("own_cohort", "T0")
+        existing = next((item for item in current.get("inputs", []) if item.get("asset_id") == asset_id), None)
+        if existing and existing.get("prepared") is True and existing.get("prepared_asset_id"):
+            return existing
         return prepare_by_id(asset_id)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail="photo asset not found") from exc
