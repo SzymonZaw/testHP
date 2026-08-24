@@ -1,11 +1,12 @@
 (() => {
   const STORAGE = 'digitalTwinHandSurface.v1';
   const EVIDENCE = 'digitalTwinEvidenceUX.v2';
+  const VIEW_STORE = 'digitalTwinEvidenceUX.views.v1';
   const $ = id => document.getElementById(id);
   const state = { geometry:{palmLength:1,palmWidth:1,fingerSpread:1,thumbAngle:1,taper:1,thickness:1}, prepared:null, mappings:[], selectedView:'front' };
   const views = ['front','back','side_left','side_right','thumb'];
   const viewLabels = {front:'Przód',back:'Tył',side_left:'Lewa strona',side_right:'Prawa strona',thumb:'Kciuk'};
-  const esc = v => String(v ?? '').replace(/[&<>\"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;',"'":'&#39;'}[c]));
+  const esc = v => String(v ?? '').replace(/[&<>\\\"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','\\"':'&quot;',"'":'&#39;'}[c]));
   const spatialIdOf = value => {
     if (!value) return null;
     if (typeof value === 'string') return value;
@@ -17,6 +18,26 @@
   const surfaceTarget = value => String(spatialIdOf(value) || 'hand');
   const target = () => surfaceTarget(window.spatialEvidenceTarget || window.selectedSpatialNode || document.body.dataset.spatialTarget || 'hand');
   const normalizeEvidenceTarget = value => surfaceTarget(value);
+  const readViewStore = () => {
+    try {
+      const value = JSON.parse(localStorage.getItem(VIEW_STORE) || '{}');
+      return value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+    } catch { return {}; }
+  };
+  const writeView = (id, view) => {
+    if (!id) return;
+    const saved = readViewStore();
+    if (view) saved[id] = view;
+    else delete saved[id];
+    localStorage.setItem(VIEW_STORE, JSON.stringify(saved));
+  };
+  const mergeSavedViews = evidence => {
+    const saved = readViewStore();
+    return (Array.isArray(evidence) ? evidence : []).map(item => {
+      if (item?.id && !item.view && saved[item.id]) return {...item, view:saved[item.id]};
+      return item;
+    });
+  };
   const load = () => {
     try { Object.assign(state, JSON.parse(localStorage.getItem(STORAGE)||'{}')); } catch {}
     state.geometry ||= {}; state.mappings ||= [];
@@ -24,10 +45,11 @@
       const raw = JSON.parse(localStorage.getItem(EVIDENCE) || '{}');
       if (Array.isArray(raw.evidence)) {
         let changed = false;
-        raw.evidence = raw.evidence.map(item => {
+        raw.evidence = mergeSavedViews(raw.evidence).map(item => {
           const next = {...item};
           const normalized = normalizeEvidenceTarget(item.target);
           if (normalized && normalized !== item.target) { next.target = normalized; changed = true; }
+          if (next.view && next.view !== item.view) changed = true;
           return next;
         });
         if (changed) localStorage.setItem(EVIDENCE, JSON.stringify(raw));
@@ -46,7 +68,7 @@
     document.querySelector('.timeline')?.before(p); render();
   }
   function render(){ const c=$('hss-content'); if(!c)return; const tab=document.querySelector('.hss-tabs button.active')?.dataset.tab||'evidence'; if(tab==='evidence') renderEvidence(c); if(tab==='prepare') renderPrepare(c); if(tab==='geometry') renderGeometry(c); if(tab==='mapping') renderMapping(c); if(tab==='workflow') renderWorkflow(c); }
-  function readEvidence(){try{const x=JSON.parse(localStorage.getItem(EVIDENCE)||'{}');return Array.isArray(x.evidence)?x.evidence:[]}catch{return[]}}
+  function readEvidence(){try{const x=JSON.parse(localStorage.getItem(EVIDENCE)||'{}');return Array.isArray(x.evidence)?mergeSavedViews(x.evidence):[]}catch{return[]}}
   function editEvidenceView(item){
     if(!item)return;
     const existing=document.getElementById('hss-view-editor');
@@ -59,6 +81,7 @@
       event.preventDefault();
       const all=readEvidence(); const i=all.findIndex(x=>x.id===item.id); if(i<0){d.close();d.remove();return;}
       const view=$('hss-edit-view').value;
+      if(view) writeView(all[i].id, view); else writeView(all[i].id, null);
       all[i]={...all[i],view:view||undefined,history:[...(all[i].history||[]),{at:new Date().toISOString(),action:'view updated',view:view||null}]};
       if(!view) delete all[i].view;
       localStorage.setItem(EVIDENCE,JSON.stringify({evidence:all,target:target()}));
