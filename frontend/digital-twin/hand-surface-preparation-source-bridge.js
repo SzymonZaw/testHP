@@ -1,6 +1,35 @@
 (() => {
   'use strict';
   const API = '/api/hand/photo-reconstruction';
+
+  // The prepare endpoint returns the identifier inside `prepared_asset`.
+  // Normalize that response for the existing preparation UI, which consumes
+  // the identifier at the top level. Keep the backend contract unchanged.
+  const nativeFetch = window.fetch.bind(window);
+  window.fetch = async (...args) => {
+    const response = await nativeFetch(...args);
+    const input = args[0];
+    const url = typeof input === 'string' ? input : input?.url || '';
+    if (!url.includes(`${API}/prepare/`)) return response;
+    try {
+      const body = await response.clone().json();
+      const preparedAsset = body?.prepared_asset;
+      if (!body?.prepared_asset_id && preparedAsset?.prepared_asset_id) {
+        const normalized = {
+          ...body,
+          prepared_asset_id: preparedAsset.prepared_asset_id,
+          prepared_asset: preparedAsset
+        };
+        return new Response(JSON.stringify(normalized), {
+          status: response.status,
+          statusText: response.statusText,
+          headers: response.headers
+        });
+      }
+    } catch {}
+    return response;
+  };
+
   const clean = value => String(value ?? '').replace(/[&<>\"']/g, '');
   async function sync() {
     const active = document.querySelector('#hand-surface-studio .hss-tabs button.active')?.dataset.tab;
