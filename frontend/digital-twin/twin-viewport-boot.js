@@ -6,16 +6,17 @@
   if (!loading || !canvas || !viewport) return;
 
   // app.js is the sole owner of the canonical Three.js renderer. This boot
-  // module only verifies readiness; it must never call render() or dispatch
-  // synthetic resize events because both can recursively trigger renderer
-  // observers during startup.
+  // module only verifies readiness and installs a tiny state guard around the
+  // canonical renderer so auxiliary geometry updates cannot leave a stale
+  // render-target / viewport / clear-alpha state behind.
   const progress = (step, detail = '') => window.dispatchEvent(new CustomEvent('testhp:twin-progress', { detail: { step, detail } }));
-  const isCanonical = manager => !!(manager && manager.version === 'canonical-three-1' && manager.active?.scene && manager.active?.camera && manager.deepRenderer);
+  const isCanonical = manager => !!(manager && manager.version === 'canonical-three-2' && manager.active?.scene && manager.active?.camera && manager.deepRenderer);
   const safe = value => { try { return JSON.stringify(value); } catch { return String(value); } };
   const stack = () => (new Error().stack || '').split('\n').slice(2, 7).join(' <- ');
 
   let lastNavSnapshot = '';
   let diagnosticsInstalled = false;
+  let rendererGuardInstalled = false;
 
   const readNavigation = () => {
     const crumbs = [...document.querySelectorAll('#spatial-breadcrumb button')].map(el => el.textContent.trim()).filter(Boolean);
@@ -30,6 +31,31 @@
     const level = document.getElementById('spatial-level-badge')?.textContent?.trim() || '?';
     const target = node?.querySelector('strong')?.textContent?.trim() || '?';
     return { crumbs, node, children, level, target };
+  };
+
+  const installCanonicalRendererGuard = manager => {
+    const renderer = manager?.deepRenderer;
+    if (!renderer || rendererGuardInstalled || renderer.__testhpCanonicalStateGuardInstalled) return;
+    const originalRender = renderer.render?.bind(renderer);
+    if (!originalRender) return;
+
+    renderer.__testhpCanonicalStateGuardInstalled = true;
+    rendererGuardInstalled = true;
+    renderer.autoClear = true;
+    renderer.setClearColor?.(0x0d1117, 1);
+
+    renderer.render = (scene, camera) => {
+      renderer.setRenderTarget?.(null);
+      renderer.setScissorTest?.(false);
+      const width = renderer.domElement?.width || renderer.getDrawingBufferSize?.(new (window.THREE?.Vector2 || class { set() {} })())?.x || 1;
+      const height = renderer.domElement?.height || 1;
+      renderer.setViewport?.(0, 0, width, height);
+      renderer.autoClear = true;
+      renderer.setClearColor?.(0x0d1117, 1);
+      return originalRender(scene, camera);
+    };
+
+    progress('canonical-renderer-guard', 'installed; render target=null; scissor=false; viewport restored; clear alpha=1');
   };
 
   const navigationDiagnostics = () => {
@@ -140,7 +166,7 @@
     if (!manager) return;
     const checks = {
       exists: true,
-      versionExpected: manager.version === 'canonical-three-1',
+      versionExpected: manager.version === 'canonical-three-2',
       scene: !!manager.active?.scene,
       camera: !!manager.active?.camera,
       deepRenderer: !!manager.deepRenderer,
@@ -149,7 +175,7 @@
     };
     const failed = Object.entries(checks).filter(([, ok]) => !ok).map(([key]) => key);
     progress('MANAGER VALIDATION', `checks=${safe(checks)}; failed=${failed.length ? failed.join(' | ') : '(none)'}; version=${manager.version || 'missing'}; activeKey=${manager.activeKey || 'none'}; activeLayer=${manager.activeLayer || manager.active?.activeLayer || 'none'}; activeType=${manager.active?.constructor?.name || 'none'}`);
-    if (failed.length) progress('MANAGER REJECTION REASON', `failed=${failed.join(' | ')}; expected=version canonical-three-1 + active.scene + active.camera + deepRenderer`);
+    if (failed.length) progress('MANAGER REJECTION REASON', `failed=${failed.join(' | ')}; expected=version canonical-three-2 + active.scene + active.camera + deepRenderer`);
   };
 
   const hideLoading = (message = 'Digital Twin ready') => {
@@ -181,9 +207,10 @@
       const manager = window.spatialViewportManager;
       if (!manager) { progress('MANAGER MISSING', 'window.spatialViewportManager is not available'); return false; }
       installManagerDiagnostics(manager);
+      installCanonicalRendererGuard(manager);
       managerValidationDiagnostics(manager);
       if (!isCanonical(manager)) {
-        progress('manager-rejected', `version=${manager.version || 'unknown'}; waiting for canonical-three-1`);
+        progress('manager-rejected', `version=${manager.version || 'unknown'}; waiting for canonical-three-2`);
         return false;
       }
       progress('webgl-check');
