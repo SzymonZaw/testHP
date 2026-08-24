@@ -1,0 +1,1 @@
+Main geometry bridge added in viewport-geometry-bridge.js. It must be loaded by the digital-twin page bootstrap alongside the existing viewport scripts.
