@@ -76,6 +76,58 @@
     return { id, manager, contract, selected, evidenceGlobal, allExact, targetDrift, diagnosis, targetLinked, prepared, views, cacheLinked: cacheLinked.length, currentNode: currentNode(), path: currentPath(), registry: d };
   }
 
+  function installRegistryCacheMismatchCollapse() {
+    if (window.__testhpRegistryCacheMismatchCollapseInstalled) return;
+    window.__testhpRegistryCacheMismatchCollapseInstalled = true;
+
+    const wanted = 'REGISTRY / CACHE MISMATCH DIAGNOSTICS';
+    const normalizeHeading = value => String(value || '').replace(/\s+/g, ' ').trim().toUpperCase();
+
+    const findHeading = () => {
+      const candidates = [...document.querySelectorAll('h1,h2,h3,h4,h5,h6,strong,b,summary,div,section')];
+      return candidates.find(el => normalizeHeading(el.textContent) === wanted) || null;
+    };
+
+    const collapse = () => {
+      const heading = findHeading();
+      if (!heading) return false;
+      if (heading.closest('details[data-testhp-registry-cache-mismatch]')) return true;
+
+      // Collapse the diagnostic block only. Other controls and panels remain unchanged.
+      const boundary = heading.closest('section,article,fieldset,.tvd-section,.hss-section,.hss-card,.debug-panel') || heading.parentElement;
+      if (!boundary || boundary.dataset.testhpRegistryCacheMismatchWrapped === '1') return true;
+
+      const details = document.createElement('details');
+      details.dataset.testhpRegistryCacheMismatch = '1';
+      details.open = false;
+      details.style.cssText = 'margin-top:10px;';
+
+      const summary = document.createElement('summary');
+      summary.textContent = wanted;
+      summary.style.cssText = 'cursor:pointer;font-weight:800;';
+
+      const body = document.createElement('div');
+      body.dataset.testhpRegistryCacheMismatchBody = '1';
+      while (boundary.firstChild) body.appendChild(boundary.firstChild);
+
+      details.append(summary, body);
+      boundary.dataset.testhpRegistryCacheMismatchWrapped = '1';
+      boundary.appendChild(details);
+      return true;
+    };
+
+    const run = () => collapse();
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', run, { once:true });
+    else run();
+
+    const observer = new MutationObserver(() => {
+      if (!document.querySelector('details[data-testhp-registry-cache-mismatch]')) collapse();
+    });
+    if (document.body) observer.observe(document.body, { childList:true, subtree:true });
+    window.addEventListener('testhp:evidence-registry-debug', run);
+    window.addEventListener('testhp:evidence-registry-synced', run);
+  }
+
   function render() {
     const panel = document.getElementById('hand-surface-debug-flow');
     if (!panel) return;
@@ -119,8 +171,9 @@
         : result.diagnosis === 'TARGET_DRIFT'
           ? 'CONCLUSION\n  Target IDs disagree. Display labels are ignored; compare only ID-bearing sources.\n'
           : 'CONCLUSION\n  All available ID-bearing target sources agree. Continue downstream inspection.\n') +
-      '</pre>';
+      '</pre>`;
     panel.appendChild(box);
+    installRegistryCacheMismatchCollapse();
   }
 
   function fingerprint(value) {
@@ -137,6 +190,6 @@
     window.addEventListener('testhp:evidence-registry-updated', render);
   }
 
-  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', schedule, { once:true });
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', schedule, {once:true});
   else schedule();
 })();
