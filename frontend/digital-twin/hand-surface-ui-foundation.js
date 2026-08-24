@@ -2,9 +2,8 @@
   const target = () => {
     const t = window.testhpSpatialContract?.getTarget?.() || window.selectedSpatialNode || window.spatialEvidenceTarget || 'hand';
     if (t && typeof t === 'object') return { spatial_id: t.spatial_id || t.spatialId || t.id || 'hand', label: t.label || t.path?.join(' > ') || t.spatial_id || t.id || 'Dłoń' };
-    return { spatial_id: String(t || 'hand'), label: String(t || 'Dłoń') };
+    return { spatial_id: String(t || 'hand'), label: String(t || 'hand') };
   };
-
   const movePhotoPanel = () => {
     const shell = document.getElementById('hand-surface-unified');
     const material = shell?.querySelector('[data-hsu-section="material"]');
@@ -15,8 +14,7 @@
     photo.style.marginTop = '0';
     return true;
   };
-
-  const uploadFallback = (files) => {
+  const uploadFallback = files => {
     const t = target();
     const status = document.getElementById('hand-surface-photo-action-status');
     const setStatus = text => { if (status) status.textContent = text; };
@@ -34,32 +32,23 @@
         }
         setStatus(`${files.length} ${files.length === 1 ? 'zdjęcie dodane' : 'zdjęcia dodane'}.`);
         window.dispatchEvent(new CustomEvent('testhp:evidence-attached'));
-      } catch (error) {
-        setStatus(error.message || 'Nie udało się dodać zdjęć.');
-      }
+      } catch (error) { setStatus(error.message || 'Nie udało się dodać zdjęć.'); }
     })();
   };
-
   const ensurePhotoAction = () => {
     const shell = document.getElementById('hand-surface-unified');
     const material = shell?.querySelector('[data-hsu-section="material"]');
     if (!material || material.querySelector('#hand-surface-add-photo-action')) return;
-
     const subnav = material.querySelector('.hsu-subnav');
     if (!subnav) return;
-
     const action = document.createElement('div');
     action.id = 'hand-surface-add-photo-action';
     action.style.cssText = 'display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin:10px 0 12px;padding:10px 12px;border:1px solid var(--border,#d8dee8);border-radius:10px;background:var(--panel,#fff)';
     action.innerHTML = '<div><strong style="display:block;font-size:13px">Zdjęcia / źródła</strong><span style="font-size:12px;color:#667085">Dodaj zdjęcia dla aktualnie wybranego celu przestrzennego.</span><span id="hand-surface-photo-action-status" style="display:block;font-size:12px;color:#667085;margin-top:4px"></span></div><button type="button" id="hand-surface-add-photo-btn" class="primary">＋ Dodaj zdjęcia</button><input id="hand-surface-fallback-files" type="file" accept="image/jpeg,image/png,image/webp,image/tiff" multiple hidden>';
     subnav.insertAdjacentElement('afterend', action);
-
     action.querySelector('#hand-surface-add-photo-btn').addEventListener('click', () => {
       const input = document.getElementById('p3r-clean-files');
-      if (input) {
-        input.click();
-        return;
-      }
+      if (input) { input.click(); return; }
       action.querySelector('#hand-surface-fallback-files').click();
     });
     action.querySelector('#hand-surface-fallback-files').addEventListener('change', event => {
@@ -68,7 +57,6 @@
       event.target.value = '';
     });
   };
-
   const hideLegacySurfacePanels = () => {
     const shell = document.getElementById('hand-surface-unified');
     if (!shell) return;
@@ -88,17 +76,10 @@
     if (document.getElementById('hand-surface-geometry-live-script')) return;
     const script = document.createElement('script');
     script.id = 'hand-surface-geometry-live-script';
-    script.src = '/digital-twin/hand-surface-geometry-live.js?v=geometry-live-1';
+    script.src = '/digital-twin/hand-surface-geometry-live.js?v=geometry-live-2';
     document.head.appendChild(script);
   };
-
-  const run = () => {
-    movePhotoPanel();
-    hideLegacySurfacePanels();
-    ensurePhotoAction();
-    ensurePreparationSourceBridge();
-    ensureGeometryLive();
-  };
+  const run = () => { movePhotoPanel(); hideLegacySurfacePanels(); ensurePhotoAction(); ensurePreparationSourceBridge(); ensureGeometryLive(); };
   const schedule = () => requestAnimationFrame(run);
   window.addEventListener('testhp:spatial-layer-changed', schedule);
   window.addEventListener('testhp:spatial-contract-changed', schedule);
