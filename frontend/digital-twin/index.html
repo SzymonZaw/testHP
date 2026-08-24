@@ -7,6 +7,7 @@
   .inspector-level-context p{margin:4px 0 0;font-size:9px;color:#788690;line-height:1.45}
   .evidence-row[data-biological-layer]{display:none}
   .evidence-row[data-biological-layer].active{display:block}
+  [data-geometry-preview-canvas],#photo-3d-reconstruction{display:none!important}
 </style><script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js"}}</script></head>
 <body>
 <main class="app-shell">
@@ -56,6 +57,7 @@
 <script src="/digital-twin/hand-surface-preparation-ui.js?v=prep-clean-1"></script>
 <script src="/digital-twin/hand-surface-preparation-owner.js?v=prep-owner-2"></script>
 <script src="/digital-twin/viewport-lifecycle-repair.js?v=lifecycle-repair-5-passive"></script>
+<script type="module" src="/digital-twin/persistent-3d-preview.js?v=persistent-3"></script>
 <script>
 (() => {
   const removeLegacyHierarchicalSummary = () => {
