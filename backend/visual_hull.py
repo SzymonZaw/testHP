@@ -1,7 +1,10 @@
 """Stages 6-10 of Photo 3D Reconstruction.
 
-This module owns reconstruction, but the resulting 3D entity is published through
-backend.spatial_contract. It never creates a second spatial-object model.
+Builds reconstruction geometry and a projection-ready multiview texture asset.
+The current registration contract does not contain physical camera calibration,
+so the camera model below is explicitly registration-derived and orthographic.
+It is suitable for deterministic overlay/projection coordinates, but is not
+claimed to be metric photogrammetry.
 """
 from __future__ import annotations
 
@@ -27,29 +30,48 @@ RECON_ROOT = ROOT / "photo-reconstructions"
 SPATIAL_INDEX = ROOT / "data" / "registry" / "spatial_objects.json"
 RECON_ROOT.mkdir(parents=True, exist_ok=True)
 
+VIEW_CAMERA = {
+    "front": {"direction": (0.0, 0.0, 1.0), "up": (0.0, 1.0, 0.0)},
+    "back": {"direction": (0.0, 0.0, -1.0), "up": (0.0, 1.0, 0.0)},
+    "side_left": {"direction": (-1.0, 0.0, 0.0), "up": (0.0, 1.0, 0.0)},
+    "side_right": {"direction": (1.0, 0.0, 0.0), "up": (0.0, 1.0, 0.0)},
+    "thumb": {"direction": (0.35, 0.0, 0.94), "up": (0.0, 1.0, 0.0)},
+}
+
 
 def _registered(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return [r for r in records if r.get("registration", {}).get("status") == "registered" and r.get("view")]
 
 
-def build_visual_hull(records: list[dict[str, Any]], resolution: int = 24) -> dict[str, Any]:
-    """Build a deterministic silhouette-envelope mesh from registered views.
+def _camera_for(record: dict[str, Any]) -> dict[str, Any]:
+    view = str(record.get("view"))
+    base = VIEW_CAMERA.get(view, VIEW_CAMERA["front"])
+    registration = record.get("registration") or {}
+    transform = registration.get("transform") or {}
+    return {
+        "view": view,
+        "model": "orthographic",
+        "calibration_status": "registration-derived",
+        "physical_calibration": False,
+        "direction": list(base["direction"]),
+        "up": list(base["up"]),
+        "origin": transform.get("origin", [0.0, 0.0]),
+        "scale": float(transform.get("scale", 1.0) or 1.0),
+        "coordinate_system": registration.get("coordinate_system", "hand-surface-v1"),
+    }
 
-    The current registration contract does not contain calibrated camera
-    intrinsics/extrinsics. Therefore this is deliberately named a silhouette
-    envelope, not a calibrated photogrammetric visual hull. The returned mesh
-    is valid geometry and records the limitation in its method metadata.
-    """
+
+def build_visual_hull(records: list[dict[str, Any]], resolution: int = 24) -> dict[str, Any]:
     usable = _registered(records)
     if len(usable) < 2:
         raise ValueError("At least two registered views are required")
 
     points: list[tuple[float, float, float]] = []
     depth_prior = {"front": 0.0, "back": 1.0, "side_left": -0.35, "side_right": 0.35, "thumb": 0.15}
-    for r in usable:
-        depth = depth_prior.get(r.get("view"), 0.0)
-        for p in r["registration"].get("landmarks", []):
-            points.append((float(p["x"]) - 0.5, float(p["y"]) - 0.5, float(p.get("z", 0.0)) + depth))
+    for record in usable:
+        depth = depth_prior.get(record.get("view"), 0.0)
+        for point in record["registration"].get("landmarks", []):
+            points.append((float(point["x"]) - 0.5, float(point["y"]) - 0.5, float(point.get("z", 0.0)) + depth))
     if not points:
         raise ValueError("No registered landmarks available")
 
@@ -83,12 +105,27 @@ def build_visual_hull(records: list[dict[str, Any]], resolution: int = 24) -> di
             c = (i + 1) * segments + (j + 1) % segments
             d = (i + 1) * segments + j
             faces.extend(((a, b, c), (a, c, d)))
+
+    # A stable, view-independent UV surface is emitted with the mesh. The
+    # multiview atlas is kept as provenance; calibrated texture baking can
+    # replace this UV assignment later without changing object identity.
+    uv: list[tuple[float, float]] = []
+    for x, y, z in vertices:
+        u = (x - min_x) / max(max_x - min_x, 1e-9)
+        v = (y - min_y) / max(max_y - min_y, 1e-9)
+        uv.append((round(u, 6), round(v, 6)))
+
+    cameras = [_camera_for(record) for record in usable]
     return {
         "vertices": vertices,
         "faces": faces,
-        "method": "silhouette-envelope-v1",
-        "calibration": "not-available",
+        "uv": uv,
+        "method": "silhouette-envelope-v2",
+        "calibration": "registration-derived-orthographic-v1",
+        "physical_calibration": False,
+        "projection_ready": True,
         "input_views": [r.get("view") for r in usable],
+        "cameras": cameras,
     }
 
 
@@ -98,8 +135,13 @@ def _write_obj(folder: Path, mesh: dict[str, Any], texture_name: str | None = No
     lines = ["mtllib hand.mtl", "usemtl hand", ""]
     for x, y, z in mesh["vertices"]:
         lines.append(f"v {x:.6f} {y:.6f} {z:.6f}")
+    for u, v in mesh.get("uv", []):
+        lines.append(f"vt {u:.6f} {v:.6f}")
     for a, b, c in mesh["faces"]:
-        lines.append(f"f {a + 1} {b + 1} {c + 1}")
+        if mesh.get("uv"):
+            lines.append(f"f {a + 1}/{a + 1} {b + 1}/{b + 1} {c + 1}/{c + 1}")
+        else:
+            lines.append(f"f {a + 1} {b + 1} {c + 1}")
     obj.write_text("\n".join(lines) + "\n", encoding="utf-8")
     map_line = f"map_Kd {texture_name}\n" if texture_name else ""
     mtl.write_text("newmtl hand\nKd 0.78 0.58 0.48\n" + map_line, encoding="utf-8")
@@ -107,20 +149,15 @@ def _write_obj(folder: Path, mesh: dict[str, Any], texture_name: str | None = No
 
 
 def project_multiview_texture(folder: Path, records: list[dict[str, Any]]) -> dict[str, Any]:
-    """Create a deterministic reference atlas from all usable prepared views.
-
-    This is intentionally not called camera projection: calibrated camera
-    parameters are not yet part of the registration contract. Every included
-    view is placed into the atlas, and its registration quality is retained as
-    provenance for the future calibrated projection stage.
-    """
+    """Create a projection-ready atlas and retain per-view camera metadata."""
     try:
         from PIL import Image, ImageOps
     except ImportError:
-        return {"status": "geometry-only", "method": "unavailable", "weights": {}}
+        return {"status": "geometry-only", "method": "unavailable", "weights": {}, "projection": "registration-derived-orthographic-v1"}
 
     ranked = sorted(records, key=lambda r: float(r.get("registration", {}).get("quality", 0)), reverse=True)
     sources: list[tuple[str, Any, float]] = []
+    cameras: list[dict[str, Any]] = []
     for record in ranked:
         path = record.get("prepared_path")
         if not path or not (ROOT / path).is_file():
@@ -129,29 +166,40 @@ def project_multiview_texture(folder: Path, records: list[dict[str, Any]]) -> di
             image = Image.open(ROOT / path).convert("RGBA")
             quality = float(record.get("registration", {}).get("quality", 0))
             sources.append((str(record.get("view")), image, quality))
+            cameras.append(_camera_for(record))
         except Exception:
             continue
     if not sources:
-        return {"status": "geometry-only", "method": "no-prepared-raster", "weights": {}}
+        return {"status": "geometry-only", "method": "no-prepared-raster", "weights": {}, "projection": "registration-derived-orthographic-v1"}
 
     tile = 512
     atlas = Image.new("RGBA", (tile * len(sources), tile), (0, 0, 0, 0))
     weights: dict[str, float] = {}
+    placements: dict[str, dict[str, float]] = {}
     for index, (view, image, quality) in enumerate(sources):
         tile_image = ImageOps.contain(image, (tile, tile))
         x = index * tile + (tile - tile_image.width) // 2
         y = (tile - tile_image.height) // 2
         atlas.alpha_composite(tile_image, (x, y))
         weights[view] = round(quality, 4)
+        placements[view] = {
+            "u0": round(index / len(sources), 6),
+            "u1": round((index + 1) / len(sources), 6),
+            "v0": 0.0,
+            "v1": 1.0,
+        }
     texture = folder / "texture.png"
     atlas.save(texture, "PNG", optimize=True)
     return {
-        "status": "textured-reference-atlas",
+        "status": "projection-ready-reference-atlas",
         "path": str(texture.relative_to(ROOT)),
         "weights": weights,
-        "method": "weighted-multiview-reference-atlas-v1",
-        "projection": "pending-calibrated-camera-model",
+        "method": "weighted-multiview-reference-atlas-v2",
+        "projection": "registration-derived-orthographic-v1",
+        "physical_calibration": False,
         "views": [view for view, _, _ in sources],
+        "placements": placements,
+        "cameras": cameras,
     }
 
 
@@ -171,6 +219,8 @@ def _publish_spatial_object(reconstruction: ReconstructionAsset, mesh: dict[str,
             "reconstruction_id": reconstruction.reconstruction_id,
             "mesh_method": mesh.get("method"),
             "texture_method": texture.get("method"),
+            "projection": texture.get("projection"),
+            "physical_calibration": texture.get("physical_calibration", False),
             "status": reconstruction.status,
         },
     )
@@ -185,7 +235,7 @@ def _write_spatial_index(obj: SpatialObject) -> None:
             if isinstance(value, list):
                 items = value
         except (OSError, json.JSONDecodeError):
-            items = []
+            pass
     items = [x for x in items if x.get("spatial_object_id") != obj.spatial_object_id]
     items.append(obj.to_dict())
     tmp = SPATIAL_INDEX.with_suffix(".tmp")
@@ -199,8 +249,7 @@ def build_reconstruction(subject_id: str, timepoint: str, resolution: int = 24) 
     if len(usable) < 2:
         raise ValueError("At least two registered views are required")
 
-    nonce = uuid4().hex[:12]
-    reconstruction_id = make_reconstruction_id(subject_id, timepoint, nonce)
+    reconstruction_id = make_reconstruction_id(subject_id, timepoint, uuid4().hex[:12])
     spatial_object_id = make_spatial_object_id(subject_id, reconstruction_id)
     folder = RECON_ROOT / reconstruction_id.replace(":", "_")
     folder.mkdir(parents=True, exist_ok=True)
@@ -209,18 +258,19 @@ def build_reconstruction(subject_id: str, timepoint: str, resolution: int = 24) 
     texture = project_multiview_texture(folder, usable)
     obj_path, mtl_path = _write_obj(folder, mesh, Path(texture["path"]).name if texture.get("path") else None)
     registered_view_ids = tuple(
-        make_registered_view_id(make_prepared_photo_asset_id(str(r["asset_id"])), str(r["view"]))
-        for r in usable
+        make_registered_view_id(make_prepared_photo_asset_id(str(r["asset_id"])), str(r["view"])) for r in usable
     )
     quality_values = [float(r.get("registration", {}).get("quality", 0)) for r in usable]
     quality = {
         "registered_views": len(usable),
         "mean_registration_quality": round(sum(quality_values) / len(quality_values), 4),
         "minimum_registration_quality": round(min(quality_values), 4),
+        "projection_ready": True,
+        "physical_calibration": False,
     }
     provenance = {
         "pipeline": "photo-3d-reconstruction",
-        "pipeline_version": "stages-6-10-v2",
+        "pipeline_version": "stages-6-10-v3-projection-ready",
         "source_photo_asset_ids": [f"photo:{r['asset_id']}" for r in usable],
         "prepared_photo_asset_ids": [f"prepared-photo:{r['asset_id']}" for r in usable],
         "registered_view_ids": list(registered_view_ids),
@@ -238,7 +288,7 @@ def build_reconstruction(subject_id: str, timepoint: str, resolution: int = 24) 
         prepared_photo_asset_ids=tuple(f"prepared-photo:{r['asset_id']}" for r in usable),
         registered_view_ids=registered_view_ids,
         method=mesh["method"],
-        version="2",
+        version="3",
         geometry_uri=obj_path,
         texture_uri=texture.get("path"),
         coordinate_system="hand-surface-v1",
@@ -249,7 +299,7 @@ def build_reconstruction(subject_id: str, timepoint: str, resolution: int = 24) 
     spatial_object = _publish_spatial_object(reconstruction, mesh, texture)
     manifest = {
         **reconstruction.to_dict(),
-        "mesh": {"obj": obj_path, "mtl": mtl_path, "vertex_count": len(mesh["vertices"]), "face_count": len(mesh["faces"]), "method": mesh["method"]},
+        "mesh": {"obj": obj_path, "mtl": mtl_path, "vertex_count": len(mesh["vertices"]), "face_count": len(mesh["faces"]), "uv_count": len(mesh.get("uv", [])), "method": mesh["method"], "calibration": mesh["calibration"]},
         "texture": texture,
         "spatial_object": spatial_object.to_dict(),
         "status": "published",
@@ -263,11 +313,11 @@ def build_reconstruction(subject_id: str, timepoint: str, resolution: int = 24) 
 def latest_reconstruction(subject_id: str, timepoint: str) -> dict[str, Any] | None:
     matches = []
     for folder in RECON_ROOT.glob("reconstruction_*"):
-        p = folder / "manifest.json"
-        if not p.is_file():
+        path = folder / "manifest.json"
+        if not path.is_file():
             continue
         try:
-            data = json.loads(p.read_text(encoding="utf-8"))
+            data = json.loads(path.read_text(encoding="utf-8"))
             if data.get("subject_id") == subject_id and data.get("timepoint_id", data.get("timepoint")) == timepoint:
                 matches.append(data)
         except (OSError, json.JSONDecodeError):
@@ -278,11 +328,11 @@ def latest_reconstruction(subject_id: str, timepoint: str) -> dict[str, Any] | N
 def clear_reconstructions(subject_id: str, timepoint: str) -> int:
     count = 0
     for folder in RECON_ROOT.glob("reconstruction_*"):
-        p = folder / "manifest.json"
-        if not p.is_file():
+        path = folder / "manifest.json"
+        if not path.is_file():
             continue
         try:
-            data = json.loads(p.read_text(encoding="utf-8"))
+            data = json.loads(path.read_text(encoding="utf-8"))
         except Exception:
             continue
         if data.get("subject_id") == subject_id and data.get("timepoint_id", data.get("timepoint")) == timepoint:

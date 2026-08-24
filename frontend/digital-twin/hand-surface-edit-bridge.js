@@ -1,8 +1,40 @@
 (() => {
   const STORAGE='digitalTwinEvidenceUX.v2';
-  const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const esc=v=>String(v??'').replace(/[&<>\"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;',"'":'&#39;'}[c]));
   const read=()=>{try{const x=JSON.parse(localStorage.getItem(STORAGE)||'{}');return Array.isArray(x.evidence)?x.evidence:[]}catch{return[]}};
   const write=e=>localStorage.setItem(STORAGE,JSON.stringify({evidence:e,target:window.spatialEvidenceTarget||'hand'}));
+
+  // The canonical registry bridge rebuilds digitalTwinEvidenceUX.v2 from backend
+  // records. Backend records do not own the UX-only photo view, so preserve that
+  // per-photo metadata whenever another part of the app rewrites the registry.
+  // An explicit "view updated" history entry with view:null means the user chose
+  // "Nieprzypisany" and must be allowed to clear the previous value.
+  const originalSetItem=localStorage.setItem.bind(localStorage);
+  localStorage.setItem=(key,value)=>{
+    if(key===STORAGE){
+      try{
+        const incoming=JSON.parse(value||'{}');
+        const previous=JSON.parse(originalGetItem(STORAGE)||'{}');
+        const previousEvidence=Array.isArray(previous.evidence)?previous.evidence:[];
+        if(Array.isArray(incoming.evidence)){
+          const byId=new Map(previousEvidence.map(item=>[String(item.id),item]));
+          incoming.evidence=incoming.evidence.map(item=>{
+            const prior=byId.get(String(item.id));
+            if(!prior) return item;
+            const lastHistory=Array.isArray(item.history)&&item.history.length?item.history[item.history.length-1]:null;
+            const explicitlyCleared=lastHistory?.action==='view updated'&&lastHistory?.view===null;
+            if(explicitlyCleared){ const next={...item}; delete next.view; return next; }
+            if(item.view==null&&prior.view!=null) return {...item,view:prior.view};
+            return item;
+          });
+          value=JSON.stringify(incoming);
+        }
+      }catch{}
+    }
+    return originalSetItem(key,value);
+  };
+  const originalGetItem=localStorage.getItem.bind(localStorage);
+
   function open(item){
     const d=document.createElement('dialog');d.style.cssText='border:0;border-radius:16px;padding:0;max-width:560px;width:92vw';
     d.innerHTML=`<form method="dialog" style="padding:20px"><h2 style="margin-top:0">Edit observation</h2><label style="display:block;margin:10px 0">Type<select id="he-type" style="width:100%;padding:8px"><option>Macro</option><option>Tissue</option><option>Cellular</option><option>Molecular</option><option>Clinical</option></select></label><label style="display:block;margin:10px 0">Timepoint<select id="he-time" style="width:100%;padding:8px"><option>T0</option><option>T1</option><option>T2</option><option>T3</option></select></label><label style="display:block;margin:10px 0">Modality<input id="he-modality" style="width:100%;padding:8px" value="${esc(item.modality)}"></label><label style="display:block;margin:10px 0">Spatial target<input id="he-target" style="width:100%;padding:8px" value="${esc(item.target)}"></label><label style="display:block;margin:10px 0">Comments<textarea id="he-comments" style="width:100%;min-height:90px;padding:8px">${esc(item.comments)}</textarea></label><div style="display:flex;justify-content:flex-end;gap:8px"><button value="cancel">Cancel</button><button id="he-save" value="default" class="primary">Save changes</button></div></form>`;
