@@ -71,9 +71,6 @@
           const existing = byId.get(item.asset_id) || {};
           const localFields = Object.fromEntries(Object.entries(item).filter(([,value]) => value !== undefined && value !== null && value !== ''));
           const merged = {...existing, ...localFields};
-          // The server is authoritative for preparation state. A stale local
-          // evidence snapshot must never turn a server-prepared asset back
-          // into an unprepared one.
           if (existing.prepared === true && existing.prepared_asset_id) {
             merged.prepared = true;
             merged.prepared_asset_id = existing.prepared_asset_id;
@@ -85,6 +82,19 @@
       }
     } catch {}
     state.inputs = [...byId.values()].map(withSavedView);
+  }
+
+  async function refreshSelectedFromServer(assetId) {
+    if (!assetId) return;
+    try {
+      const saved = await request(`${API}/state?subject_id=own_cohort&timepoint=T0`, {cache:'no-store'});
+      const raw = (saved.inputs || saved.evidence || []).find(x => x.asset_id === assetId);
+      const serverItem = withSavedView(normalizeItem(raw));
+      if (!serverItem) return;
+      const index = state.inputs.findIndex(x => x.asset_id === assetId);
+      if (index < 0) state.inputs.push(serverItem);
+      else state.inputs[index] = {...state.inputs[index], ...serverItem};
+    } catch {}
   }
 
   function styles() {
@@ -114,7 +124,7 @@
       return true;
     };
     const update=()=>{const item=selected();prepared=null;save.disabled=true;save.dataset.id='';save.dataset.source='';if(!item){run.disabled=true;meta.textContent='';preview.innerHTML='<span class="hss-note">Wybierz zdjęcie, aby rozpocząć.</span>';result.textContent='Brak przygotowanego wyniku.';status.textContent='';return;}const hasSupportedView=Object.prototype.hasOwnProperty.call(VIEWS,item.view);const view=VIEWS[item.view]||item.view||'nieprzypisany';meta.innerHTML=`<strong>Cel:</strong> <code>${esc(item.spatial_id)}</code> · <strong>Widok:</strong> ${esc(view)} · <strong>Czas:</strong> ${esc(item.timepoint||'T0')}`;if(showPrepared(item))return;if(!hasSupportedView){preview.innerHTML='<span class="hss-note hs-prep-warn">⚠️ Przed przygotowaniem przypisz zdjęciu obsługiwany widok w „Zdjęcia / źródła”.</span>';result.textContent='Brak przygotowanego wyniku.';status.textContent='Przygotowanie jest zablokowane, dopóki zdjęcie nie ma przypisanego widoku.';status.className='hs-prep-status hs-prep-warn';run.disabled=true;return;}run.disabled=false;preview.innerHTML='<span class="hss-note">Gotowe do przygotowania.</span>';result.textContent='Brak przygotowanego wyniku.';status.textContent='';status.className='hs-prep-status';};
-    select.onchange=update;
+    select.onchange=async()=>{const assetId=select.value;run.disabled=true;status.textContent='';await refreshSelectedFromServer(assetId);update();};
     run.onclick=async()=>{const item=selected();if(!item)return;if(!Object.prototype.hasOwnProperty.call(VIEWS,item.view)){update();return;}run.disabled=true;status.textContent='Przygotowywanie…';status.className='hs-prep-status';try{
       const savedView = item.view;
       await request(`${API}/assign`, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({asset_id:item.asset_id, view:savedView})});
