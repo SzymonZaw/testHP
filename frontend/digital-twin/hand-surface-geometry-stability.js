@@ -24,29 +24,19 @@
     visit(root);
     return result;
   };
-
   const capture = mesh => {
-    if (!base.has(mesh)) base.set(mesh, {
-      p: mesh.position.clone(),
-      s: mesh.scale.clone(),
-      r: mesh.rotation.clone()
-    });
+    if (!base.has(mesh)) base.set(mesh, { p: mesh.position.clone(), s: mesh.scale.clone(), r: mesh.rotation.clone() });
     return base.get(mesh);
   };
-
   const read = () => {
     const state = window.digitalTwinGeometry?.getState?.() || {};
     return Object.fromEntries(PARAMS.map(k => [k, Number(state[k]) || 1]));
   };
-
   const apply = () => {
     const meshes = getMeshes();
     if (!meshes.size) return false;
     const root = getRoot();
-    if (root !== lastRoot) {
-      lastRoot = root;
-      base.clear?.();
-    }
+    if (root !== lastRoot) lastRoot = root;
     const g = read();
     const palm = meshes.get('palm');
     if (palm) {
@@ -58,11 +48,7 @@
       const mesh = meshes.get(name);
       if (!mesh) return;
       const b = capture(mesh);
-      mesh.position.set(
-        b.p.x + (index - 1.5) * .2 * (g.fingerSpread - 1),
-        b.p.y,
-        b.p.z
-      );
+      mesh.position.set(b.p.x + (index - 1.5) * .2 * (g.fingerSpread - 1), b.p.y, b.p.z);
       const width = 1 - .22 * (g.taper - 1);
       mesh.scale.set(b.s.x * width, b.s.y, b.s.z * g.thickness);
       mesh.rotation.copy(b.r);
@@ -81,7 +67,6 @@
     }
     return true;
   };
-
   const schedule = () => {
     clearTimeout(timer);
     timer = setTimeout(() => {
@@ -89,20 +74,11 @@
       window.dispatchEvent(new CustomEvent('testhp:geometry-stability-synced'));
     }, 0);
   };
-
   const wrapApi = () => {
     const api = window.digitalTwinGeometry;
     if (!api || api.__geometryStabilityWrapped) return !!api;
-    PARAMS.forEach(name => {
-      const original = api.setParameter?.bind(api);
-      if (!original) return;
-      api.setParameter = (key, value) => {
-        const result = original(key, value);
-        schedule();
-        return result;
-      };
-      return;
-    });
+    const originalSetParameter = api.setParameter?.bind(api);
+    if (originalSetParameter) api.setParameter = (key, value) => { const result = originalSetParameter(key, value); schedule(); return result; };
     const originalSetState = api.setState?.bind(api);
     if (originalSetState) api.setState = next => { const result = originalSetState(next); schedule(); return result; };
     const originalReset = api.reset?.bind(api);
@@ -111,7 +87,6 @@
     schedule();
     return true;
   };
-
   const boot = () => {
     if (installed) return;
     installed = true;
@@ -120,7 +95,5 @@
     ['testhp:viewport-manager-ready','testhp:deep-3d-active','testhp:spatial-layer-changed','testhp:hand-surface-geometry-changed'].forEach(name => window.addEventListener(name, () => { wrapApi(); schedule(); }));
     [0,100,300,800,1500,3000].forEach(ms => setTimeout(() => { wrapApi(); apply(); }, ms));
   };
-
-  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot, {once:true});
-  else boot();
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot, {once:true}); else boot();
 })();
