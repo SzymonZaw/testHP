@@ -61,12 +61,21 @@
   function installRegistryCacheMismatchCollapse() {
     const PANEL_SELECTOR = '#testhp-registry-debug-panel';
     const MARK = 'testhpRegistryCacheMismatchWrapped';
+    const DETAILS_SELECTOR = 'details[data-testhp-registry-cache-mismatch]';
     const wanted = 'REGISTRY / CACHE MISMATCH DIAGNOSTICS';
 
     const collapse = () => {
       const panel = document.querySelector(PANEL_SELECTOR);
       if (!panel) return false;
-      if (panel.dataset[MARK] === '1') return true;
+
+      // The panel can be re-rendered by another script. Treat the actual
+      // <details> element as the source of truth, not the data-* marker.
+      const existing = panel.querySelector(DETAILS_SELECTOR);
+      if (existing) {
+        panel.dataset[MARK] = '1';
+        return true;
+      }
+      if (panel.dataset[MARK] === '1') delete panel.dataset[MARK];
 
       const heading = [...panel.querySelectorAll('strong,b,h1,h2,h3,h4,h5,h6')]
         .find(el => String(el.textContent || '').replace(/\s+/g, ' ').trim().toUpperCase() === wanted);
@@ -95,7 +104,11 @@
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', run, { once:true }); else run();
 
     const observer = new MutationObserver(() => {
-      if (!document.querySelector(`${PANEL_SELECTOR}[data-${MARK}="1"]`)) collapse();
+      const panel = document.querySelector(PANEL_SELECTOR);
+      if (!panel) return;
+      // Re-wrap after dynamic panel re-renders. If details disappeared,
+      // collapse() clears the stale marker and wraps the fresh contents.
+      if (!panel.querySelector(DETAILS_SELECTOR)) collapse();
     });
     if (document.body) observer.observe(document.body, { childList:true, subtree:true });
     window.addEventListener('testhp:evidence-registry-debug', run);
