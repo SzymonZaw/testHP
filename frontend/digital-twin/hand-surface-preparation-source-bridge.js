@@ -58,4 +58,14 @@
   window.addEventListener('testhp:evidence-updated', schedule);
   window.addEventListener('testhp:evidence-attached', schedule);
   new MutationObserver(() => schedule()).observe(document.body, {childList:true, subtree:true});
+
+  // Geometry is a first-class part of the unified surface workflow. Load the
+  // canonical bridge here because this source bridge is already injected by
+  // the unified UI on every page load.
+  if (!document.getElementById('hand-surface-geometry-canonical-bridge')) {
+    const script = document.createElement('script');
+    script.id = 'hand-surface-geometry-canonical-bridge';
+    script.src = '/digital-twin/hand-surface-geometry-canonical-bridge.js?v=canonical-geometry-2';
+    document.head.appendChild(script);
+  }
 })();
