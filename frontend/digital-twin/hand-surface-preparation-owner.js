@@ -22,7 +22,7 @@
       delete content.dataset.cleanPreparation;
     }
     const script = document.createElement('script');
-    script.src = `${PREP_SRC}?v=prep-clean-owner-3-${Date.now()}`;
+    script.src = `${PREP_SRC}?v=prep-clean-owner-4-${Date.now()}`;
     script.dataset.prepOwnerReload = '1';
     script.onload = () => { restoring = false; };
     script.onerror = () => { restoring = false; };
@@ -39,8 +39,41 @@
     } catch { return null; }
   }
 
+  const defaultFilename = e => {
+    const source = String(e?.filename || 'prepared-image').trim();
+    const base = source.replace(/\.[^.]+$/, '') || 'prepared-image';
+    return `${base}_prepared.png`;
+  };
+
+  const ensureFilenameField = () => {
+    if (!canonicalPresent()) return;
+    const save = document.getElementById('hs-prep-save');
+    if (!save || document.getElementById('hs-prep-filename')) return;
+    const wrap = document.createElement('label');
+    wrap.id = 'hs-prep-filename-wrap';
+    wrap.style.cssText = 'display:block;margin-top:12px;font-size:12px;color:#667085;line-height:1.5';
+    wrap.innerHTML = 'Nazwa zapisywanego pliku <input id="hs-prep-filename" type="text" maxlength="180" autocomplete="off" style="display:block;width:100%;max-width:360px;margin-top:6px;padding:8px;border:1px solid var(--border,#d8dee8);border-radius:8px;background:var(--panel,#fff);color:inherit;box-sizing:border-box">';
+    save.parentElement?.insertBefore(wrap, save);
+  };
+
+  const selectedFilename = () => {
+    const input = document.getElementById('hs-prep-filename');
+    const value = input?.value?.trim();
+    if (!value) return null;
+    const normalized = value.replace(/[\\/:*?"<>|]+/g, '_').replace(/\s+/g, ' ').trim();
+    if (!normalized) return null;
+    return /\.[A-Za-z0-9]{1,8}$/.test(normalized) ? normalized : `${normalized}.png`;
+  };
+
+  const syncFilenameDefault = e => {
+    const input = document.getElementById('hs-prep-filename');
+    if (!input || input.dataset.userEdited === '1') return;
+    input.value = defaultFilename(e);
+  };
+
   function renderServerPrepared(e) {
     if (!e?.prepared || !e.prepared_asset_id) return false;
+    ensureFilenameField();
     const result = document.getElementById('hs-prep-result');
     const preview = document.getElementById('hs-prep-preview');
     const run = document.getElementById('hs-prep-run');
@@ -59,6 +92,7 @@
       save.dataset.source = e.asset_id;
       save.dataset.serverPrepared = '1';
     }
+    syncFilenameDefault(e);
     if (status) {
       status.textContent = '✓ Zdjęcie jest już przygotowane.';
       status.className = 'hs-prep-status hs-prep-good';
@@ -68,16 +102,19 @@
 
   async function reconcileSelection() {
     if (!isPrepare() || !canonicalPresent()) return;
+    ensureFilenameField();
     const select = document.getElementById('hs-prep-source');
     const assetId = select?.value;
     if (!assetId) return;
     const e = await serverPrepared(assetId);
     if (e?.prepared && e.prepared_asset_id) renderServerPrepared(e);
+    else {
+      const input = document.getElementById('hs-prep-filename');
+      const selected = select.selectedOptions?.[0]?.textContent?.split(' · ')[0];
+      if (input && input.dataset.userEdited !== '1' && selected) input.value = defaultFilename({filename:selected});
+    }
   }
 
-  // The canonical controller can be reloaded more than once. Before its
-  // preparation click handler runs, always consult the persisted server state.
-  // If the asset is already prepared, never issue another prepare request.
   document.addEventListener('click', async event => {
     if (!isPrepare()) return;
     const run = event.target?.closest?.('#hs-prep-run');
@@ -93,36 +130,63 @@
     }
   }, true);
 
-  // Keep the persisted prepared state visible after selecting a source.
   document.addEventListener('change', event => {
     if (event.target?.id !== 'hs-prep-source') return;
+    const input = document.getElementById('hs-prep-filename');
+    if (input) delete input.dataset.userEdited;
     setTimeout(reconcileSelection, 0);
   }, true);
 
-  // Save a server-prepared result even when the canonical controller instance
-  // that rendered the button does not own the refreshed preparation object.
-  document.addEventListener('click', event => {
-    const save = event.target?.closest?.('#hs-prep-save[data-server-prepared="1"]');
-    if (!save) return;
-    event.preventDefault();
-    event.stopImmediatePropagation();
-    const select = document.getElementById('hs-prep-source');
-    const assetId = save.dataset.source;
-    const preparedId = save.dataset.id;
-    const item = select?.selectedOptions?.[0]?.textContent || assetId;
-    try {
-      const raw = JSON.parse(localStorage.getItem(EVIDENCE) || '{}');
-      const evidence = Array.isArray(raw.evidence) ? raw.evidence : [];
-      if (!evidence.some(x => x.sourceAssetId === assetId && x.preparedAssetId === preparedId)) {
-        const view = (JSON.parse(localStorage.getItem('digitalTwinEvidenceUX.views.v1') || '{}'))[assetId] || null;
-        evidence.unshift({id:`prepared-${preparedId}`,type:'Macro',sourceType:'prepared-image',target:'hand/palm',spatial_id:'hand/palm',timepoint:'T0',view,filename:item.split(' · ')[0],sourceAssetId:assetId,preparedAssetId:preparedId,prepared:true,provenance:{sourceAssetId:assetId,preparation:'photo-reconstruction/prepare',originalUnchanged:true},archived:false,history:[{at:new Date().toISOString(),action:'prepared image saved'}]});
-        localStorage.setItem(EVIDENCE, JSON.stringify({...raw,evidence,target:'hand/palm'}));
-      }
-    } catch {}
-    window.dispatchEvent(new CustomEvent('testhp:evidence-attached'));
+  document.addEventListener('input', event => {
+    if (event.target?.id === 'hs-prep-filename') event.target.dataset.userEdited = '1';
   }, true);
 
-  const schedule = () => setTimeout(restore, 0);
+  document.addEventListener('click', event => {
+    const save = event.target?.closest?.('#hs-prep-save');
+    if (!save) return;
+    const filename = selectedFilename();
+    if (!filename) return;
+    const assetId = save.dataset.source;
+    const preparedId = save.dataset.id;
+    if (save.dataset.serverPrepared === '1') {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      const item = document.getElementById('hs-prep-source')?.selectedOptions?.[0]?.textContent || assetId;
+      try {
+        const raw = JSON.parse(localStorage.getItem(EVIDENCE) || '{}');
+        const evidence = Array.isArray(raw.evidence) ? raw.evidence : [];
+        const existing = evidence.find(x => x.sourceAssetId === assetId && x.preparedAssetId === preparedId);
+        if (existing) existing.filename = filename;
+        else {
+          const view = (JSON.parse(localStorage.getItem('digitalTwinEvidenceUX.views.v1') || '{}'))[assetId] || null;
+          evidence.unshift({id:`prepared-${preparedId}`,type:'Macro',sourceType:'prepared-image',target:'hand/palm',spatial_id:'hand/palm',timepoint:'T0',view,filename,sourceAssetId:assetId,preparedAssetId:preparedId,prepared:true,provenance:{sourceAssetId:assetId,preparation:'photo-reconstruction/prepare',originalUnchanged:true},archived:false,history:[{at:new Date().toISOString(),action:'prepared image saved'}]});
+        }
+        localStorage.setItem(EVIDENCE, JSON.stringify({...raw,evidence,target:'hand/palm'}));
+      } catch {}
+      window.dispatchEvent(new CustomEvent('testhp:evidence-attached'));
+      return;
+    }
+
+    // The canonical controller owns ordinary saves. Rename the evidence it
+    // creates immediately after its handler has persisted it.
+    setTimeout(() => {
+      try {
+        const raw = JSON.parse(localStorage.getItem(EVIDENCE) || '{}');
+        const evidence = Array.isArray(raw.evidence) ? raw.evidence : [];
+        const match = [...evidence].reverse().find(x =>
+          (preparedId && (x.preparedAssetId === preparedId || x.prepared_asset_id === preparedId)) ||
+          (assetId && (x.sourceAssetId === assetId || x.asset_id === assetId))
+        );
+        if (match) {
+          match.filename = filename;
+          localStorage.setItem(EVIDENCE, JSON.stringify({...raw,evidence}));
+          window.dispatchEvent(new CustomEvent('testhp:evidence-attached'));
+        }
+      } catch {}
+    }, 0);
+  }, true);
+
+  const schedule = () => setTimeout(() => { ensureFilenameField(); restore(); }, 0);
   window.addEventListener('testhp:spatial-layer-changed', schedule);
   window.addEventListener('testhp:spatial-contract-changed', schedule);
   window.addEventListener('testhp:spatial-target-changed', schedule);
@@ -132,6 +196,6 @@
 
   new MutationObserver(() => {
     if (isPrepare() && legacyPresent() && !canonicalPresent()) schedule();
-    if (isPrepare() && canonicalPresent()) reconcileSelection();
+    if (isPrepare() && canonicalPresent()) { ensureFilenameField(); reconcileSelection(); }
   }).observe(document.body, {childList:true, subtree:true});
 })();
