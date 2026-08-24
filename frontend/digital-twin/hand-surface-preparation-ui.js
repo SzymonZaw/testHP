@@ -4,6 +4,7 @@
   const API = '/api/hand/photo-reconstruction';
   const REGISTRY = '/api/spatial/registry';
   const EVIDENCE = 'digitalTwinEvidenceUX.v2';
+  const VIEW_STORE = 'digitalTwinEvidenceUX.views.v1';
   const VIEWS = {front:'Przód',back:'Tył',side_left:'Lewa strona',side_right:'Prawa strona',thumb:'Kciuk'};
   let observer;
   let state = {inputs:[]};
@@ -28,6 +29,25 @@
     return {...item, asset_id:id, spatial_id:spatial, filename:item.filename || item.name || id, timepoint:item.timepoint || 'T0'};
   }
 
+  const readViewStore = () => {
+    try {
+      const value = JSON.parse(localStorage.getItem(VIEW_STORE) || '{}');
+      return value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+    } catch { return {}; }
+  };
+
+  const savedViewFor = item => {
+    if (!item) return null;
+    const saved = readViewStore();
+    return saved[item.asset_id] || saved[item.id] || saved[item.sourceAssetId] || null;
+  };
+
+  const withSavedView = item => {
+    if (!item) return item;
+    const view = item.view || savedViewFor(item);
+    return view ? {...item, view} : item;
+  };
+
   async function loadSources() {
     const t = target();
     const byId = new Map();
@@ -39,13 +59,18 @@
     } catch {}
     try {
       const saved = await request(`${API}/state?subject_id=own_cohort&timepoint=T0`, {cache:'no-store'});
-      for(const raw of (saved.inputs || [])) { const item=normalizeItem(raw); if(item) byId.set(item.asset_id,item); }
+      for(const raw of (saved.inputs || [])) { const item=withSavedView(normalizeItem(raw)); if(item) byId.set(item.asset_id,item); }
     } catch {}
     try {
       const raw = JSON.parse(localStorage.getItem(EVIDENCE) || '{}');
-      for(const source of (Array.isArray(raw.evidence) ? raw.evidence : [])) { const item=normalizeItem({asset_id:source.sourceAssetId || source.asset_id, filename:source.filename, spatial_id:source.spatial_id || source.target, view:source.view, timepoint:source.timepoint, prepared:source.prepared, prepared_asset_id:source.preparedAssetId || source.prepared_asset_id}); if(item) byId.set(item.asset_id,{...byId.get(item.asset_id),...item}); }
+      for(const source of (Array.isArray(raw.evidence) ? raw.evidence : [])) {
+        const sourceId = source.sourceAssetId || source.asset_id || source.id || source.backendAssetId;
+        const savedView = source.view || savedViewFor({asset_id:sourceId, id:source.id, sourceAssetId:source.sourceAssetId});
+        const item = normalizeItem({asset_id:sourceId, id:source.id, filename:source.filename, spatial_id:source.spatial_id || source.target, view:savedView, timepoint:source.timepoint, prepared:source.prepared, prepared_asset_id:source.preparedAssetId || source.prepared_asset_id});
+        if(item) byId.set(item.asset_id,{...byId.get(item.asset_id),...item,view:item.view || savedViewFor(item)});
+      }
     } catch {}
-    state.inputs = [...byId.values()];
+    state.inputs = [...byId.values()].map(withSavedView);
   }
 
   function styles() {
