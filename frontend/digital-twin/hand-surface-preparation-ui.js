@@ -59,7 +59,7 @@
     } catch {}
     try {
       const saved = await request(`${API}/state?subject_id=own_cohort&timepoint=T0`, {cache:'no-store'});
-      for(const raw of (saved.inputs || [])) { const item=withSavedView(normalizeItem(raw)); if(item) byId.set(item.asset_id,item); }
+      for(const raw of (saved.inputs || saved.evidence || [])) { const item=withSavedView(normalizeItem(raw)); if(item) byId.set(item.asset_id,item); }
     } catch {}
     try {
       const raw = JSON.parse(localStorage.getItem(EVIDENCE) || '{}');
@@ -67,7 +67,11 @@
         const sourceId = source.sourceAssetId || source.asset_id || source.id || source.backendAssetId;
         const savedView = source.view || savedViewFor({asset_id:sourceId, id:source.id, sourceAssetId:source.sourceAssetId});
         const item = normalizeItem({asset_id:sourceId, id:source.id, filename:source.filename, spatial_id:source.spatial_id || source.target, view:savedView, timepoint:source.timepoint, prepared:source.prepared, prepared_asset_id:source.preparedAssetId || source.prepared_asset_id});
-        if(item) byId.set(item.asset_id,{...byId.get(item.asset_id),...item,view:item.view || savedViewFor(item)});
+        if(item) {
+          const existing = byId.get(item.asset_id) || {};
+          const merged = {...existing, ...Object.fromEntries(Object.entries(item).filter(([,value]) => value !== undefined && value !== null && value !== ''))};
+          byId.set(item.asset_id,{...merged,view:merged.view || savedViewFor(merged)});
+        }
       }
     } catch {}
     state.inputs = [...byId.values()].map(withSavedView);
@@ -86,15 +90,33 @@
     const t=target();
     content.dataset.cleanPreparation='1';
     content.innerHTML=`<div class="hs-prep-clean"><div class="hs-prep-box"><strong>Zdjęcie źródłowe</strong><p class="hss-note">Wybierz zdjęcie zapisane wcześniej w „Zdjęcia / źródła”. Oryginał nie zostanie zmieniony.</p><select id="hs-prep-source" class="hs-prep-select"><option value="">${state.inputs.length?'Wybierz zapisane zdjęcie…':'Brak zaakceptowanych zdjęć dla tego celu…'}</option>${state.inputs.map(x=>`<option value="${esc(x.asset_id)}">${esc(x.filename)} · ${esc(VIEWS[x.view]||x.view||'widok nieprzypisany')}</option>`).join('')}</select><div id="hs-prep-meta" class="hs-prep-meta"></div><div id="hs-prep-preview" class="hs-prep-preview"><span class="hss-note">Wybierz zdjęcie, aby rozpocząć.</span></div><div class="hs-prep-actions"><button id="hs-prep-run" class="primary" type="button" disabled>Przygotuj zdjęcie</button></div></div><div class="hs-prep-box"><strong>Przygotowanie</strong><p class="hss-note">System automatycznie usuwa tło, tworzy miękką maskę, przycina pusty obszar i zachowuje informacje potrzebne do późniejszej rejestracji. Oryginał pozostaje niezmieniony.</p><div id="hs-prep-result" class="hs-prep-meta">Brak przygotowanego wyniku.</div><details><summary>Opcje zaawansowane</summary><label>Tolerancja tła <input id="hs-prep-tol" type="number" min="4" max="80" value="28"></label><label>Maksymalny wymiar <input id="hs-prep-max" type="number" min="1024" max="8192" value="4096"></label></details><div class="hs-prep-actions"><button id="hs-prep-save" type="button" disabled>Zapisz przygotowane zdjęcie</button></div><div id="hs-prep-status" class="hs-prep-status" role="status"></div></div></div>`;
-    const select=document.getElementById('hs-prep-source'), meta=document.getElementById('hs-prep-meta'), preview=document.getElementById('hs-prep-preview'), run=document.getElementById('hs-prep-run'), save=document.getElementById('hs-prep-save'), status=document.getElementById('hs-prep-status');
+    const select=document.getElementById('hs-prep-source'), meta=document.getElementById('hs-prep-meta'), preview=document.getElementById('hs-prep-preview'), run=document.getElementById('hs-prep-run'), save=document.getElementById('hs-prep-save'), result=document.getElementById('hs-prep-result'), status=document.getElementById('hs-prep-status');
     const selected=()=>state.inputs.find(x=>x.asset_id===select.value);
-    const update=()=>{const item=selected();prepared=null;save.disabled=true;save.dataset.id='';save.dataset.source='';if(!item){run.disabled=true;meta.textContent='';preview.innerHTML='<span class="hss-note">Wybierz zdjęcie, aby rozpocząć.</span>';status.textContent='';return;}const hasSupportedView=Object.prototype.hasOwnProperty.call(VIEWS,item.view);const view=VIEWS[item.view]||item.view||'nieprzypisany';meta.innerHTML=`<strong>Cel:</strong> <code>${esc(item.spatial_id)}</code> · <strong>Widok:</strong> ${esc(view)} · <strong>Czas:</strong> ${esc(item.timepoint||'T0')}`;if(!hasSupportedView){preview.innerHTML='<span class="hss-note hs-prep-warn">⚠️ Przed przygotowaniem przypisz zdjęciu obsługiwany widok w „Zdjęcia / źródła”.</span>';status.textContent='Przygotowanie jest zablokowane, dopóki zdjęcie nie ma przypisanego widoku.';status.className='hs-prep-status hs-prep-warn';run.disabled=true;return;}run.disabled=false;preview.innerHTML='<span class="hss-note">Gotowe do przygotowania.</span>';status.textContent='';status.className='hs-prep-status';};
+    const showPrepared = item => {
+      if(!item?.prepared || !item.prepared_asset_id) return false;
+      const id=item.prepared_asset_id;
+      prepared=item.prepared_asset || {prepared_asset_id:id, quality:item.quality, crop:item.crop};
+      preview.innerHTML=`<div class="hs-prep-pair"><figure><img src="${API}/file/source/${encodeURIComponent(item.asset_id)}" alt="Oryginał"><figcaption>Oryginał</figcaption></figure><figure><img src="${API}/file/prepared/${encodeURIComponent(id)}" alt="Przygotowane"><figcaption>Po przygotowaniu</figcaption></figure></div>`;
+      result.innerHTML=`<span class="hs-prep-good">✓ Przygotowane</span><br>${prepared.prepared_width||prepared.width||'?'} × ${prepared.prepared_height||prepared.height||'?'} px · wynik zapisany po stronie serwera`;
+      save.disabled=false; save.dataset.id=id; save.dataset.source=item.asset_id;
+      run.disabled=true;
+      status.textContent='✓ Zdjęcie jest już przygotowane.'; status.className='hs-prep-status hs-prep-good';
+      return true;
+    };
+    const update=()=>{const item=selected();prepared=null;save.disabled=true;save.dataset.id='';save.dataset.source='';if(!item){run.disabled=true;meta.textContent='';preview.innerHTML='<span class="hss-note">Wybierz zdjęcie, aby rozpocząć.</span>';result.textContent='Brak przygotowanego wyniku.';status.textContent='';return;}const hasSupportedView=Object.prototype.hasOwnProperty.call(VIEWS,item.view);const view=VIEWS[item.view]||item.view||'nieprzypisany';meta.innerHTML=`<strong>Cel:</strong> <code>${esc(item.spatial_id)}</code> · <strong>Widok:</strong> ${esc(view)} · <strong>Czas:</strong> ${esc(item.timepoint||'T0')}`;if(showPrepared(item))return;if(!hasSupportedView){preview.innerHTML='<span class="hss-note hs-prep-warn">⚠️ Przed przygotowaniem przypisz zdjęciu obsługiwany widok w „Zdjęcia / źródła”.</span>';result.textContent='Brak przygotowanego wyniku.';status.textContent='Przygotowanie jest zablokowane, dopóki zdjęcie nie ma przypisanego widoku.';status.className='hs-prep-status hs-prep-warn';run.disabled=true;return;}run.disabled=false;preview.innerHTML='<span class="hss-note">Gotowe do przygotowania.</span>';result.textContent='Brak przygotowanego wyniku.';status.textContent='';status.className='hs-prep-status';};
     select.onchange=update;
     run.onclick=async()=>{const item=selected();if(!item)return;if(!Object.prototype.hasOwnProperty.call(VIEWS,item.view)){update();return;}run.disabled=true;status.textContent='Przygotowywanie…';status.className='hs-prep-status';try{
       const savedView = item.view;
       await request(`${API}/assign`, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({asset_id:item.asset_id, view:savedView})});
       prepared=await request(`${API}/prepare/${encodeURIComponent(item.asset_id)}`,{method:'POST'});
-      const id=prepared.prepared_asset_id;if(!id)throw new Error('Brak identyfikatora przygotowanego pliku.');preview.innerHTML=`<div class="hs-prep-pair"><figure><img src="${API}/file/source/${encodeURIComponent(item.asset_id)}" alt="Oryginał"><figcaption>Oryginał</figcaption></figure><figure><img src="${API}/file/prepared/${encodeURIComponent(id)}" alt="Przygotowane"><figcaption>Po przygotowaniu</figcaption></figure></div>`;document.getElementById('hs-prep-result').innerHTML=`<span class="hs-prep-good">✓ Przygotowane</span><br>${prepared.prepared_width||'?'} × ${prepared.prepared_height||'?'} px · maska + crop + transformacja zachowane`;save.disabled=false;save.dataset.id=id;save.dataset.source=item.asset_id;status.textContent='✓ Gotowe. Oryginał pozostał niezmieniony.';status.className='hs-prep-status hs-prep-good';}catch(err){status.textContent=err.message||'Nie udało się przygotować zdjęcia.';status.className='hs-prep-status hs-prep-warn';run.disabled=false;}};
+      const id=prepared.prepared_asset_id;if(!id)throw new Error('Brak identyfikatora przygotowanego pliku.');
+      item.prepared=true; item.prepared_asset_id=id; item.prepared_asset=prepared; item.view=savedView;
+      state.inputs = state.inputs.map(x=>x.asset_id===item.asset_id ? {...x,...item} : x);
+      showPrepared(item);
+      status.textContent='✓ Gotowe. Oryginał pozostał niezmieniony.'; status.className='hs-prep-status hs-prep-good';
+      await loadSources();
+      const refreshed=state.inputs.find(x=>x.asset_id===item.asset_id); if(refreshed) { item.prepared=refreshed.prepared; item.prepared_asset_id=refreshed.prepared_asset_id; item.prepared_asset=refreshed.prepared_asset; }
+    }catch(err){status.textContent=err.message||'Nie udało się przygotować zdjęcia.';status.className='hs-prep-status hs-prep-warn';run.disabled=false;}};
     save.onclick=()=>{const item=selected();if(!item||!prepared)return;try{const raw=JSON.parse(localStorage.getItem(EVIDENCE)||'{}');const evidence=Array.isArray(raw.evidence)?raw.evidence:[];if(!evidence.some(x=>x.sourceAssetId===item.asset_id&&x.preparedAssetId===prepared.prepared_asset_id))evidence.unshift({id:`prepared-${prepared.prepared_asset_id}`,type:'Macro',sourceType:'prepared-image',target:t,spatial_id:t,timepoint:item.timepoint||'T0',view:item.view,filename:item.filename,sourceAssetId:item.asset_id,preparedAssetId:prepared.prepared_asset_id,prepared:true,quality:prepared.quality,crop:prepared.crop,provenance:{sourceAssetId:item.asset_id,preparation:'photo-reconstruction/prepare',originalUnchanged:true},archived:false,history:[{at:new Date().toISOString(),action:'prepared image saved'}]});localStorage.setItem(EVIDENCE,JSON.stringify({...raw,evidence,target:t}));}catch{}status.textContent='✓ Przygotowane zdjęcie zapisane i gotowe do rejestracji.';status.className='hs-prep-status hs-prep-good';window.dispatchEvent(new CustomEvent('testhp:evidence-attached'));};
     update();
   }
