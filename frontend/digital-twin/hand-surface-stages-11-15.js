@@ -4,6 +4,7 @@
   const $ = id => document.getElementById(id);
   const state = { geometry:{palmLength:1,palmWidth:1,fingerSpread:1,thumbAngle:1,taper:1,thickness:1}, prepared:null, mappings:[], selectedView:'front' };
   const views = ['front','back','side_left','side_right','thumb'];
+  const viewLabels = {front:'Przód',back:'Tył',side_left:'Lewa strona',side_right:'Prawa strona',thumb:'Kciuk'};
   const esc = v => String(v ?? '').replace(/[&<>\"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;',"'":'&#39;'}[c]));
   const spatialIdOf = value => {
     if (!value) return null;
@@ -46,11 +47,30 @@
   }
   function render(){ const c=$('hss-content'); if(!c)return; const tab=document.querySelector('.hss-tabs button.active')?.dataset.tab||'evidence'; if(tab==='evidence') renderEvidence(c); if(tab==='prepare') renderPrepare(c); if(tab==='geometry') renderGeometry(c); if(tab==='mapping') renderMapping(c); if(tab==='workflow') renderWorkflow(c); }
   function readEvidence(){try{const x=JSON.parse(localStorage.getItem(EVIDENCE)||'{}');return Array.isArray(x.evidence)?x.evidence:[]}catch{return[]}}
+  function editEvidenceView(item){
+    if(!item)return;
+    const existing=document.getElementById('hss-view-editor');
+    existing?.remove();
+    const d=document.createElement('dialog'); d.id='hss-view-editor';
+    d.innerHTML=`<form method="dialog" style="min-width:min(420px,90vw);padding:18px"><h3 style="margin-top:0">Edytuj zdjęcie</h3><p class="hss-note">${esc(item.filename||'Zdjęcie')}</p><label style="display:block;margin:12px 0">Widok<select id="hss-edit-view" style="width:100%;box-sizing:border-box;padding:8px;margin-top:6px"><option value="">Nieprzypisany</option>${views.map(v=>`<option value="${v}" ${item.view===v?'selected':''}>${esc(viewLabels[v])}</option>`).join('')}</select></label><div class="hss-actions" style="justify-content:flex-end;margin-top:14px"><button type="button" id="hss-view-cancel">Anuluj</button><button type="submit" id="hss-view-save" class="primary">Zapisz</button></div></form>`;
+    document.body.appendChild(d);
+    $('hss-view-cancel').onclick=()=>{d.close();d.remove()};
+    $('hss-view-save').onclick=event=>{
+      event.preventDefault();
+      const all=readEvidence(); const i=all.findIndex(x=>x.id===item.id); if(i<0){d.close();d.remove();return;}
+      const view=$('hss-edit-view').value;
+      all[i]={...all[i],view:view||undefined,history:[...(all[i].history||[]),{at:new Date().toISOString(),action:'view updated',view:view||null}]};
+      if(!view) delete all[i].view;
+      localStorage.setItem(EVIDENCE,JSON.stringify({evidence:all,target:target()}));
+      d.close(); d.remove(); window.dispatchEvent(new CustomEvent('testhp:evidence-attached')); render();
+    };
+    d.addEventListener('close',()=>d.remove(),{once:true}); d.showModal();
+  }
   function renderEvidence(c){
     const list=readEvidence().filter(x=>!x.archived && normalizeEvidenceTarget(x.target) === target());
-    c.innerHTML=`<div class="hss-grid"><div class="hss-card"><div class="hss-head"><strong>Observation data</strong><button id="hss-add" class="primary">＋ Add observation</button></div><p class="hss-note">New records inherit the active spatial target: <b>${esc(target())}</b>.</p><div class="hss-list">${list.length?list.slice(0,12).map(x=>`<div class="hss-item"><div class="hss-head"><strong>${esc(x.filename||x.type||'Observation')}</strong><span class="hss-badge">${esc(x.timepoint||'T0')}</span></div><small>${esc(x.type||'Macro')} · ${esc(normalizeEvidenceTarget(x.target)||'hand')}</small><div class="hss-actions"><button data-edit="${esc(x.id)}">Edit</button><button data-archive="${esc(x.id)}">Remove</button></div></div>`).join(''):'<div class="hss-note">No observations attached to this spatial target yet.</div>'}</div></div><div class="hss-card"><strong>Stage 11 contract</strong><ul><li>one spatial target per observation</li><li>editable metadata and notes</li><li>archive instead of destructive loss</li><li>provenance history stays with the record</li></ul></div></div>`;
+    c.innerHTML=`<div class="hss-grid"><div class="hss-card"><div class="hss-head"><strong>Observation data</strong><button id="hss-add" class="primary">＋ Add observation</button></div><p class="hss-note">New records inherit the active spatial target: <b>${esc(target())}</b>.</p><div class="hss-list">${list.length?list.slice(0,12).map(x=>`<div class="hss-item"><div class="hss-head"><strong>${esc(x.filename||x.type||'Observation')}</strong><span class="hss-badge">${esc(x.timepoint||'T0')}</span></div><small>${esc(x.type||'Macro')} · ${esc(normalizeEvidenceTarget(x.target)||'hand')} · Widok: ${esc(viewLabels[x.view]||'nieprzypisany')}</small><div class="hss-actions"><button data-edit="${esc(x.id)}">Edit</button><button data-archive="${esc(x.id)}">Remove</button></div></div>`).join(''):'<div class="hss-note">No observations attached to this spatial target yet.</div>'}</div></div></div>`;
     $('hss-add').onclick=()=>document.getElementById('evidence-add')?.click();
-    c.querySelectorAll('[data-edit]').forEach(b=>b.onclick=()=>{ const id=b.dataset.edit; const item=readEvidence().find(x=>x.id===id); if(item) window.dispatchEvent(new CustomEvent('testhp:edit-evidence',{detail:{item}})); });
+    c.querySelectorAll('[data-edit]').forEach(b=>b.onclick=()=>{ const item=readEvidence().find(x=>x.id===b.dataset.edit); if(item) editEvidenceView(item); });
     c.querySelectorAll('[data-archive]').forEach(b=>b.onclick=()=>{const id=b.dataset.archive;let all=readEvidence();const i=all.findIndex(x=>x.id===id);if(i<0)return;all[i]={...all[i],archived:true,history:[...(all[i].history||[]),{at:new Date().toISOString(),action:'archived'}]};localStorage.setItem(EVIDENCE,JSON.stringify({evidence:all,target:target()}));window.dispatchEvent(new CustomEvent('testhp:evidence-attached'));render();});
   }
   function renderPrepare(c){ c.innerHTML=`<div class="hss-grid"><div class="hss-card"><strong>Stage 12 · Image preparation</strong><p class="hss-note">Prepare the photo before any surface projection. The original file is never modified.</p><input id="hss-file" type="file" accept="image/*"><div id="hss-preview" class="hss-preview" style="margin-top:10px"><span class="hss-note">Choose a skin photo.</span></div></div><div class="hss-card"><div class="hss-row"><label>Background tolerance <input id="hss-tol" type="range" min="4" max="80" value="28"></label><output id="hss-tol-v">28</output></div><div class="hss-row"><label>Max dimension <select id="hss-size"><option>1024</option><option selected>2048</option><option>4096</option></select></label></div><div class="hss-status" id="hss-prep-status">Waiting for an image.</div><div class="hss-meter" style="margin-top:10px"><i id="hss-meter"></i></div><div class="hss-actions" style="margin-top:12px"><button id="hss-run" class="primary" disabled>Prepare image</button><button id="hss-saveprep" disabled>Save prepared asset</button></div><p class="hss-note">Preparation: EXIF-independent decode → corner background estimate → soft alpha → transparent crop → bounded resize → PNG/WebP-ready output.</p></div></div>`; const file=$('hss-file'); file.onchange=()=>{state.prepared={file:file.files?.[0]||null};$('hss-run').disabled=!state.prepared.file;$('hss-prep-status').textContent=state.prepared.file?`Loaded ${state.prepared.file.name}`:'Waiting for an image.'}; $('hss-tol').oninput=e=>$('hss-tol-v').textContent=e.target.value; $('hss-run').onclick=()=>prepareImage(); $('hss-saveprep').onclick=savePrepared; }
