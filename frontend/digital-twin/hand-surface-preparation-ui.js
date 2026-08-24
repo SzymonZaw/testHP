@@ -147,8 +147,10 @@
     run.onclick=async()=>{const item=selected();if(!item)return;if(!Object.prototype.hasOwnProperty.call(VIEWS,item.view)){update();return;}run.disabled=true;status.textContent='Przygotowywanie…';status.className='hs-prep-status';try{
       const savedView = item.view;
       await request(`${API}/assign`, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({asset_id:item.asset_id, view:savedView})});
-      prepared=await request(`${API}/prepare/${encodeURIComponent(item.asset_id)}`,{method:'POST'});
-      const id=prepared.prepared_asset_id;if(!id)throw new Error('Brak identyfikatora przygotowanego pliku.');
+      const response=await request(`${API}/prepare/${encodeURIComponent(item.asset_id)}`,{method:'POST'});
+      prepared=response.prepared_asset || response;
+      const id=response.prepared_asset_id || prepared.prepared_asset_id;
+      if(!id)throw new Error('Brak identyfikatora przygotowanego pliku.');
       item.prepared=true; item.prepared_asset_id=id; item.prepared_asset=prepared; item.view=savedView;
       state.inputs = state.inputs.map(x=>x.asset_id===item.asset_id ? {...x,...item} : x);
       showPrepared(item);
