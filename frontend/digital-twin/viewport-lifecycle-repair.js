@@ -12,6 +12,7 @@
 
   if (window.__testhpViewportLifecycleRepairInstalled) return;
   window.__testhpViewportLifecycleRepairInstalled = true;
+  window.__testhpViewportLifecycleRepairVersion = 'lifecycle-repair-3';
 
   let repairing = false;
   let scheduled = 0;
@@ -23,54 +24,29 @@
     const node = document.getElementById('spatial-node');
     const label = node?.querySelector('strong')?.textContent?.trim() || state.target || 'Palm';
     const id = state.spatial_id || state.spatialId || manager?.spatialTarget || 'hand/palm';
-    const path = [...document.querySelectorAll('#spatial-breadcrumb button')]
-      .map(button => button.textContent.trim())
-      .filter(Boolean);
-    const level = String(state.level || document.getElementById('spatial-level-badge')?.textContent || 'macro')
-      .toLowerCase();
+    const path = [...document.querySelectorAll('#spatial-breadcrumb button')].map(button => button.textContent.trim()).filter(Boolean);
+    const level = String(state.level || document.getElementById('spatial-level-badge')?.textContent || 'macro').toLowerCase();
+    return { id: String(id), spatial_id: String(id), spatialId: String(id), spatial_node_id: String(id), targetSpatialId: String(id), targetId: state.id || 'palm', label, level, path };
+  };
 
-    return {
-      id: String(id),
-      spatial_id: String(id),
-      spatialId: String(id),
-      spatial_node_id: String(id),
-      targetSpatialId: String(id),
-      targetId: state.id || 'palm',
-      label,
-      level,
-      path
-    };
+  const readCenterPixel = canvas => {
+    const gl = canvas?.getContext('webgl2');
+    if (!gl || gl.isContextLost?.() || !gl.drawingBufferWidth || !gl.drawingBufferHeight) return null;
+    const pixel = new Uint8Array(4);
+    gl.readPixels(Math.floor(gl.drawingBufferWidth / 2), Math.floor(gl.drawingBufferHeight / 2), 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, pixel);
+    return [...pixel];
   };
 
   const canvasLooksBlank = canvas => {
-    const gl = canvas?.getContext('webgl2');
-    if (!gl || gl.isContextLost?.()) return false;
-    if (!gl.drawingBufferWidth || !gl.drawingBufferHeight) return false;
-
-    const pixel = new Uint8Array(4);
-    gl.readPixels(
-      Math.floor(gl.drawingBufferWidth / 2),
-      Math.floor(gl.drawingBufferHeight / 2),
-      1,
-      1,
-      gl.RGBA,
-      gl.UNSIGNED_BYTE,
-      pixel
-    );
-
-    return pixel[3] === 0;
+    const pixel = readCenterPixel(canvas);
+    return !!pixel && pixel[3] === 0;
   };
 
   const refreshSceneBounds = scene => {
     let meshCount = 0;
-
     scene?.traverse?.(object => {
       if (!object?.isMesh) return;
       meshCount += 1;
-
-      // Geometry/transform edits performed by the hand-surface layer can leave
-      // cached bounds from the previous tab activation. Three.js uses those
-      // bounds for frustum culling, so explicitly invalidate/rebuild them.
       const geometry = object.geometry;
       if (geometry) {
         geometry.boundingSphere = null;
@@ -78,49 +54,34 @@
         geometry.computeBoundingSphere?.();
         geometry.computeBoundingBox?.();
       }
-
       object.matrixWorldNeedsUpdate = true;
       object.updateMatrixWorld?.(true);
     });
-
     scene?.updateMatrixWorld?.(true);
     return meshCount;
   };
 
-  const renderScene = (manager, scene, camera, renderer) => {
-    camera?.updateMatrixWorld?.(true);
-    camera?.updateProjectionMatrix?.();
-    renderer?.setRenderTarget?.(null);
-    renderer?.setScissorTest?.(false);
-    renderer?.setViewport?.(0, 0, renderer.domElement.width, renderer.domElement.height);
-    renderer?.render?.(scene, camera);
+  const renderScene = (scene, camera, renderer) => {
+    if (!scene || !camera || !renderer) return;
+    camera.updateMatrixWorld?.(true);
+    camera.updateProjectionMatrix?.();
+    scene.updateMatrixWorld?.(true);
+    renderer.setRenderTarget?.(null);
+    renderer.setScissorTest?.(false);
+    renderer.setViewport?.(0, 0, renderer.domElement.width, renderer.domElement.height);
+    renderer.render(scene, camera);
   };
 
-  const forceVisibleFallback = (scene, renderer, camera) => {
+  const disableCullingForActiveScene = scene => {
     const changed = [];
-
     scene?.traverse?.(object => {
-      if (!object?.isMesh || !object.visible || object.frustumCulled === false) return;
-      changed.push([object, object.frustumCulled]);
-      object.frustumCulled = false;
+      if (!object?.isMesh || !object.visible) return;
+      if (object.frustumCulled !== false) {
+        changed.push(object.name || object.type);
+        object.frustumCulled = false;
+      }
     });
-
-    if (!changed.length) return false;
-
-    renderScene(null, scene, camera, renderer);
-
-    // If the fallback made the framebuffer non-empty, keep culling disabled for
-    // this active scene. Re-enabling it immediately recreates the black-screen
-    // state on the next render. The fallback is intentionally scoped to the
-    // currently active scene rather than changing Three.js globally.
-    return true;
-  };
-
-  const scheduleRepair = reason => {
-    cancelAnimationFrame(scheduled);
-    scheduled = requestAnimationFrame(() => {
-      requestAnimationFrame(() => repair(reason));
-    });
+    return changed;
   };
 
   const repair = reason => {
@@ -129,12 +90,10 @@
     const renderer = manager?.deepRenderer;
     const scene = manager?.active?.scene;
     const camera = manager?.active?.camera;
-
     if (!canvas || !manager || !renderer || !scene || !camera || repairing) return;
-    if (!canvasLooksBlank(canvas)) return;
 
     const now = performance.now();
-    if (now - lastRepairAt < 400) return;
+    if (now - lastRepairAt < 150) return;
     lastRepairAt = now;
     repairing = true;
 
@@ -143,80 +102,76 @@
       activeKey: manager.activeKey,
       activeLayer: manager.activeLayer,
       target: manager.spatialTarget,
-      canvas: `${canvas.width}x${canvas.height}`
+      canvas: `${canvas.width}x${canvas.height}`,
+      pixel: readCenterPixel(canvas)
     };
 
     try {
-      if (typeof manager.setSpatialTarget === 'function') {
-        manager.setSpatialTarget(target);
-      }
-
-      const meshCount = refreshSceneBounds(manager.active?.scene || scene);
+      if (typeof manager.setSpatialTarget === 'function') manager.setSpatialTarget(target);
+      const activeScene = manager.active?.scene || scene;
+      const activeCamera = manager.active?.camera || camera;
+      const meshCount = refreshSceneBounds(activeScene);
       manager.resize?.();
-      renderScene(manager, scene, camera, renderer);
+      renderScene(activeScene, activeCamera, renderer);
 
       let fallbackUsed = false;
+      let culledMeshes = [];
       if (canvasLooksBlank(canvas)) {
-        // Proven lifecycle failure mode: the canonical hand scene contains
-        // valid meshes and draw calls, but frustum culling rejects them after
-        // returning from Geometria. Disable culling only for this active scene
-        // as a deterministic recovery path.
-        fallbackUsed = forceVisibleFallback(scene, renderer, camera);
+        culledMeshes = disableCullingForActiveScene(activeScene);
+        fallbackUsed = culledMeshes.length > 0;
+        renderScene(activeScene, activeCamera, renderer);
       }
 
-      if (canvasLooksBlank(canvas) && typeof manager.setSpatialTarget === 'function') {
-        manager.setSpatialTarget({ ...target });
-        refreshSceneBounds(manager.active?.scene || scene);
-        manager.resize?.();
-        renderScene(manager, manager.active?.scene || scene, manager.active?.camera || camera, renderer);
-      }
+      const detail = {
+        reason,
+        target,
+        before,
+        meshCount,
+        fallbackUsed,
+        culledMeshes,
+        blankAfterRepair: canvasLooksBlank(canvas),
+        pixelAfterRepair: readCenterPixel(canvas),
+        activeKey: manager.activeKey,
+        activeLayer: manager.activeLayer
+      };
 
-      window.dispatchEvent(new CustomEvent('testhp:viewport-lifecycle-repaired', {
-        detail: {
-          reason,
-          target,
-          before,
-          meshCount,
-          fallbackUsed,
-          blankAfterRepair: canvasLooksBlank(canvas)
-        }
-      }));
+      window.__testhpViewportLifecycleLastRepair = detail;
+      window.dispatchEvent(new CustomEvent('testhp:viewport-lifecycle-repaired', { detail }));
+      if (detail.blankAfterRepair) console.warn('[Twin Viewport] lifecycle repair completed but framebuffer is still blank', detail);
     } catch (error) {
       console.error('[Twin Viewport] lifecycle repair failed', error);
-      window.dispatchEvent(new CustomEvent('testhp:viewport-lifecycle-repair-error', {
-        detail: { reason, error, target }
-      }));
+      window.dispatchEvent(new CustomEvent('testhp:viewport-lifecycle-repair-error', { detail: { reason, error, target } }));
     } finally {
       repairing = false;
     }
   };
 
-  const onManagerReady = () => {
-    window.setTimeout(() => scheduleRepair('manager-ready'), 0);
+  const scheduleRepair = reason => {
+    cancelAnimationFrame(scheduled);
+    scheduled = requestAnimationFrame(() => requestAnimationFrame(() => repair(reason)));
   };
 
-  window.addEventListener(MANAGER_READY_EVENT, onManagerReady);
+  window.__testhpViewportLifecycleRepairNow = reason => repair(reason || 'manual');
+
+  window.addEventListener(MANAGER_READY_EVENT, () => setTimeout(() => scheduleRepair('manager-ready'), 0));
   window.addEventListener('pageshow', () => scheduleRepair('pageshow'));
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible') scheduleRepair('visibility-visible');
   });
   window.addEventListener('resize', () => scheduleRepair('resize'), { passive: true });
-
-  REPAIR_EVENT_NAMES.forEach(name => {
-    window.addEventListener(name, () => scheduleRepair(name));
-  });
+  REPAIR_EVENT_NAMES.forEach(name => window.addEventListener(name, () => scheduleRepair(name)));
 
   document.addEventListener('click', event => {
     const target = event.target?.closest?.('button,[role="tab"],a');
     if (!target) return;
-    window.setTimeout(() => scheduleRepair('ui-navigation'), 0);
+    setTimeout(() => scheduleRepair('ui-navigation'), 0);
   }, true);
 
   let attempts = 0;
-  const timer = window.setInterval(() => {
+  const timer = setInterval(() => {
     attempts += 1;
     if (window.spatialViewportManager) scheduleRepair('manager-poll');
-    if (attempts >= 40) window.clearInterval(timer);
+    if (attempts >= 40) clearInterval(timer);
   }, 250);
-  window.addEventListener('beforeunload', () => window.clearInterval(timer), { once: true });
+  window.addEventListener('beforeunload', () => clearInterval(timer), { once: true });
 })();
