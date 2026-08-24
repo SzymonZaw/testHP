@@ -3,6 +3,7 @@
   window.__testhpSpatialEvidenceWriterInstalled = true;
 
   const EVIDENCE = 'digitalTwinEvidenceUX.v2';
+  const VIEW_STORE = 'digitalTwinEvidenceUX.views.v1';
   const SURFACE = 'digitalTwinHandSurface.v1';
   let syncing = false;
 
@@ -46,6 +47,32 @@
   };
   const write = (key, value) => localStorage.setItem(key, JSON.stringify(value));
 
+  const persistViews = () => {
+    const store = read(EVIDENCE);
+    const evidence = Array.isArray(store.evidence) ? store.evidence : [];
+    const views = {};
+    evidence.forEach(item => {
+      if (item?.id && item.view) views[item.id] = item.view;
+    });
+    if (Object.keys(views).length) write(VIEW_STORE, views);
+  };
+
+  const restoreViews = () => {
+    const store = read(EVIDENCE);
+    const evidence = Array.isArray(store.evidence) ? store.evidence : [];
+    const saved = read(VIEW_STORE);
+    if (!Object.keys(saved).length || !evidence.length) return;
+    let changed = false;
+    const restored = evidence.map(item => {
+      if (item?.id && !item.view && saved[item.id]) {
+        changed = true;
+        return { ...item, view: saved[item.id] };
+      }
+      return item;
+    });
+    if (changed) write(EVIDENCE, { ...store, evidence: restored });
+  };
+
   const originalSetItem = localStorage.setItem.bind(localStorage);
   localStorage.setItem = (key, value) => {
     if (key === SURFACE) {
@@ -64,6 +91,8 @@
 
   async function syncPreparedEvidence() {
     if (syncing) return;
+    restoreViews();
+    persistViews();
     const store = read(EVIDENCE);
     const evidence = Array.isArray(store.evidence) ? store.evidence : [];
     const pending = evidence.filter(x => !x.archived && x.prepared && (x.fileData === '' || x.fileData == null) && !x.backendAssetId && x.preparedAsset?.dataUrl);
@@ -101,6 +130,7 @@
         }
       }
       write(EVIDENCE, { ...store, evidence, target: currentTarget(), spatial_id: currentTarget() });
+      persistViews();
       window.dispatchEvent(new CustomEvent('testhp:evidence-registry-synced', { detail: { source: 'spatial-evidence-writer', count: pending.length, spatial_id: currentTarget() } }));
     } catch (error) {
       window.dispatchEvent(new CustomEvent('testhp:evidence-registry-write-failed', { detail: { error: String(error?.message || error) } }));
