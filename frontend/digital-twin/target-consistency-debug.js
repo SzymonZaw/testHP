@@ -59,35 +59,44 @@
   }
 
   function installRegistryCacheMismatchCollapse() {
-    if (window.__testhpRegistryCacheMismatchCollapseInstalled) return;
-    window.__testhpRegistryCacheMismatchCollapseInstalled = true;
+    const PANEL_SELECTOR = '#testhp-registry-debug-panel';
+    const MARK = 'testhpRegistryCacheMismatchWrapped';
     const wanted = 'REGISTRY / CACHE MISMATCH DIAGNOSTICS';
-    const normalizeHeading = value => String(value || '').replace(/\s+/g, ' ').trim().toUpperCase();
-    const findHeading = () => [...document.querySelectorAll('h1,h2,h3,h4,h5,h6,strong,b,summary,div,section')].find(el => normalizeHeading(el.textContent) === wanted) || null;
+
     const collapse = () => {
-      const heading = findHeading();
+      const panel = document.querySelector(PANEL_SELECTOR);
+      if (!panel) return false;
+      if (panel.dataset[MARK] === '1') return true;
+
+      const heading = [...panel.querySelectorAll('strong,b,h1,h2,h3,h4,h5,h6')]
+        .find(el => String(el.textContent || '').replace(/\s+/g, ' ').trim().toUpperCase() === wanted);
       if (!heading) return false;
-      if (heading.closest('details[data-testhp-registry-cache-mismatch]')) return true;
-      const boundary = heading.closest('section,article,fieldset,.tvd-section,.hss-section,.hss-card,.debug-panel') || heading.parentElement;
-      if (!boundary || boundary.dataset.testhpRegistryCacheMismatchWrapped === '1') return true;
+
       const details = document.createElement('details');
       details.dataset.testhpRegistryCacheMismatch = '1';
       details.open = false;
       details.style.cssText = 'margin-top:10px;';
+
       const summary = document.createElement('summary');
       summary.textContent = wanted;
       summary.style.cssText = 'cursor:pointer;font-weight:800;';
+
       const body = document.createElement('div');
       body.dataset.testhpRegistryCacheMismatchBody = '1';
-      while (boundary.firstChild) body.appendChild(boundary.firstChild);
+
+      while (panel.firstChild) body.appendChild(panel.firstChild);
       details.append(summary, body);
-      boundary.dataset.testhpRegistryCacheMismatchWrapped = '1';
-      boundary.appendChild(details);
+      panel.appendChild(details);
+      panel.dataset[MARK] = '1';
       return true;
     };
+
     const run = () => collapse();
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', run, { once:true }); else run();
-    const observer = new MutationObserver(() => { if (!document.querySelector('details[data-testhp-registry-cache-mismatch]')) collapse(); });
+
+    const observer = new MutationObserver(() => {
+      if (!document.querySelector(`${PANEL_SELECTOR}[data-${MARK}="1"]`)) collapse();
+    });
     if (document.body) observer.observe(document.body, { childList:true, subtree:true });
     window.addEventListener('testhp:evidence-registry-debug', run);
     window.addEventListener('testhp:evidence-registry-synced', run);
@@ -105,13 +114,7 @@
     box.style.cssText = 'margin-top:10px;padding:9px;border:1px solid #52647a;border-radius:8px;background:#0b1320;color:#dbe7f5;font:11px/1.45 ui-monospace,SFMono-Regular,Consolas,monospace;';
     const driftLabel = result.targetDrift ? 'DRIFT' : 'EXACT';
     const status = result.diagnosis === 'TARGET_DATA_MISSING' ? 'DATA MISSING' : result.diagnosis.replaceAll('_',' ');
-    box.innerHTML = `<summary style="cursor:pointer;color:#9fc4e8;font-weight:800">TARGET CONSISTENCY · ${status}</summary><pre style="white-space:pre-wrap;margin:8px 0 0;color:#aebed0">` +
-      `DIAGNOSIS\n  routing       PASS\n  target        ${driftLabel}\n  data          ${result.targetLinked > 0 ? 'PRESENT' : 'MISSING'}\n  registry      ${result.targetLinked > 0 ? 'LINKED' : 'UNLINKED'}\n  prepared      ${result.prepared}\n  views         ${result.views}\n\n` +
-      `TARGET SOURCES\n  manager       ${result.manager || 'NULL'}  [${relation(result.id,result.manager)}]\n  contract      ${result.contract || 'NULL'}  [${relation(result.id,result.contract)}]\n  selected      ${result.selected || 'NULL'}  [${relation(result.id,result.selected)}]\n  evidence      ${result.evidenceGlobal || 'NULL'}  [${relation(result.id,result.evidenceGlobal)}]\n  resolved      ${result.id || 'NULL'}\n\n` +
-      `REGISTRY\n  raw           ${result.registry.rawCount ?? result.registry.raw_count ?? result.registry.total ?? 'NULL'}\n  scoped        ${result.registry.matchDebug?.scoped_count ?? 'NULL'}\n  exact         ${result.registry.matchDebug?.exact_count ?? result.registry.targetLinked ?? 'NULL'}\n  rejected      ${result.registry.matchDebug?.rejected_count ?? 'NULL'}\n  prepared      ${result.registry.prepared ?? 'NULL'}\n  endpoint      ${result.registry.endpoint || 'NULL'}\n\n` +
-      `PROVENANCE\n  path          ${result.path.join(' > ') || 'NULL'}\n  node          ${result.currentNode || 'NULL'}\n  cache-linked  ${result.cacheLinked}\n  fingerprint  ${fingerprint(result.id)}\n\n` +
-      (result.diagnosis === 'TARGET_DATA_MISSING' ? 'CONCLUSION\n  Target routing is consistent. No target-linked registry/evidence record exists.\n' : result.diagnosis === 'TARGET_DRIFT' ? 'CONCLUSION\n  Target IDs disagree. Display labels are ignored; compare only ID-bearing sources.\n' : 'CONCLUSION\n  All available ID-bearing target sources agree. Continue downstream inspection.\n') +
-      '</pre>';
+    box.innerHTML = `<summary style="cursor:pointer;color:#9fc4e8;font-weight:800">TARGET CONSISTENCY · ${status}</summary><pre style="white-space:pre-wrap;margin:8px 0 0;color:#aebed0">DIAGNOSIS\n  routing       PASS\n  target        ${driftLabel}\n  data          ${result.targetLinked > 0 ? 'PRESENT' : 'MISSING'}\n  registry      ${result.targetLinked > 0 ? 'LINKED' : 'UNLINKED'}\n  prepared      ${result.prepared}\n  views         ${result.views}\n\nTARGET SOURCES\n  manager       ${result.manager || 'NULL'}  [${relation(result.id,result.manager)}]\n  contract      ${result.contract || 'NULL'}  [${relation(result.id,result.contract)}]\n  selected      ${result.selected || 'NULL'}  [${relation(result.id,result.selected)}]\n  evidence      ${result.evidenceGlobal || 'NULL'}  [${relation(result.id,result.evidenceGlobal)}]\n  resolved      ${result.id || 'NULL'}\n\nREGISTRY\n  raw           ${result.registry.rawCount ?? result.registry.raw_count ?? result.registry.total ?? 'NULL'}\n  scoped        ${result.registry.matchDebug?.scoped_count ?? 'NULL'}\n  exact         ${result.registry.matchDebug?.exact_count ?? result.registry.targetLinked ?? 'NULL'}\n  rejected      ${result.registry.matchDebug?.rejected_count ?? 'NULL'}\n  prepared      ${result.registry.prepared ?? 'NULL'}\n  endpoint      ${result.registry.endpoint || 'NULL'}\n\nPROVENANCE\n  path          ${result.path.join(' > ') || 'NULL'}\n  node          ${result.currentNode || 'NULL'}\n  cache-linked  ${result.cacheLinked}\n  fingerprint  ${fingerprint(result.id)}\n\n${result.diagnosis === 'TARGET_DATA_MISSING' ? 'CONCLUSION\n  Target routing is consistent. No target-linked registry/evidence record exists.\n' : result.diagnosis === 'TARGET_DRIFT' ? 'CONCLUSION\n  Target IDs disagree. Display labels are ignored; compare only ID-bearing sources.\n' : 'CONCLUSION\n  All available ID-bearing target sources agree. Continue downstream inspection.\n'}</pre>`;
     panel.appendChild(box);
     installRegistryCacheMismatchCollapse();
   }
