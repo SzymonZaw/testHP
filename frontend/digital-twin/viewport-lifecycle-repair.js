@@ -12,7 +12,7 @@
 
   if (window.__testhpViewportLifecycleRepairInstalled) return;
   window.__testhpViewportLifecycleRepairInstalled = true;
-  window.__testhpViewportLifecycleRepairVersion = 'lifecycle-repair-3';
+  window.__testhpViewportLifecycleRepairVersion = 'lifecycle-repair-4';
 
   let repairing = false;
   let scheduled = 0;
@@ -23,10 +23,11 @@
     const state = manager?.state || {};
     const node = document.getElementById('spatial-node');
     const label = node?.querySelector('strong')?.textContent?.trim() || state.target || 'Palm';
-    const id = state.spatial_id || state.spatialId || manager?.spatialTarget || 'hand/palm';
+    const rawId = state.spatial_id || state.spatialId || manager?.spatialTarget || 'hand/palm';
+    const id = String(rawId || 'hand/palm').replace(/^\/+|\/+$/g, '');
     const path = [...document.querySelectorAll('#spatial-breadcrumb button')].map(button => button.textContent.trim()).filter(Boolean);
     const level = String(state.level || document.getElementById('spatial-level-badge')?.textContent || 'macro').toLowerCase();
-    return { id: String(id), spatial_id: String(id), spatialId: String(id), spatial_node_id: String(id), targetSpatialId: String(id), targetId: state.id || 'palm', label, level, path };
+    return { id, spatial_id: id, spatialId: id, spatial_node_id: id, targetSpatialId: id, targetId: state.id || 'palm', label, level, path };
   };
 
   const readCenterPixel = canvas => {
@@ -92,8 +93,15 @@
     const camera = manager?.active?.camera;
     if (!canvas || !manager || !renderer || !scene || !camera || repairing) return;
 
+    // This module is a rendering lifecycle repairer, not a spatial-navigation
+    // owner. Never call setSpatialTarget() here: doing so can feed the target
+    // back through the canonicalizer and navigation/API observers and turn a
+    // stable hand/palm target into hand/palm/hand/palm/... request storms.
+    // Only repair the renderer when the framebuffer is actually blank.
+    if (!canvasLooksBlank(canvas)) return;
+
     const now = performance.now();
-    if (now - lastRepairAt < 150) return;
+    if (now - lastRepairAt < 400) return;
     lastRepairAt = now;
     repairing = true;
 
@@ -107,7 +115,6 @@
     };
 
     try {
-      if (typeof manager.setSpatialTarget === 'function') manager.setSpatialTarget(target);
       const activeScene = manager.active?.scene || scene;
       const activeCamera = manager.active?.camera || camera;
       const meshCount = refreshSceneBounds(activeScene);
