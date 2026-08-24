@@ -61,6 +61,61 @@
     return pixel[3] === 0;
   };
 
+  const refreshSceneBounds = scene => {
+    let meshCount = 0;
+
+    scene?.traverse?.(object => {
+      if (!object?.isMesh) return;
+      meshCount += 1;
+
+      // Geometry/transform edits performed by the hand-surface layer can leave
+      // cached bounds from the previous tab activation. Three.js uses those
+      // bounds for frustum culling, so explicitly invalidate/rebuild them.
+      const geometry = object.geometry;
+      if (geometry) {
+        geometry.boundingSphere = null;
+        geometry.boundingBox = null;
+        geometry.computeBoundingSphere?.();
+        geometry.computeBoundingBox?.();
+      }
+
+      object.matrixWorldNeedsUpdate = true;
+      object.updateMatrixWorld?.(true);
+    });
+
+    scene?.updateMatrixWorld?.(true);
+    return meshCount;
+  };
+
+  const renderScene = (manager, scene, camera, renderer) => {
+    camera?.updateMatrixWorld?.(true);
+    camera?.updateProjectionMatrix?.();
+    renderer?.setRenderTarget?.(null);
+    renderer?.setScissorTest?.(false);
+    renderer?.setViewport?.(0, 0, renderer.domElement.width, renderer.domElement.height);
+    renderer?.render?.(scene, camera);
+  };
+
+  const forceVisibleFallback = (scene, renderer, camera) => {
+    const changed = [];
+
+    scene?.traverse?.(object => {
+      if (!object?.isMesh || !object.visible || object.frustumCulled === false) return;
+      changed.push([object, object.frustumCulled]);
+      object.frustumCulled = false;
+    });
+
+    if (!changed.length) return false;
+
+    renderScene(null, scene, camera, renderer);
+
+    // If the fallback made the framebuffer non-empty, keep culling disabled for
+    // this active scene. Re-enabling it immediately recreates the black-screen
+    // state on the next render. The fallback is intentionally scoped to the
+    // currently active scene rather than changing Three.js globally.
+    return true;
+  };
+
   const scheduleRepair = reason => {
     cancelAnimationFrame(scheduled);
     scheduled = requestAnimationFrame(() => {
@@ -71,8 +126,11 @@
   const repair = reason => {
     const canvas = document.querySelector(CANVAS_SELECTOR);
     const manager = window.spatialViewportManager;
-    if (!canvas || !manager || repairing) return;
+    const renderer = manager?.deepRenderer;
+    const scene = manager?.active?.scene;
+    const camera = manager?.active?.camera;
 
+    if (!canvas || !manager || !renderer || !scene || !camera || repairing) return;
     if (!canvasLooksBlank(canvas)) return;
 
     const now = performance.now();
@@ -92,16 +150,25 @@
       if (typeof manager.setSpatialTarget === 'function') {
         manager.setSpatialTarget(target);
       }
-      manager.resize?.();
-      manager.render?.();
 
-      // A second activation is intentional: leaving/re-entering the geometry
-      // tab can leave the canonical renderer attached to an empty active scene.
-      // Re-selecting the current canonical target rebuilds the active layer.
+      const meshCount = refreshSceneBounds(manager.active?.scene || scene);
+      manager.resize?.();
+      renderScene(manager, scene, camera, renderer);
+
+      let fallbackUsed = false;
+      if (canvasLooksBlank(canvas)) {
+        // Proven lifecycle failure mode: the canonical hand scene contains
+        // valid meshes and draw calls, but frustum culling rejects them after
+        // returning from Geometria. Disable culling only for this active scene
+        // as a deterministic recovery path.
+        fallbackUsed = forceVisibleFallback(scene, renderer, camera);
+      }
+
       if (canvasLooksBlank(canvas) && typeof manager.setSpatialTarget === 'function') {
         manager.setSpatialTarget({ ...target });
+        refreshSceneBounds(manager.active?.scene || scene);
         manager.resize?.();
-        manager.render?.();
+        renderScene(manager, manager.active?.scene || scene, manager.active?.camera || camera, renderer);
       }
 
       window.dispatchEvent(new CustomEvent('testhp:viewport-lifecycle-repaired', {
@@ -109,6 +176,8 @@
           reason,
           target,
           before,
+          meshCount,
+          fallbackUsed,
           blankAfterRepair: canvasLooksBlank(canvas)
         }
       }));
@@ -137,17 +206,12 @@
     window.addEventListener(name, () => scheduleRepair(name));
   });
 
-  // Internal UI tabs do not necessarily change document visibility. Detect a
-  // return to the geometry/surface UI by checking the main renderer after UI
-  // interactions, without touching the renderer when it is already healthy.
   document.addEventListener('click', event => {
     const target = event.target?.closest?.('button,[role="tab"],a');
     if (!target) return;
     window.setTimeout(() => scheduleRepair('ui-navigation'), 0);
   }, true);
 
-  // Wait for the asynchronously bootstrapped manager if the script itself is
-  // evaluated before twin-bootstrap finishes importing app.js.
   let attempts = 0;
   const timer = window.setInterval(() => {
     attempts += 1;
