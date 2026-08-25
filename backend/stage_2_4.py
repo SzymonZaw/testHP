@@ -232,7 +232,7 @@ def delete_evidence(evidence_id: str | None = None, asset_id: str | None = None)
     removed: list[dict[str, Any]] = []
     kept: list[dict[str, Any]] = []
     for item in items:
-        matches_evidence = bool(evidence_id and item.get("evidence_id") == evidence_id)
+        matches_evidence = bool(evidence_id and item.get("evidence_id") == evidence_id and item.get("attachment_status") == "explicit")
         matches_asset = bool(asset_id and item.get("asset_id") == asset_id and item.get("attachment_status") == "explicit")
         if matches_evidence or matches_asset:
             removed.append(item)
