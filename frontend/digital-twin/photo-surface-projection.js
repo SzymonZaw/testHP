@@ -63,7 +63,20 @@
   }
 
   async function ensureBuild() {
-    const s = await state();
+    let s = await state();
+    // One prepared view is sufficient. If it has not yet been registered,
+    // register it automatically so projection does not retain the old
+    // two-view gate as an implicit UI requirement.
+    if ((s.registered_count || 0) < 1 && (s.prepared_count || 0) >= 1) {
+      const r = await fetch(`${API}/register`, {
+        method: 'POST',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({subject_id:'own_cohort',timepoint:'T0',spatial_id:s.spatial_id})
+      });
+      const registered = await r.json();
+      if (!r.ok) throw new Error(registered.detail || 'Nie udało się zarejestrować przygotowanego widoku.');
+      s = registered;
+    }
     if ((s.registered_count || 0) < 1) return null;
     let plan = read(PLAN_KEY);
     if (!plan || normalize(plan.target) !== normalize(s.spatial_id) || plan.views?.length !== s.registered_count) {
