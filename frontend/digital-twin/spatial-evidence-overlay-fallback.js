@@ -68,6 +68,13 @@
     };
   }
 
+  function resolveView(item, index, usedViews) {
+    const inferred = inferView(item);
+    if (inferred && !usedViews.has(inferred)) return { view: inferred, method: 'metadata-or-filename' };
+    const fallback = VIEWS.find(view => !usedViews.has(view));
+    return fallback ? { view: fallback, method: 'registry-order-fallback' } : null;
+  }
+
   async function applyRegistryOverlay(ctx) {
     const manager = window.spatialViewportManager;
     if (!manager?.active?.scene || !ctx.items.length) return { applied: false, reason: 'no-registry-evidence' };
@@ -89,9 +96,11 @@
     const usedViews = new Set();
     const applied = [];
 
-    for (const item of ctx.items) {
-      const view = inferView(item);
-      if (!view || usedViews.has(view)) continue;
+    for (let index = 0; index < ctx.items.length; index += 1) {
+      const item = ctx.items[index];
+      const resolved = resolveView(item, index, usedViews);
+      if (!resolved) continue;
+      const { view, method } = resolved;
       const assetId = item?.asset_id;
       if (!assetId) continue;
       const imageUrl = `/api/spatial/preview/${encodeURIComponent(assetId)}?max_width=1400&max_height=1000`;
@@ -111,7 +120,7 @@
         decal.name = `registry-evidence-projection:${view}:${assetId}`;
         group.add(decal);
         usedViews.add(view);
-        applied.push({ view, assetId, evidenceId: item.evidence_id || null, filename: item.filename || null });
+        applied.push({ view, method, assetId, evidenceId: item.evidence_id || null, filename: item.filename || null });
       } catch (error) {
         console.warn('[spatial-evidence-overlay]', item?.filename || assetId, error);
       }
@@ -151,9 +160,7 @@
     const result = await sync();
     if (result.applied) {
       const existing = window.testhpPhotoSurfaceProjection;
-      if (existing) {
-        existing.getDiagnostics = () => window.__testhpSpatialProjectionDiagnostics || null;
-      }
+      if (existing) existing.getDiagnostics = () => window.__testhpSpatialProjectionDiagnostics || null;
     }
     return result;
   };
