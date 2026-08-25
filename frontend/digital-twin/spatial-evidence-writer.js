@@ -31,6 +31,24 @@
   const evidenceBackendKey = item => item?.backendEvidenceId || item?.backend_evidence_id || item?.evidence_id || null;
   const evidenceBackendAsset = item => item?.backendAssetId || item?.backend_asset_id || item?.asset_id || null;
 
+  const removeDeletedEvidenceLocally = (evidenceId, assetId) => {
+    try {
+      const store = read(EVIDENCE);
+      if (!Array.isArray(store.evidence)) return;
+      const filtered = store.evidence.filter(item => {
+        const itemEvidenceId = evidenceBackendKey(item);
+        const itemAssetId = evidenceBackendAsset(item);
+        return !(evidenceId && itemEvidenceId === evidenceId) && !(assetId && itemAssetId === assetId);
+      });
+      if (filtered.length !== store.evidence.length) {
+        rawSetItem(EVIDENCE, JSON.stringify({ ...store, evidence: filtered }));
+        window.dispatchEvent(new CustomEvent('testhp:evidence-ux-refresh', { detail: { source: 'canonical-delete', evidence_id: evidenceId, asset_id: assetId } }));
+      }
+    } catch (error) {
+      console.warn('[Twin] failed to remove deleted evidence from local UX cache', error);
+    }
+  };
+
   const syncRemovedEvidence = (beforeEvidence, afterEvidence) => {
     const before = Array.isArray(beforeEvidence) ? beforeEvidence : [];
     const after = Array.isArray(afterEvidence) ? afterEvidence : [];
@@ -57,6 +75,7 @@
             const body = await response.text().catch(() => '');
             throw new Error(body || `HTTP ${response.status}`);
           }
+          removeDeletedEvidenceLocally(evidenceId, assetId);
           window.dispatchEvent(new CustomEvent('testhp:evidence-registry-deleted', { detail: { evidence_id: evidenceId, asset_id: assetId } }));
         })
         .catch(error => {
@@ -85,9 +104,6 @@
     });
   };
 
-  // EVIDENCE is rewritten by several parts of the UI and by the registry bridge.
-  // Capture view metadata at the storage boundary, before another writer can
-  // replace the UX record with a backend-shaped record that has no `view` field.
   localStorage.setItem = (key, value) => {
     if (key === EVIDENCE) {
       try {
