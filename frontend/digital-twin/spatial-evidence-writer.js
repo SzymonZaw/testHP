@@ -52,9 +52,15 @@
   const syncRemovedEvidence = (beforeEvidence, afterEvidence) => {
     const before = Array.isArray(beforeEvidence) ? beforeEvidence : [];
     const after = Array.isArray(afterEvidence) ? afterEvidence : [];
-    const afterEvidenceIds = new Set(after.map(evidenceBackendKey).filter(Boolean));
-    const afterAssetIds = new Set(after.map(evidenceBackendAsset).filter(Boolean));
+    // The UI historically represented deletion in two ways: physically removing
+    // the item or setting archived:true. Treat both as a canonical deletion.
+    // Otherwise an archived item survives in the backend and can reappear when
+    // the registry bridge rebuilds the UX store after a refresh.
+    const afterActive = after.filter(item => !item?.archived);
+    const afterEvidenceIds = new Set(afterActive.map(evidenceBackendKey).filter(Boolean));
+    const afterAssetIds = new Set(afterActive.map(evidenceBackendAsset).filter(Boolean));
     const removed = before.filter(item => {
+      if (item?.archived) return true;
       const evidenceId = evidenceBackendKey(item);
       const assetId = evidenceBackendAsset(item);
       if (!evidenceId && !assetId) return false;
@@ -63,6 +69,7 @@
     for (const item of removed) {
       const evidenceId = evidenceBackendKey(item);
       const assetId = evidenceBackendAsset(item);
+      if (!evidenceId && !assetId) continue;
       const key = `${evidenceId || ''}|${assetId || ''}`;
       if (pendingDeletes.has(key)) continue;
       pendingDeletes.add(key);
