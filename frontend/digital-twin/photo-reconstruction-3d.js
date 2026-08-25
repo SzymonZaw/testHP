@@ -48,4 +48,8 @@
   window.PhotoReconstruction3D = { mount(container, subjectId = 'default', timepoint = 'default') {
     json(`${API}/state?subject_id=${encodeURIComponent(subjectId)}&timepoint=${encodeURIComponent(timepoint)}`).then(state => render(container, state)).catch(err => { container.textContent = err.message; });
   }};
+
+  const bridge = document.createElement('script');
+  bridge.src = '/digital-twin/spatial-evidence-overlay-fallback.js?v=registry-overlay-1';
+  document.head.appendChild(bridge);
 })();
