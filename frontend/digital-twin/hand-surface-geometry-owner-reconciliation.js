@@ -93,8 +93,6 @@
       requestAnimationFrame(() => sync(`number:${input.dataset.numberG}`));
     });
 
-    // The legacy toolbar mutates the same meshes directly. Intercept it in the
-    // capture phase and make the canonical geometry API the only owner.
     studio.addEventListener('click', event => {
       const control = event.target?.closest?.('#hss-geometry-undo,#hss-geometry-redo,#hss-geometry-reset');
       if (!control) return;
@@ -126,17 +124,78 @@
     }, true);
   };
 
+  // UX: rejestracja i wynik są jednym krokiem dla użytkownika.
+  // Nie usuwamy istniejącej logiki stanu; tylko łączymy prezentację obu etapów.
+  const unifyRegistrationAndResult = () => {
+    const shell = document.getElementById('hand-surface-unified');
+    if (!shell || shell.dataset.registrationResultUnified === '1') return false;
+    const registration = shell.querySelector('[data-hsu-section="registration"]');
+    const result = shell.querySelector('[data-hsu-section="result"]');
+    const resultTab = shell.querySelector('[data-hsu-tab="result"]');
+    const registrationTab = shell.querySelector('[data-hsu-tab="registration"]');
+    if (!registration || !result || !registrationTab) return false;
+
+    shell.dataset.registrationResultUnified = '1';
+    registrationTab.textContent = '2. Rejestracja i wynik';
+    if (resultTab) {
+      resultTab.hidden = true;
+      resultTab.setAttribute('aria-hidden', 'true');
+      resultTab.setAttribute('tabindex', '-1');
+    }
+
+    result.hidden = false;
+    result.removeAttribute('data-hsu-section');
+    result.dataset.hsuUnifiedResult = 'true';
+    registration.appendChild(result);
+
+    const resultTitle = result.querySelector('h3');
+    if (!resultTitle) {
+      const heading = document.createElement('div');
+      heading.className = 'hsu-unified-result-heading';
+      heading.textContent = 'Stan i wynik';
+      result.prepend(heading);
+    }
+
+    const goRegistration = result.querySelector('#hsu-go-registration');
+    if (goRegistration) goRegistration.hidden = true;
+
+    // Existing renderer is intentionally reused once so its current state is shown.
+    if (resultTab) {
+      resultTab.click();
+      registrationTab.click();
+    }
+    return true;
+  };
+
+  const installUnifiedCss = () => {
+    if (document.getElementById('hsu-registration-result-unified-css')) return;
+    const style = document.createElement('style');
+    style.id = 'hsu-registration-result-unified-css';
+    style.textContent = `
+      #hand-surface-unified [data-hsu-unified-result]{display:block!important;margin-top:18px;padding-top:14px;border-top:1px solid var(--border,#d8dee8)}
+      #hand-surface-unified .hsu-unified-result-heading{font-size:14px;font-weight:800;margin:0 0 8px;color:#344054}
+      #hand-surface-unified [data-hsu-tab="result"][hidden]{display:none!important}
+    `;
+    document.head.appendChild(style);
+  };
+
   const boot = () => {
     bind();
     removeQuickStart();
+    installUnifiedCss();
+    unifyRegistrationAndResult();
     [0,100,300,800,1500,3000].forEach(ms => setTimeout(() => {
       bind();
       removeQuickStart();
+      installUnifiedCss();
+      unifyRegistrationAndResult();
       sync(`boot:${ms}`);
     }, ms));
     new MutationObserver(() => {
       bind();
       removeQuickStart();
+      installUnifiedCss();
+      unifyRegistrationAndResult();
     }).observe(document.body, { childList: true, subtree: true });
     ['testhp:deep-3d-active','testhp:viewport-manager-ready','testhp:spatial-layer-changed'].forEach(name => {
       window.addEventListener(name, () => setTimeout(() => sync(`event:${name}`), 0));
