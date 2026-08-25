@@ -218,6 +218,38 @@ async def attach_evidence(file: UploadFile = File(...), subject_id: str = Form("
     _save(items)
     return {"status": "attached", "evidence": item, "state": _direct_state(items, item["spatial_node_id"])}
 
+@router.delete("/api/spatial/evidence")
+def delete_evidence(evidence_id: str | None = None, asset_id: str | None = None):
+    """Remove an explicit spatial attachment from the canonical registry.
+
+    Ingestion assets remain available at their owning root; only the explicit
+    spatial evidence link is removed. This prevents a UI-only delete from
+    being resurrected by the canonical registry after refresh.
+    """
+    if not evidence_id and not asset_id:
+        raise HTTPException(status_code=400, detail="evidence_id or asset_id is required")
+    items = _load_raw()
+    removed: list[dict[str, Any]] = []
+    kept: list[dict[str, Any]] = []
+    for item in items:
+        matches_evidence = bool(evidence_id and item.get("evidence_id") == evidence_id)
+        matches_asset = bool(asset_id and item.get("asset_id") == asset_id and item.get("attachment_status") == "explicit")
+        if matches_evidence or matches_asset:
+            removed.append(item)
+        else:
+            kept.append(item)
+    if not removed:
+        raise HTTPException(status_code=404, detail="explicit spatial evidence not found")
+    _save(kept)
+    return {
+        "status": "deleted",
+        "deleted_count": len(removed),
+        "deleted": [
+            {"evidence_id": item.get("evidence_id"), "asset_id": item.get("asset_id"), "filename": item.get("filename")}
+            for item in removed
+        ],
+    }
+
 @router.get("/api/spatial/registry")
 def spatial_registry(subject_id: str = "own_cohort", timepoint: str = "T0", spatial_node_id: str | None = None, debug: bool = False):
     all_items = _load()
