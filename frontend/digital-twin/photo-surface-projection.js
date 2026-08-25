@@ -21,8 +21,8 @@
     return {
       schema: 'surface-projection-v2', target: s.spatial_id, views, coverage,
       method: 'registered-view-projection', calibrated: false,
-      status: views.length >= 2 ? 'ready' : 'incomplete',
-      quality: coverage >= 80 ? 'good' : coverage >= 40 ? 'partial' : 'insufficient',
+      status: views.length >= 1 ? 'ready' : 'incomplete',
+      quality: coverage >= 80 ? 'good' : coverage >= 20 ? 'partial' : 'insufficient',
       generatedAt: new Date().toISOString(),
       boundary: 'Research visualization only; projection does not infer clinical anatomy.'
     };
@@ -64,10 +64,10 @@
 
   async function ensureBuild() {
     const s = await state();
-    if ((s.registered_count || 0) < 2) return null;
+    if ((s.registered_count || 0) < 1) return null;
     let plan = read(PLAN_KEY);
     if (!plan || normalize(plan.target) !== normalize(s.spatial_id) || plan.views?.length !== s.registered_count) {
-      const r = await fetch(`${API}/build`, { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({subject_id:'own_cohort',timepoint:'T0',spatial_id:s.spatial_id,min_views:2}) });
+      const r = await fetch(`${API}/build`, { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({subject_id:'own_cohort',timepoint:'T0',spatial_id:s.spatial_id,min_views:1}) });
       const built = await r.json();
       if (!r.ok) throw new Error(built.detail || 'Nie udało się utworzyć powierzchni.');
       plan = savePlan(built);
@@ -196,7 +196,7 @@
       } else {
         window.__testhpSpatialProjectionDiagnostics = {
           target: target(),
-          reason: 'fewer-than-two-registered-views',
+          reason: 'no-registered-views',
           applied: false
         };
       }
