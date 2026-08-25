@@ -32,7 +32,7 @@
     if ($('photo-stage-clean-css')) return;
     const style = document.createElement('style');
     style.id = 'photo-stage-clean-css';
-    style.textContent = `.p3r-clean{margin-top:12px}.p3r-clean-upload{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:10px 0}.p3r-clean-upload input{display:none}.p3r-clean-upload label{display:inline-flex;align-items:center;cursor:pointer}.p3r-clean-note{margin:8px 0;padding:9px 11px;border-radius:9px;background:rgba(79,111,143,.06);font-size:12px;color:#667085;line-height:1.45}.p3r-clean-summary{display:flex;gap:7px;flex-wrap:wrap;margin:8px 0}.p3r-clean-chip{padding:5px 8px;border-radius:999px;background:#f2f4f7;font-size:11px}.p3r-clean-chip.good{color:#1f6b45;background:#ecfdf3}.p3r-clean-chip.warn{color:#9a6700;background:#fffaeb}.p3r-clean-list{display:grid;gap:7px}.p3r-clean-item{padding:9px 10px;border:1px solid var(--border,#d8dee8);border-radius:9px}.p3r-clean-head{display:flex;justify-content:space-between;gap:8px;align-items:center}.p3r-clean-meta{font-size:12px;color:#667085}.p3r-clean-select{width:100%;margin-top:6px;padding:6px 8px;border:1px solid var(--border,#d8dee8);border-radius:7px;background:var(--panel,#fff);color:inherit}.p3r-clean-actions{display:flex;gap:7px;flex-wrap:wrap;margin-top:7px}.p3r-clean-status{margin-top:9px;font-size:12px;color:#667085}.p3r-clean-status.bad{color:#b42318}`;
+    style.textContent = `.p3r-clean{margin-top:12px}.p3r-clean-upload{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:10px 0}.p3r-clean-upload input{display:none}.p3r-clean-upload label{display:inline-flex;align-items:center;cursor:pointer}.p3r-clean-note{margin:8px 0;padding:9px 11px;border-radius:9px;background:rgba(79,111,143,.06);font-size:12px;color:#667085;line-height:1.45}.p3r-clean-summary{display:flex;gap:7px;flex-wrap:wrap;margin:8px 0}.p3r-clean-chip{padding:5px 8px;border-radius:999px;background:#f2f4f7;font-size:11px}.p3r-clean-chip.good{color:#1f6b45;background:#ecfdf3}.p3r-clean-chip.warn{color:#9a6700;background:#fffaeb}.p3r-clean-list{display:grid;gap:7px}.p3r-clean-item{padding:9px 10px;border:1px solid var(--border,#d8dee8);border-radius:9px}.p3r-clean-head{display:flex;justify-content:space-between;gap:8px;align-items:center}.p3r-clean-meta{font-size:12px;color:#667085}.p3r-clean-select{width:100%;margin-top:6px;padding:6px 8px;border:1px solid var(--border,#d8dee8);border-radius:7px;background:var(--panel,#fff);color:inherit}.p3r-clean-actions{display:flex;gap:7px;flex-wrap:wrap;margin-top:7px}.p3r-clean-status{margin-top:9px;font-size:12px;color:#667085}.p3r-clean-status.bad{color:#b42318}.p3r-clean-unassigned{border-style:dashed;background:rgba(79,111,143,.025)}`;
     document.head.appendChild(style);
   }
 
@@ -42,7 +42,7 @@
     if ($('p3r-clean-root')) return $('p3r-clean-root');
     const root = document.createElement('div');
     root.id = 'p3r-clean-root'; root.className = 'p3r-clean';
-    root.innerHTML = `<div class="p3r-clean-upload"><label class="primary" for="p3r-clean-files">＋ Dodaj zdjęcia</label><input id="p3r-clean-files" type="file" accept="image/jpeg,image/png,image/webp,image/tiff" multiple><button id="p3r-clean-register" type="button">Sprawdź przygotowane widoki</button></div><div id="p3r-clean-note" class="p3r-clean-note"></div><div id="p3r-clean-summary" class="p3r-clean-summary"></div><div id="p3r-clean-list" class="p3r-clean-list"></div><div id="p3r-clean-status" class="p3r-clean-status" aria-live="polite"></div>`;
+    root.innerHTML = `<div class="p3r-clean-upload"><label class="primary" for="p3r-clean-files">＋ Dodaj zdjęcia</label><input id="p3r-clean-files" type="file" accept="image/jpeg,image/png,image/webp,image/tiff" multiple><button id="p3r-clean-register" type="button">Zarejestruj przygotowane widoki</button></div><div id="p3r-clean-note" class="p3r-clean-note"></div><div id="p3r-clean-summary" class="p3r-clean-summary"></div><div id="p3r-clean-list" class="p3r-clean-list"></div><div id="p3r-clean-status" class="p3r-clean-status" aria-live="polite"></div>`;
     const note = panel.querySelector('.p3r-note');
     const card = note?.closest('.p3r-card') || panel.querySelector('.p3r-card') || panel;
     if (note) note.insertAdjacentElement('afterend', root); else card.prepend(root);
@@ -55,8 +55,8 @@
 
   async function load() {
     const t = target();
-    const raw = await request(`/state?subject_id=${encodeURIComponent(t.subject_id)}&timepoint=${encodeURIComponent(t.timepoint)}`);
-    const inputs = withSavedViews((Array.isArray(raw.inputs) ? raw.inputs : []).filter(item => scoped(item, t.spatial_id)));
+    const raw = await request(`/state?subject_id=${encodeURIComponent(t.subject_id)}&timepoint=${encodeURIComponent(t.timepoint)}&spatial_id=${encodeURIComponent(t.spatial_id)}`);
+    const inputs = withSavedViews(Array.isArray(raw.inputs) ? raw.inputs : []);
     state = { ...raw, spatial_id: t.spatial_id, inputs }; render();
   }
 
@@ -69,7 +69,7 @@
         const result = await request('/upload', { method: 'POST', body: form });
         rememberTarget(result.asset_id || result.photo?.asset_id, t.spatial_id);
       }
-      status('Zdjęcia dodane. Teraz przypisz widok i przygotuj każde zdjęcie.'); await load();
+      status('Zdjęcia dodane. Przypisz widok i przygotuj każde zdjęcie.'); await load();
     } catch (error) { status(error.message || 'Nie udało się dodać zdjęć.', true); }
     finally { if ($('p3r-clean-files')) $('p3r-clean-files').value = ''; }
   }
@@ -81,34 +81,57 @@
   });
 
   async function assign(assetId, view) {
-    try { await request('/assign', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ asset_id: assetId, view }) }); rememberTarget(assetId, target().spatial_id); status(`Przypisano widok: ${LABELS[view]}.`); await load(); }
-    catch (error) { status(error.message || 'Nie udało się przypisać widoku.', true); }
+    const t = target();
+    try {
+      await request('/assign', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ asset_id: assetId, view, spatial_id: t.spatial_id, subject_id: t.subject_id, timepoint: t.timepoint }) });
+      rememberTarget(assetId, t.spatial_id); status(`Przypisano widok: ${LABELS[view]}.`); await load();
+    } catch (error) { status(error.message || 'Nie udało się przypisać widoku.', true); }
   }
 
   async function prepare(assetId) {
+    const t = target();
     try {
       const item = state?.inputs?.find(x => x.asset_id === assetId);
-      const savedView = savedViewFor(item);
-      if (savedView) await request('/assign', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ asset_id: assetId, view: savedView }) });
-      status('Przygotowywanie zdjęcia…'); await request(`/prepare/${encodeURIComponent(assetId)}`, { method: 'POST' }); rememberTarget(assetId, target().spatial_id); status('Zdjęcie jest przygotowane.'); await load();
+      const savedView = savedViewFor(item) || item?.view;
+      if (!savedView) { status('Najpierw wybierz widok zdjęcia.', true); return; }
+      await request('/assign', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ asset_id: assetId, view: savedView, spatial_id: t.spatial_id, subject_id: t.subject_id, timepoint: t.timepoint }) });
+      status('Przygotowywanie zdjęcia…');
+      await request(`/prepare/${encodeURIComponent(assetId)}?spatial_id=${encodeURIComponent(t.spatial_id)}&subject_id=${encodeURIComponent(t.subject_id)}&timepoint=${encodeURIComponent(t.timepoint)}`, { method: 'POST' });
+      rememberTarget(assetId, t.spatial_id); status('Zdjęcie jest przygotowane.'); await load();
     }
     catch (error) { status(error.message || 'Nie udało się przygotować zdjęcia.', true); }
   }
 
   async function register() {
-    const t = target(); const prepared = state?.inputs?.filter(x => x.prepared && x.view).length || 0;
-    if (prepared < 2) { status('Przygotuj co najmniej 2 zdjęcia z różnych widoków.', true); return; }
-    try { status('Sprawdzanie przygotowanych widoków…'); const result = await request(`/register?subject_id=${encodeURIComponent(t.subject_id)}&timepoint=${encodeURIComponent(t.timepoint)}`, { method: 'POST' }); status(result.ready_for_projection ? `${result.registered_count || 0} widoków jest gotowych do kolejnego etapu.` : 'Rejestracja wymaga jeszcze uzupełnienia.'); await load(); }
-    catch (error) { status(error.message || 'Nie udało się sprawdzić widoków.', true); }
+    const t = target();
+    const preparedViews = new Set((state?.inputs || []).filter(x => x.prepared && x.view).map(x => x.view));
+    if (preparedViews.size < 2) { status('Przygotuj co najmniej 2 zdjęcia z różnych widoków.', true); return; }
+    try {
+      status('Rejestrujemy przygotowane widoki…');
+      const result = await request('/register', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ subject_id: t.subject_id, timepoint: t.timepoint, spatial_id: t.spatial_id }) });
+      status(result.ready_for_projection ? `${result.registered_count || 0} widoków zarejestrowano. Powierzchnia może przejść do kolejnego etapu.` : 'Rejestracja wymaga jeszcze uzupełnienia.');
+      await load();
+    }
+    catch (error) { status(error.message || 'Nie udało się zarejestrować widoków.', true); }
+  }
+
+  function itemCard(item, view = null, unassigned = false) {
+    const preparedFlag = !!item.prepared, ready = item.registration?.status === 'registered';
+    const currentView = item.view || view || '';
+    return `<div class="p3r-clean-item ${unassigned ? 'p3r-clean-unassigned' : ''}"><div class="p3r-clean-head"><strong>${esc(item.filename || 'Zdjęcie')}</strong><span class="p3r-clean-meta">${ready ? '✓ Zarejestrowane' : preparedFlag ? '✓ Przygotowane' : currentView ? 'Przypisane' : 'Dodane'}</span></div><div class="p3r-clean-meta">${currentView ? `Widok: ${esc(LABELS[currentView] || currentView)}` : 'Nie przypisano jeszcze widoku'}</div><select class="p3r-clean-select" data-asset="${esc(item.asset_id)}"><option value="">Wybierz widok…</option>${VIEWS.map(v => `<option value="${v}" ${v === currentView ? 'selected' : ''}>${LABELS[v]}</option>`).join('')}</select><div class="p3r-clean-actions">${!preparedFlag ? `<button type="button" data-prepare="${esc(item.asset_id)}">Przygotuj zdjęcie</button>` : '<span class="p3r-clean-meta">Zdjęcie gotowe do rejestracji</span>'}</div></div>`;
   }
 
   function render() {
     if (!state || !$('p3r-clean-list')) return;
-    const byView = {}; state.inputs.filter(x => x.view).forEach(x => { byView[x.view] = x; });
-    $('p3r-clean-note').innerHTML = `<strong>Zdjęcia dla:</strong> <code>${esc(state.spatial_id)}</code>. Dodaj co najmniej 2 zdjęcia z różnych stron, przypisz im widoki i przygotuj je.`;
-    const assigned = state.inputs.filter(x => x.view && x.view !== 'unknown').length, prepared = state.inputs.filter(x => x.prepared && x.view && x.view !== 'unknown').length, registered = state.inputs.filter(x => x.registration?.status === 'registered').length;
-    $('p3r-clean-summary').innerHTML = `<span class="p3r-clean-chip">${assigned} / 5 przypisanych</span><span class="p3r-clean-chip ${prepared >= 2 ? 'good' : 'warn'}">${prepared} / 5 przygotowanych</span><span class="p3r-clean-chip ${registered >= 2 ? 'good' : 'warn'}">${registered} / 5 gotowych</span>`;
-    $('p3r-clean-list').innerHTML = VIEWS.map(view => { const item = byView[view]; if (!item) return `<div class="p3r-clean-item"><div class="p3r-clean-head"><strong>${LABELS[view]}</strong><span class="p3r-clean-meta">Brak zdjęcia</span></div>`; const preparedFlag = !!item.prepared, ready = item.registration?.status === 'registered'; return `<div class="p3r-clean-item"><div class="p3r-clean-head"><strong>${LABELS[view]}</strong><span class="p3r-clean-meta">${ready ? '✓ Gotowe' : preparedFlag ? '✓ Przygotowane' : 'Dodane'}</span></div><div class="p3r-clean-meta">${esc(item.filename || 'Zdjęcie')}</div><select class="p3r-clean-select" data-asset="${esc(item.asset_id)}"><option value="">Wybierz widok…</option>${VIEWS.map(v => `<option value="${v}" ${v === view ? 'selected' : ''}>${LABELS[v]}</option>`).join('')}</select><div class="p3r-clean-actions">${!preparedFlag ? `<button type="button" data-prepare="${esc(item.asset_id)}">Przygotuj zdjęcie</button>` : '<span class="p3r-clean-meta">Zdjęcie gotowe do dalszego etapu</span>'}</div></div>`; }).join('');
+    const assignedItems = state.inputs.filter(x => x.view && VIEWS.includes(x.view));
+    const unassignedItems = state.inputs.filter(x => !x.view || !VIEWS.includes(x.view));
+    const byView = {}; assignedItems.forEach(x => { byView[x.view] = x; });
+    $('p3r-clean-note').innerHTML = `<strong>Zdjęcia dla:</strong> <code>${esc(state.spatial_id)}</code>. Dodaj co najmniej 2 zdjęcia z różnych stron dłoni, przypisz im różne widoki i przygotuj je.`;
+    const assigned = assignedItems.length, prepared = new Set(state.inputs.filter(x => x.prepared && x.view && VIEWS.includes(x.view)).map(x => x.view)).size, registered = new Set(state.inputs.filter(x => x.registration?.status === 'registered' && x.view).map(x => x.view)).size;
+    $('p3r-clean-summary').innerHTML = `<span class="p3r-clean-chip">${assigned} / 5 widoków przypisanych</span><span class="p3r-clean-chip ${prepared >= 2 ? 'good' : 'warn'}">${prepared} / 5 widoków przygotowanych</span><span class="p3r-clean-chip ${registered >= 2 ? 'good' : 'warn'}">${registered} / 5 widoków zarejestrowanych</span>`;
+    const unassignedHtml = unassignedItems.length ? `<div class="p3r-clean-item p3r-clean-unassigned"><div class="p3r-clean-head"><strong>Zdjęcia bez widoku</strong><span class="p3r-clean-meta">${unassignedItems.length}</span></div><div class="p3r-clean-meta">Wybierz widok dla każdego zdjęcia, aby można było je przygotować.</div></div>${unassignedItems.map(item => itemCard(item, null, true)).join('')}` : '';
+    const viewsHtml = VIEWS.map(view => { const item = byView[view]; return item ? itemCard(item, view) : `<div class="p3r-clean-item"><div class="p3r-clean-head"><strong>${LABELS[view]}</strong><span class="p3r-clean-meta">Brak zdjęcia</span></div><div class="p3r-clean-meta">Dodaj zdjęcie dla tego widoku.</div></div>`; }).join('');
+    $('p3r-clean-list').innerHTML = unassignedHtml + viewsHtml;
     $('p3r-clean-list').querySelectorAll('select[data-asset]').forEach(el => el.addEventListener('change', () => { if (el.value) assign(el.dataset.asset, el.value); }));
     $('p3r-clean-list').querySelectorAll('[data-prepare]').forEach(el => el.addEventListener('click', () => prepare(el.dataset.prepare)));
   }

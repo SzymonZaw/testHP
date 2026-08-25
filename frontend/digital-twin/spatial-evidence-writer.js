@@ -6,6 +6,7 @@
   const VIEW_STORE = 'digitalTwinEvidenceUX.views.v1';
   const SURFACE = 'digitalTwinHandSurface.v1';
   let syncing = false;
+  const pendingDeletes = new Set();
 
   const canonical = value => {
     const raw = typeof value === 'string'
@@ -27,6 +28,71 @@
   const rawSetItem = localStorage.setItem.bind(localStorage);
   const rawGetItem = localStorage.getItem.bind(localStorage);
 
+  const evidenceBackendKey = item => item?.backendEvidenceId || item?.backend_evidence_id || item?.evidence_id || null;
+  const evidenceBackendAsset = item => item?.backendAssetId || item?.backend_asset_id || item?.asset_id || null;
+
+  const removeDeletedEvidenceLocally = (evidenceId, assetId) => {
+    try {
+      const store = read(EVIDENCE);
+      if (!Array.isArray(store.evidence)) return;
+      const filtered = store.evidence.filter(item => {
+        const itemEvidenceId = evidenceBackendKey(item);
+        const itemAssetId = evidenceBackendAsset(item);
+        return !(evidenceId && itemEvidenceId === evidenceId) && !(assetId && itemAssetId === assetId);
+      });
+      if (filtered.length !== store.evidence.length) {
+        rawSetItem(EVIDENCE, JSON.stringify({ ...store, evidence: filtered }));
+        window.dispatchEvent(new CustomEvent('testhp:evidence-ux-refresh', { detail: { source: 'canonical-delete', evidence_id: evidenceId, asset_id: assetId } }));
+      }
+    } catch (error) {
+      console.warn('[Twin] failed to remove deleted evidence from local UX cache', error);
+    }
+  };
+
+  const syncRemovedEvidence = (beforeEvidence, afterEvidence) => {
+    const before = Array.isArray(beforeEvidence) ? beforeEvidence : [];
+    const after = Array.isArray(afterEvidence) ? afterEvidence : [];
+    // The UI historically represented deletion in two ways: physically removing
+    // the item or setting archived:true. Treat both as a canonical deletion.
+    // Otherwise an archived item survives in the backend and can reappear when
+    // the registry bridge rebuilds the UX store after a refresh.
+    const afterActive = after.filter(item => !item?.archived);
+    const afterEvidenceIds = new Set(afterActive.map(evidenceBackendKey).filter(Boolean));
+    const afterAssetIds = new Set(afterActive.map(evidenceBackendAsset).filter(Boolean));
+    const removed = before.filter(item => {
+      if (item?.archived) return true;
+      const evidenceId = evidenceBackendKey(item);
+      const assetId = evidenceBackendAsset(item);
+      if (!evidenceId && !assetId) return false;
+      return (!evidenceId || !afterEvidenceIds.has(evidenceId)) && (!assetId || !afterAssetIds.has(assetId));
+    });
+    for (const item of removed) {
+      const evidenceId = evidenceBackendKey(item);
+      const assetId = evidenceBackendAsset(item);
+      if (!evidenceId && !assetId) continue;
+      const key = `${evidenceId || ''}|${assetId || ''}`;
+      if (pendingDeletes.has(key)) continue;
+      pendingDeletes.add(key);
+      const params = new URLSearchParams();
+      if (evidenceId) params.set('evidence_id', evidenceId);
+      if (assetId) params.set('asset_id', assetId);
+      fetch(`/api/spatial/evidence?${params.toString()}`, { method: 'DELETE', cache: 'no-store', keepalive: true })
+        .then(async response => {
+          if (!response.ok && response.status !== 404) {
+            const body = await response.text().catch(() => '');
+            throw new Error(body || `HTTP ${response.status}`);
+          }
+          removeDeletedEvidenceLocally(evidenceId, assetId);
+          window.dispatchEvent(new CustomEvent('testhp:evidence-registry-deleted', { detail: { evidence_id: evidenceId, asset_id: assetId } }));
+        })
+        .catch(error => {
+          window.dispatchEvent(new CustomEvent('testhp:evidence-registry-delete-failed', { detail: { evidence_id: evidenceId, asset_id: assetId, error: String(error?.message || error) } }));
+          console.warn('[Twin] canonical evidence delete failed', error);
+        })
+        .finally(() => pendingDeletes.delete(key));
+    }
+  };
+
   const persistViewsFrom = evidence => {
     const saved = read(VIEW_STORE);
     const views = { ...(saved && typeof saved === 'object' ? saved : {}) };
@@ -45,14 +111,13 @@
     });
   };
 
-  // EVIDENCE is rewritten by several parts of the UI and by the registry bridge.
-  // Capture view metadata at the storage boundary, before another writer can
-  // replace the UX record with a backend-shaped record that has no `view` field.
   localStorage.setItem = (key, value) => {
     if (key === EVIDENCE) {
       try {
+        const previous = JSON.parse(rawGetItem(EVIDENCE) || '{}');
         const incoming = JSON.parse(value || '{}');
         if (Array.isArray(incoming.evidence)) {
+          syncRemovedEvidence(previous.evidence, incoming.evidence);
           persistViewsFrom(incoming.evidence);
           incoming.evidence = mergeSavedViews(incoming.evidence);
           value = JSON.stringify(incoming);

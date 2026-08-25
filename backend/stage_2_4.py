@@ -23,6 +23,8 @@ from .spatial_contract import canonical_spatial_id
 
 ROOT = Path(__file__).resolve().parents[1]
 REGISTRY_PATH = ROOT / "data" / "registry" / "spatial_evidence.json"
+ASSET_REGISTRY_PATH = ROOT / "data" / "registry" / "assets.json"
+RAW_ROOT = ROOT / "data" / "raw"
 router = APIRouter(tags=["digital-twin-stages-2-4"])
 LEVELS = {"macro": 0, "tissue": 1, "cellular": 2, "cell": 3}
 SIGNAL_LAYERS = {
@@ -217,6 +219,85 @@ async def attach_evidence(file: UploadFile = File(...), subject_id: str = Form("
     if existing is None: items.append(item)
     _save(items)
     return {"status": "attached", "evidence": item, "state": _direct_state(items, item["spatial_node_id"])}
+
+def _delete_asset_if_unreferenced(asset_id: str, removed_items: list[dict[str, Any]], remaining_items: list[dict[str, Any]]) -> dict[str, Any]:
+    """Delete the uploaded asset when no canonical evidence still references it."""
+    if not asset_id or any(i.get("asset_id") == asset_id for i in remaining_items):
+        return {"asset_id": asset_id, "deleted": False, "reason": "asset_still_referenced"}
+
+    asset_record = None
+    try:
+        registry = json.loads(ASSET_REGISTRY_PATH.read_text(encoding="utf-8")) if ASSET_REGISTRY_PATH.exists() else []
+        kept_registry = []
+        for record in registry:
+            if str(record.get("asset_id")) == asset_id:
+                asset_record = record
+            else:
+                kept_registry.append(record)
+        if asset_record is not None:
+            tmp = ASSET_REGISTRY_PATH.with_suffix(".tmp")
+            tmp.write_text(json.dumps(kept_registry, indent=2, ensure_ascii=False), encoding="utf-8")
+            tmp.replace(ASSET_REGISTRY_PATH)
+    except (OSError, json.JSONDecodeError):
+        asset_record = None
+
+    path_value = next((i.get("path") for i in removed_items if i.get("asset_id") == asset_id and i.get("path")), None) or (asset_record or {}).get("path")
+    deleted_file = False
+    if path_value:
+        try:
+            path = (ROOT / str(path_value)).resolve()
+            raw_root = RAW_ROOT.resolve()
+            path.relative_to(raw_root)
+            if path.is_file():
+                path.unlink()
+                deleted_file = True
+        except (OSError, ValueError):
+            pass
+
+    return {"asset_id": asset_id, "deleted": True, "registry_removed": asset_record is not None, "file_removed": deleted_file}
+
+@router.delete("/api/spatial/evidence")
+def delete_evidence(evidence_id: str | None = None, asset_id: str | None = None):
+    """Delete the spatial evidence and its owned uploaded asset.
+
+    The old implementation removed only the explicit spatial record. That left
+    the ingestion asset in assets.json/data/raw, so the registry bridge could
+    recreate a ``registered_root`` record after refresh. Deletion is now
+    consistent: once the asset has no remaining canonical evidence references,
+    its ingestion registry record and file are removed too.
+    """
+    if not evidence_id and not asset_id:
+        raise HTTPException(status_code=400, detail="evidence_id or asset_id is required")
+
+    items = _load_raw()
+    removed: list[dict[str, Any]] = []
+    kept: list[dict[str, Any]] = []
+    for item in items:
+        matches_evidence = bool(evidence_id and item.get("evidence_id") == evidence_id and item.get("attachment_status") == "explicit")
+        matches_asset = bool(asset_id and item.get("asset_id") == asset_id and item.get("attachment_status") == "explicit")
+        if matches_evidence or matches_asset:
+            removed.append(item)
+        else:
+            kept.append(item)
+
+    if not removed:
+        raise HTTPException(status_code=404, detail="explicit spatial evidence not found")
+
+    _save(kept)
+    deleted_assets = []
+    candidate_assets = {str(item.get("asset_id")) for item in removed if item.get("asset_id")}
+    for candidate in candidate_assets:
+        deleted_assets.append(_delete_asset_if_unreferenced(candidate, removed, kept))
+
+    return {
+        "status": "deleted",
+        "deleted_count": len(removed),
+        "deleted": [
+            {"evidence_id": item.get("evidence_id"), "asset_id": item.get("asset_id"), "filename": item.get("filename")}
+            for item in removed
+        ],
+        "deleted_assets": deleted_assets,
+    }
 
 @router.get("/api/spatial/registry")
 def spatial_registry(subject_id: str = "own_cohort", timepoint: str = "T0", spatial_node_id: str | None = None, debug: bool = False):
