@@ -6,6 +6,7 @@
   const VIEW_STORE = 'digitalTwinEvidenceUX.views.v1';
   const SURFACE = 'digitalTwinHandSurface.v1';
   let syncing = false;
+  const pendingDeletes = new Set();
 
   const canonical = value => {
     const raw = typeof value === 'string'
@@ -26,6 +27,45 @@
   const read = key => { try { return JSON.parse(localStorage.getItem(key) || '{}'); } catch { return {}; } };
   const rawSetItem = localStorage.setItem.bind(localStorage);
   const rawGetItem = localStorage.getItem.bind(localStorage);
+
+  const evidenceBackendKey = item => item?.backendEvidenceId || item?.backend_evidence_id || item?.evidence_id || null;
+  const evidenceBackendAsset = item => item?.backendAssetId || item?.backend_asset_id || item?.asset_id || null;
+
+  const syncRemovedEvidence = (beforeEvidence, afterEvidence) => {
+    const before = Array.isArray(beforeEvidence) ? beforeEvidence : [];
+    const after = Array.isArray(afterEvidence) ? afterEvidence : [];
+    const afterEvidenceIds = new Set(after.map(evidenceBackendKey).filter(Boolean));
+    const afterAssetIds = new Set(after.map(evidenceBackendAsset).filter(Boolean));
+    const removed = before.filter(item => {
+      const evidenceId = evidenceBackendKey(item);
+      const assetId = evidenceBackendAsset(item);
+      if (!evidenceId && !assetId) return false;
+      return (!evidenceId || !afterEvidenceIds.has(evidenceId)) && (!assetId || !afterAssetIds.has(assetId));
+    });
+    for (const item of removed) {
+      const evidenceId = evidenceBackendKey(item);
+      const assetId = evidenceBackendAsset(item);
+      const key = `${evidenceId || ''}|${assetId || ''}`;
+      if (pendingDeletes.has(key)) continue;
+      pendingDeletes.add(key);
+      const params = new URLSearchParams();
+      if (evidenceId) params.set('evidence_id', evidenceId);
+      if (assetId) params.set('asset_id', assetId);
+      fetch(`/api/spatial/evidence?${params.toString()}`, { method: 'DELETE', cache: 'no-store', keepalive: true })
+        .then(async response => {
+          if (!response.ok && response.status !== 404) {
+            const body = await response.text().catch(() => '');
+            throw new Error(body || `HTTP ${response.status}`);
+          }
+          window.dispatchEvent(new CustomEvent('testhp:evidence-registry-deleted', { detail: { evidence_id: evidenceId, asset_id: assetId } }));
+        })
+        .catch(error => {
+          window.dispatchEvent(new CustomEvent('testhp:evidence-registry-delete-failed', { detail: { evidence_id: evidenceId, asset_id: assetId, error: String(error?.message || error) } }));
+          console.warn('[Twin] canonical evidence delete failed', error);
+        })
+        .finally(() => pendingDeletes.delete(key));
+    }
+  };
 
   const persistViewsFrom = evidence => {
     const saved = read(VIEW_STORE);
@@ -51,8 +91,10 @@
   localStorage.setItem = (key, value) => {
     if (key === EVIDENCE) {
       try {
+        const previous = JSON.parse(rawGetItem(EVIDENCE) || '{}');
         const incoming = JSON.parse(value || '{}');
         if (Array.isArray(incoming.evidence)) {
+          syncRemovedEvidence(previous.evidence, incoming.evidence);
           persistViewsFrom(incoming.evidence);
           incoming.evidence = mergeSavedViews(incoming.evidence);
           value = JSON.stringify(incoming);
