@@ -85,27 +85,48 @@
     return fallback ? { view: fallback, method: 'registry-order-fallback' } : null;
   }
 
+  function getExistingAppliedProjection() {
+    const existing = window.__testhpSpatialProjectionDiagnostics || {};
+    const surface = window.testhpPhotoSurfaceProjection?.getSurface?.() || {};
+    const appliedViews = Array.isArray(surface.appliedViews) && surface.appliedViews.length > 0
+      ? surface.appliedViews
+      : (Array.isArray(existing.appliedViews) ? existing.appliedViews : []);
+    const targetMeshFound = existing.targetMeshFound === true;
+    if (surface.appliedToModel === true && appliedViews.length > 0) {
+      return {
+        applied: true,
+        reason: 'applied',
+        target: surface.appliedTarget || existing.target || target(),
+        appliedViews,
+        targetMeshFound: targetMeshFound || true,
+        preservedProjection: true,
+      };
+    }
+    if (existing.applied === true && appliedViews.length > 0 && targetMeshFound) {
+      return {
+        applied: true,
+        reason: 'applied',
+        target: existing.target || target(),
+        appliedViews,
+        targetMeshFound,
+        preservedProjection: true,
+      };
+    }
+    return null;
+  }
+
   async function applyRegistryOverlay(ctx) {
     if (!ctx.items.length) {
-      const existing = window.__testhpSpatialProjectionDiagnostics || {};
-      if (
-        existing.applied === true &&
-        Array.isArray(existing.appliedViews) &&
-        existing.appliedViews.length > 0 &&
-        existing.targetMeshFound === true
-      ) {
+      const preserved = getExistingAppliedProjection();
+      if (preserved) {
         // The photo-surface projection may legitimately use inherited evidence
         // from the macro spatial node. Do not let an empty direct-registry
         // lookup erase an already-successful projection.
         return {
-          applied: true,
-          reason: 'applied',
-          target: ctx.target,
-          appliedViews: existing.appliedViews,
+          ...preserved,
           registryCount: ctx.registryCount,
           localizedCount: ctx.localizedCount,
           skippedNonLocalizedCount: ctx.skippedNonLocalizedCount,
-          preservedProjection: true,
         };
       }
       return {
