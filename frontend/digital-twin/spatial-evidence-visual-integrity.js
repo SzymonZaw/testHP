@@ -66,9 +66,9 @@
 
   async function run() {
     try {
-      // This module is an observer. Projection synchronization belongs to
-      // photo-surface-projection.js; calling sync() here creates a feedback
-      // loop because projection emits testhp:hand-surface-ready after apply.
+      // Observer only: projection synchronization belongs to
+      // photo-surface-projection.js. Calling sync() here would feed the
+      // projection-ready event back into the projection pipeline.
       const s=await state();
       const q=stage5Quality(s), p=stage6Projection(s), pkg=stage7Package(s,q,p);
       const result={target:target(),stage5:q,stage6:p,stage7:pkg,generatedAt:new Date().toISOString()};
@@ -90,25 +90,46 @@
     el.innerHTML=`<strong>Integralność wizualna</strong><br>${ok(5)} Etap 5: jakość widoków · ${ok(6)} Etap 6: projekcja · ${ok(7)} Etap 7: pakiet bliźniaka`;
   }
 
+  // Event storms are expected during bootstrap because several independent
+  // bridges announce the same state. Keep one timer only, debounce bursts,
+  // and remember an event that arrives while a run is in progress. The old
+  // implementation cancelled/recreated the timer on every event, producing
+  // repeated timer creation and unnecessary state fetches under noisy boot cycles.
   let scheduledRun = null;
   let running = false;
   let rerunRequested = false;
-  function scheduleRun(delay=250) {
-    if (scheduledRun !== null) clearTimeout(scheduledRun);
+  let lastRunAt = 0;
+  const DEBOUNCE_MS = 250;
+  const MIN_RUN_GAP_MS = 500;
+
+  function scheduleRun(delay=DEBOUNCE_MS) {
+    if (running) {
+      rerunRequested = true;
+      return;
+    }
+    if (scheduledRun !== null) return;
+
+    const wait = Math.max(delay, MIN_RUN_GAP_MS - (Date.now() - lastRunAt));
     scheduledRun = setTimeout(async () => {
       scheduledRun = null;
       if (running) { rerunRequested = true; return; }
       running = true;
-      try { await run(); } finally {
+      try {
+        lastRunAt = Date.now();
+        await run();
+      } finally {
         running = false;
-        if (rerunRequested) { rerunRequested = false; scheduleRun(250); }
+        if (rerunRequested) {
+          rerunRequested = false;
+          scheduleRun(DEBOUNCE_MS);
+        }
       }
-    }, delay);
+    }, wait);
   }
 
   window.testhpSpatialVisualIntegrity={run,getDiagnostics:()=>window.__testhpSpatialVisualIntegrity||null};
-  window.addEventListener('testhp:hand-surface-ready',()=>scheduleRun(250));
-  window.addEventListener('testhp:evidence-registry-synced',()=>scheduleRun(250));
-  window.addEventListener('testhp:spatial-contract-changed',()=>scheduleRun(250));
+  window.addEventListener('testhp:hand-surface-ready',()=>scheduleRun());
+  window.addEventListener('testhp:evidence-registry-synced',()=>scheduleRun());
+  window.addEventListener('testhp:spatial-contract-changed',()=>scheduleRun());
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',()=>scheduleRun(900),{once:true});else scheduleRun(900);
 })();
