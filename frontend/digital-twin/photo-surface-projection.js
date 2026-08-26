@@ -24,9 +24,6 @@
     const direct = await fetchState(t);
     if (t === 'hand' || direct.registered_count > 0 || direct.prepared_count > 0 || direct.reconstruction) return direct;
 
-    // A leaf such as hand/palm is a projection target, not a separate
-    // photographic-ingestion scope. Reuse the nearest registered ancestor
-    // without promoting/copying its evidence into the child registry.
     const ancestor = await fetchState('hand');
     if (ancestor.registered_count > 0 || ancestor.prepared_count > 0 || ancestor.reconstruction) {
       return {
@@ -197,6 +194,9 @@
     window.__testhpSpatialProjectionDiagnostics.appliedViews = applied; window.__testhpSpatialProjectionDiagnostics.reason = 'applied';
     renderStatus(surface, ctx.plan);
     try { manager.render?.(); } catch {}
+    // Notify observers that the model overlay is ready. Do not feed this event
+    // back into sync(): doing so would make applyOverlay -> ready -> sync ->
+    // applyOverlay an endless loop.
     window.dispatchEvent(new CustomEvent('testhp:hand-surface-ready', { detail: { applied: true, views: applied, target: spatialTarget } }));
     return true;
   }
@@ -217,6 +217,8 @@
   window.addEventListener('testhp:spatial-contract-changed', () => setTimeout(sync, 150));
   window.addEventListener('testhp:viewport-manager-ready', () => setTimeout(sync, 150));
   window.addEventListener('testhp:spatial-target-changed', () => setTimeout(sync, 150));
+  // Intentionally no sync listener for testhp:hand-surface-ready: that event
+  // is emitted by applyOverlay itself and must remain an output, not an input.
   window.addEventListener('testhp:hand-surface-ready', () => setTimeout(() => { const p=read(PLAN_KEY), s=read(SURFACE_KEY); if(p) renderStatus(s,p); }, 0));
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', () => setTimeout(sync, 600), { once:true }); else setTimeout(sync, 600);
 })();
