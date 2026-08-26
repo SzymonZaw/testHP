@@ -100,7 +100,7 @@ def test_spatial_registry_uses_stable_exact_match_reason(monkeypatch):
         debug=True,
     )
     assert payload["count"] == 1
-    assert payload["debug"]["decisions"][0]["reason"] == "EXACT_SPATIAL_ID_MATCH"
+    assert payload["debug"]["decisions"][0]["reason"] == "EXACT_SPATIAL_NODE_MATCH"
 
 
 def test_visual_overlay_only_consumes_localized_registry_evidence():
