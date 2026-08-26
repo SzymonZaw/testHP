@@ -162,8 +162,9 @@
     manager?.active?.spatial_id || manager?.active?.spatialId || manager?.spatialTarget || current.spatial_id
   );
 
-  const syncCompatibility = () => {
+  const syncCompatibility = ({ notify = false, forceNotify = false } = {}) => {
     const manager = window.spatialViewportManager;
+    const previous = current;
     const observed = managerTarget(manager);
     const canonical = canonicalTargetId(observed) || managerSpatialId(manager) || current.spatial_id;
 
@@ -191,12 +192,21 @@
       document.body.dataset.spatialTarget = canonical;
     }
     migrateEvidenceTargets();
-    window.dispatchEvent(new CustomEvent('digital-twin:target-changed', { detail: { id: canonical, spatial_id: canonical, target: current.label, level: current.level } }));
+
+    const changed = previous.spatial_id !== current.spatial_id || previous.level !== current.level;
+    if (notify && (forceNotify || changed)) {
+      window.dispatchEvent(new CustomEvent('digital-twin:target-changed', { detail: { id: canonical, spatial_id: canonical, target: current.label, level: current.level } }));
+    }
+    return changed;
   };
 
   const publish = detail => {
-    current = normalizeTarget(detail);
+    const next = normalizeTarget(detail);
+    const changed = next.spatial_id !== current.spatial_id || next.level !== current.level;
+    current = next;
     syncCompatibility();
+    if (!changed) return current;
+    window.dispatchEvent(new CustomEvent('digital-twin:target-changed', { detail: { id: current.spatial_id, spatial_id: current.spatial_id, target: current.label, level: current.level } }));
     window.dispatchEvent(new CustomEvent('testhp:spatial-contract-changed', { detail: current }));
     return current;
   };
@@ -220,9 +230,9 @@
 
   window.addEventListener('testhp:spatial-layer-changed', event => publish(event.detail || {}));
   window.addEventListener('testhp:spatial-contract-request', event => event?.detail?.callback?.(current));
-  window.addEventListener('testhp:viewport-manager-ready', syncCompatibility);
-  window.addEventListener('testhp:spatial-target-changed', syncCompatibility);
-  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', syncCompatibility, { once: true });
-  else setTimeout(syncCompatibility, 0);
+  window.addEventListener('testhp:viewport-manager-ready', () => syncCompatibility({ notify: true, forceNotify: true }));
+  window.addEventListener('testhp:spatial-target-changed', () => syncCompatibility({ notify: true }));
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', () => syncCompatibility({ notify: true, forceNotify: true }), { once: true });
+  else setTimeout(() => syncCompatibility({ notify: true, forceNotify: true }), 0);
   publish(current);
 })();

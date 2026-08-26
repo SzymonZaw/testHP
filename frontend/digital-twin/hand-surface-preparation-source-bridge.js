@@ -53,11 +53,34 @@
       if (status) { status.textContent = '✓ Zdjęcie jest już przygotowane.'; status.className = 'hs-prep-status hs-prep-good'; }
     } catch {}
   }
-  const schedule = () => setTimeout(sync, 100);
+
+  // Do not schedule from every DOM mutation. The previous body-wide observer
+  // created a new 100 ms timeout for essentially every render mutation,
+  // including mutations caused by this bridge itself. That produced hundreds
+  // of pending timers and a feedback loop in the preparation UI.
+  let syncTimer = null;
+  const schedule = () => {
+    if (syncTimer !== null) return;
+    syncTimer = setTimeout(() => {
+      syncTimer = null;
+      void sync();
+    }, 100);
+  };
+
   document.addEventListener('change', e => { if (e.target?.id === 'hs-prep-source') schedule(); });
   window.addEventListener('testhp:evidence-updated', schedule);
   window.addEventListener('testhp:evidence-attached', schedule);
-  new MutationObserver(() => schedule()).observe(document.body, {childList:true, subtree:true});
+
+  // Keep dynamic-page support without reacting to unrelated render mutations.
+  // In particular, changes to #hs-prep-preview/result/status must not retrigger
+  // sync after sync() updates those elements.
+  const isPrepSourceNode = node => {
+    if (!(node instanceof Element)) return false;
+    return node.id === 'hs-prep-source' || !!node.querySelector?.('#hs-prep-source');
+  };
+  new MutationObserver(mutations => {
+    if (mutations.some(m => [...m.addedNodes, ...m.removedNodes].some(isPrepSourceNode))) schedule();
+  }).observe(document.body, {childList:true, subtree:true});
 
   // Geometry is a first-class part of the unified surface workflow. Load the
   // canonical bridge here because this source bridge is already injected by
@@ -66,6 +89,16 @@
     const script = document.createElement('script');
     script.id = 'hand-surface-geometry-canonical-bridge';
     script.src = '/digital-twin/hand-surface-geometry-canonical-bridge.js?v=canonical-geometry-2';
+    document.head.appendChild(script);
+  }
+
+  // The mode switch lives in the same digital-twin bundle. The file already
+  // exists on this feature branch; explicitly load it from the public route
+  // used by the frontend so the UI can actually expose the two geometry modes.
+  if (!document.getElementById('hand-geometry-mode-switch')) {
+    const script = document.createElement('script');
+    script.id = 'hand-geometry-mode-switch';
+    script.src = '/digital-twin/hand-geometry-mode-switch.js?v=geometry-mode-1';
     document.head.appendChild(script);
   }
 })();

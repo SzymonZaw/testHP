@@ -3,9 +3,15 @@
   if (!canvas) return;
 
   const loadGeometryBridge = () => {
-    if (document.querySelector('script[data-canonical-geometry-bridge]')) return;
+    const canonicalPath = '/digital-twin/hand-surface-geometry-canonical-bridge.js';
+    const alreadyLoaded = [...document.scripts].some(script => {
+      if (!script.src) return false;
+      try { return new URL(script.src, location.href).pathname === canonicalPath; }
+      catch { return script.src.split('?')[0] === canonicalPath; }
+    });
+    if (alreadyLoaded) return;
     const script = document.createElement('script');
-    script.src = '/digital-twin/hand-surface-geometry-canonical-bridge.js?v=canonical-geometry-1';
+    script.src = `${canonicalPath}?v=canonical-geometry-1`;
     script.dataset.canonicalGeometryBridge = 'true';
     document.body.appendChild(script);
   };
