@@ -68,4 +68,14 @@
     script.src = '/digital-twin/hand-surface-geometry-canonical-bridge.js?v=canonical-geometry-2';
     document.head.appendChild(script);
   }
+
+  // The mode switch lives in the same digital-twin bundle. The file already
+  // exists on this feature branch; explicitly load it from the public route
+  // used by the frontend so the UI can actually expose the two geometry modes.
+  if (!document.getElementById('hand-geometry-mode-switch')) {
+    const script = document.createElement('script');
+    script.id = 'hand-geometry-mode-switch';
+    script.src = '/digital-twin/hand-geometry-mode-switch.js?v=geometry-mode-1';
+    document.head.appendChild(script);
+  }
 })();
