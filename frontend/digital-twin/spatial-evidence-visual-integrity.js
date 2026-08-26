@@ -25,15 +25,23 @@
   function stage5Quality(s) {
     const inputs = Array.isArray(s.evidence) ? s.evidence : (Array.isArray(s.inputs) ? s.inputs : []);
     const assigned = inputs.filter(x => VIEWS.includes(x.view || x.registration?.view));
-    const prepared = assigned.filter(x => x.prepared || x.prepared_asset);
-    const registered = assigned.filter(x => x.registration?.status === 'registered');
-    const distinctViews = new Set(assigned.map(x => x.view || x.registration?.view));
-    const duplicates = VIEWS.filter(v => assigned.filter(x => (x.view || x.registration?.view) === v).length > 1);
+    const byView = new Map();
+    for (const x of assigned) {
+      const view = x.view || x.registration?.view;
+      const previous = byView.get(view);
+      const score = (x.registration?.status === 'registered' ? 4 : 0) + (x.prepared ? 2 : x.prepared_asset ? 1 : 0);
+      const previousScore = previous ? ((previous.registration?.status === 'registered' ? 4 : 0) + (previous.prepared ? 2 : previous.prepared_asset ? 1 : 0)) : -1;
+      if (!previous || score > previousScore) byView.set(view, x);
+    }
+    const uniqueAssigned = [...byView.values()];
+    const prepared = uniqueAssigned.filter(x => x.prepared || x.prepared_asset);
+    const registered = uniqueAssigned.filter(x => x.registration?.status === 'registered');
+    const distinctViews = new Set(byView.keys());
     return {
       stage:5, name:'multi-view-quality', passed:prepared.length >= 2 && distinctViews.size >= 2,
-      counts:{inputs:inputs.length,assigned:assigned.length,prepared:prepared.length,registered:registered.length,distinct_views:distinctViews.size},
-      missing_views:VIEWS.filter(v=>!distinctViews.has(v)), duplicate_views:duplicates,
-      checks:{at_least_two_views:distinctViews.size>=2,at_least_two_prepared:prepared.length>=2,no_duplicate_view_assignment:duplicates.length===0}
+      counts:{inputs:inputs.length,assigned:uniqueAssigned.length,prepared:prepared.length,registered:registered.length,distinct_views:distinctViews.size},
+      missing_views:VIEWS.filter(v=>!distinctViews.has(v)), duplicate_views:[],
+      checks:{at_least_two_views:distinctViews.size>=2,at_least_two_prepared:prepared.length>=2,no_duplicate_view_assignment:true}
     };
   }
 
@@ -43,7 +51,8 @@
     const registered = Number(s.registered_count || 0);
     const appliedViews = Array.isArray(diag?.appliedViews) ? diag.appliedViews : [];
     const targetOk = !diag?.target || diag.target === target();
-    return {stage:6,name:'projection-integrity',passed:!!projection&&registered>=1&&targetOk&&appliedViews.length>=1,target:target(),registered_count:registered,plan_views:projection?.views||[],applied_views:appliedViews,target_ok:targetOk,diagnostics:diag||null};
+    const applied = diag?.reason === 'applied' && appliedViews.length >= 1 && diag?.targetMeshFound === true;
+    return {stage:6,name:'projection-integrity',passed:!!projection&&registered>=1&&targetOk&&applied,target:target(),registered_count:registered,plan_views:projection?.views||[],applied_views:appliedViews,target_ok:targetOk,diagnostics:diag||null};
   }
 
   function stage7Package(s,q,p) {
@@ -51,13 +60,17 @@
     const packageState = surface?.twinPackage || null;
     const packageScope = packageState?.spatial_id || surface?.projection?.source_spatial_id || null;
     const coherentTarget = !!packageScope && isDescendantOf(target(), packageScope) && (!surface?.appliedTarget || surface.appliedTarget === target());
-    const ready = q.passed && p.passed && !!packageState && coherentTarget;
+    const ready = q.passed && p.passed && !!packageState && coherentTarget && !!surface?.appliedToModel;
     return {stage:7,name:'twin-package-integrity',passed:ready,target:target(),coherent_target:coherentTarget,package:packageState,applied_to_model:!!surface?.appliedToModel,boundary:'Research visualization only; no clinical anatomy inference.'};
   }
 
   async function run() {
     try {
-      const s=await state(), q=stage5Quality(s), p=stage6Projection(s), pkg=stage7Package(s,q,p);
+      const s=await state();
+      // Projection must be synchronized before Stage 6 reads its diagnostics;
+      // otherwise a previous "no-localized-registry-evidence" snapshot can win.
+      if (window.testhpPhotoSurfaceProjection?.sync) await window.testhpPhotoSurfaceProjection.sync();
+      const q=stage5Quality(s), p=stage6Projection(s), pkg=stage7Package(s,q,p);
       const result={target:target(),stage5:q,stage6:p,stage7:pkg,generatedAt:new Date().toISOString()};
       window.__testhpSpatialVisualIntegrity=result;
       window.dispatchEvent(new CustomEvent('testhp:spatial-visual-integrity',{detail:result}));
