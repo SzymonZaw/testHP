@@ -28,7 +28,17 @@
     const response = await fetch(url, { cache: 'no-store' });
     if (!response.ok) throw new Error(`registry HTTP ${response.status}`);
     const payload = await response.json();
-    return { target: t, items: Array.isArray(payload.items) ? payload.items : [] };
+    const items = Array.isArray(payload.items) ? payload.items : [];
+    // A registry-root asset is evidence inventory, not visual localization.
+    // Only explicitly/localized evidence may be projected onto the 3D surface.
+    const localizedItems = items.filter(item => item?.spatially_localized === true);
+    return {
+      target: t,
+      items: localizedItems,
+      registryCount: items.length,
+      localizedCount: localizedItems.length,
+      skippedNonLocalizedCount: items.length - localizedItems.length,
+    };
   }
 
   function findTargetMesh(root, spatialTarget) {
@@ -77,12 +87,12 @@
 
   async function applyRegistryOverlay(ctx) {
     const manager = window.spatialViewportManager;
-    if (!manager?.active?.scene || !ctx.items.length) return { applied: false, reason: 'no-registry-evidence' };
+    if (!manager?.active?.scene || !ctx.items.length) return { applied: false, reason: 'no-localized-registry-evidence', registryCount: ctx.registryCount, localizedCount: ctx.localizedCount, skippedNonLocalizedCount: ctx.skippedNonLocalizedCount };
     const THREE = await import('three');
     const { DecalGeometry } = await import('https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/geometries/DecalGeometry.js');
     const root = manager.active.scene;
     const mesh = findTargetMesh(root, ctx.target);
-    if (!mesh?.isMesh) return { applied: false, reason: 'target-mesh-not-found' };
+    if (!mesh?.isMesh) return { applied: false, reason: 'target-mesh-not-found', registryCount: ctx.registryCount, localizedCount: ctx.localizedCount, skippedNonLocalizedCount: ctx.skippedNonLocalizedCount };
 
     root.getObjectByName('__spatial_registry_evidence_projection__')?.removeFromParent();
     const group = new THREE.Group();
@@ -126,10 +136,10 @@
       }
     }
 
-    if (!group.children.length) return { applied: false, reason: 'registry-images-not-loadable' };
+    if (!group.children.length) return { applied: false, reason: 'registry-images-not-loadable', registryCount: ctx.registryCount, localizedCount: ctx.localizedCount, skippedNonLocalizedCount: ctx.skippedNonLocalizedCount };
     root.add(group);
     try { manager.render?.(); } catch {}
-    return { applied: true, reason: 'direct-registry-evidence', target: ctx.target, applied };
+    return { applied: true, reason: 'direct-registry-evidence', target: ctx.target, registryCount: ctx.registryCount, localizedCount: ctx.localizedCount, skippedNonLocalizedCount: ctx.skippedNonLocalizedCount, applied };
   }
 
   async function sync() {
@@ -140,6 +150,9 @@
         ...(window.__testhpSpatialProjectionDiagnostics || {}),
         target: ctx.target,
         directRegistryEvidence: true,
+        registryCount: ctx.registryCount,
+        localizedCount: ctx.localizedCount,
+        skippedNonLocalizedCount: ctx.skippedNonLocalizedCount,
         ...result
       };
       window.dispatchEvent(new CustomEvent('testhp:spatial-evidence-overlay-applied', { detail: result }));
