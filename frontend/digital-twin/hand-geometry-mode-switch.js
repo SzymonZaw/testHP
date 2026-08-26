@@ -1,5 +1,13 @@
 (() => {
   'use strict';
+
+  // This module may be injected by more than one boot/bridge path. Keep the
+  // implementation singleton so duplicate <script> tags cannot create
+  // duplicate timers, listeners or UI state machines.
+  const BOOT_KEY = '__testhpHandGeometryModeSwitchBooted';
+  if (window[BOOT_KEY]) return;
+  window[BOOT_KEY] = true;
+
   const KEY='digitalTwinHandGeometryMode.v1';
   const MEASURE_KEY='digitalTwinRealHandMeasurements.v1';
   const DEFAULT='classic';
@@ -46,5 +54,5 @@ body.hgm-classic #hand-surface-unified{display:none!important}body.hgm-classic #
   function setMode(mode){mode=mode==='real'?'real':'classic';writeMode(mode);document.body.classList.toggle('hgm-real',mode==='real');document.body.classList.toggle('hgm-classic',mode==='classic');q('hand-geometry-mode')?.querySelectorAll('[data-hgm]').forEach(b=>b.classList.toggle('active',b.dataset.hgm===mode));const st=q('hand-geometry-mode-state');if(st)st.textContent=mode==='classic'?'Aktywny: klasyczny · suwaki':'Aktywny: rzeczywista dłoń · zdjęcia + pomiary';const p=ensurePanel();if(p)p.hidden=mode!=='real';window.dispatchEvent(new CustomEvent('testhp:hand-geometry-mode-changed',{detail:{mode}}))}
   function boot(){installCss();if(!ensureSwitch())return;ensurePanel();setMode(readMode());return true}
   let tries=0;const timer=setInterval(()=>{if(boot()||++tries>120)clearInterval(timer)},250);if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',boot,{once:true});else boot();
-  window.testhpHandGeometryMode={version:'1.0.1',getMode:readMode,setMode,getMeasurements:readMeasurements};
+  window.testhpHandGeometryMode={version:'1.0.2',getMode:readMode,setMode,getMeasurements:readMeasurements};
 })();
