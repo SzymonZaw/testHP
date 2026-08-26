@@ -24,8 +24,6 @@
   function schedule() { let tries = 0; const timer = setInterval(() => { render(); if (++tries >= 80) clearInterval(timer); }, 250); window.addEventListener('testhp:spatial-layer-changed', render); window.addEventListener('testhp:spatial-contract-changed', render); window.addEventListener('testhp:evidence-registry-updated', render); }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', schedule, {once:true}); else schedule();
 
-  // Stages 5–7 are loaded separately so the integrity checks stay out of the
-  // core target-routing diagnostics while still being available on this page.
   const loadVisualIntegrity = () => {
     if (document.getElementById('testhp-spatial-visual-integrity-script') || window.testhpSpatialVisualIntegrity) return;
     const script = document.createElement('script');
@@ -34,5 +32,19 @@
     script.async = true;
     document.head.appendChild(script);
   };
-  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', loadVisualIntegrity, { once:true }); else setTimeout(loadVisualIntegrity, 0);
+  const loadGeometryModeSwitch = () => {
+    if (document.getElementById('testhp-hand-geometry-mode-script') || window.testhpHandGeometryMode) return;
+    const script = document.createElement('script');
+    script.id = 'testhp-hand-geometry-mode-script';
+    script.src = '/digital-twin/hand-geometry-mode-switch.js?v=mode-switch-1';
+    script.async = true;
+    document.head.appendChild(script);
+  };
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', loadVisualIntegrity, { once:true });
+    document.addEventListener('DOMContentLoaded', loadGeometryModeSwitch, { once:true });
+  } else {
+    setTimeout(loadVisualIntegrity, 0);
+    setTimeout(loadGeometryModeSwitch, 0);
+  }
 })();
