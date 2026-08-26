@@ -71,7 +71,13 @@ def photo_reconstruction_register(subject_id: str = "own_cohort", timepoint: str
 
 @router.post("/build")
 def photo_reconstruction_build(request: BuildRequest):
-    result = run(request.subject_id, request.timepoint, request.resolution)
+    try:
+        result = run(request.subject_id, request.timepoint, request.resolution)
+    except Exception as exc:
+        # Do not leak an unhandled reconstruction exception as a generic 500.
+        # The frontend can render this as a failed build and the concrete
+        # server-side exception remains visible in the API detail for diagnosis.
+        raise HTTPException(status_code=422, detail=f"reconstruction build failed: {exc}") from exc
     if result.get("status") == "blocked":
         return result
     return {"status": "published", "reconstruction": result}
