@@ -19,7 +19,8 @@
   };
 
   function install() {
-    if ($(ID)) return $(ID);
+    const existing = $(ID);
+    if (existing) return existing;
     const anchor = document.querySelector('#hand-geometry-capture') || document.querySelector('.twin-panel');
     if (!anchor?.parentElement) return null;
     const el = document.createElement('section');
@@ -40,7 +41,6 @@
       <div class="viw-body" id="viw-body"></div>`;
     anchor.parentElement.insertBefore(el, anchor);
     el.querySelectorAll('[data-viw]').forEach(b => b.addEventListener('click', () => render(Number(b.dataset.viw))));
-    render(5);
     window.testhpVisualIntegrityWorkflow = { refresh: () => render(5), getState: state };
     return el;
   }
@@ -78,6 +78,17 @@
     };
   }
 
-  const boot = () => { if (!install()) new MutationObserver((_, obs) => { if (install()) obs.disconnect(); }).observe(document.body, {childList:true, subtree:true}); };
+  const boot = () => {
+    const start = () => {
+      const el = install();
+      if (el) render(5);
+      return !!el;
+    };
+    if (start()) return;
+    const obs = new MutationObserver((_, observer) => {
+      if (start()) observer.disconnect();
+    });
+    obs.observe(document.body, {childList:true, subtree:true});
+  };
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot, {once:true}); else setTimeout(boot, 0);
 })();
