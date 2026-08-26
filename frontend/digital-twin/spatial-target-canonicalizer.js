@@ -1,4 +1,7 @@
 (() => {
+  if (window.__testhpSpatialTargetCanonicalizerInstalled) return;
+  window.__testhpSpatialTargetCanonicalizerInstalled = true;
+
   import('./spatial-target-drift-debug-fix.js?v=authoritative-target-1').catch(error => console.error('[Twin diagnostics] authoritative target debug failed to load', error));
   // Stage 1-5: canonical spatial identity is owned by spatial-contract.js.
   const contract = () => window.testhpSpatialContract;
@@ -62,15 +65,12 @@
   };
 
   const reconcile = () => {
-    const api = contract();
-    if (api?.reconcile) api.reconcile();
     const manager = window.spatialViewportManager;
     if (!manager || typeof manager !== 'object') return;
 
-    // Authoritative order: explicit navigation ID -> active node ID -> state ID
-    // -> object target ID. A concrete activeKey must never fall back to the
-    // display-label string exposed by manager.spatialTarget.
-    const activeId = activeViewportSpatialId(manager);
+    // Do not call contract.reconcile() here. Its compatibility sync publishes
+    // `digital-twin:target-changed`; doing that from a MutationObserver-driven
+    // reconciler creates a render -> mutation -> reconcile feedback loop.
     const state = manager.state || {};
     const stateTarget = state.target && typeof state.target === 'object'
       ? (state.target.spatial_node_id || state.target.spatial_id || state.target.spatialId || state.target.id)
@@ -80,7 +80,7 @@
       : '';
     const activeKeyPresent = typeof manager.activeKey === 'string' && manager.activeKey.includes('|');
     const fallback = stateTarget || objectTarget || (!activeKeyPresent && typeof manager.spatialTarget === 'string' ? manager.spatialTarget : '') || (!activeKeyPresent && typeof state.spatialTarget === 'string' ? state.spatialTarget : '');
-    const id = canonical(activeId || stateTarget || objectTarget || fallback);
+    const id = canonical(activeViewportSpatialId(manager) || stateTarget || objectTarget || fallback);
     if (!id) return;
 
     if (manager.state && typeof manager.state === 'object') Object.assign(manager.state,{spatial_id:id,spatialId:id,spatialTarget:id});
@@ -112,10 +112,11 @@
     reconcile();
     repairPhotoShell();
     const manager = window.spatialViewportManager;
-    if (!manager || manager.__testhpSpatialCanonicalizerInstalled) return;
+    if (!manager || typeof manager !== 'object') return;
+    if (manager.__testhpSpatialCanonicalizerPatched) return;
     const original = manager.setSpatialTarget;
     if (typeof original !== 'function') return;
-    manager.__testhpSpatialCanonicalizerInstalled = true;
+    manager.__testhpSpatialCanonicalizerPatched = true;
     manager.setSpatialTarget = function(target,...args){ const result=original.call(this,canonicalizeTarget(target),...args); reconcile(); return result; };
     window.dispatchEvent(new CustomEvent('testhp:spatial-target-canonicalizer-ready',{detail:{source:'spatial-contract',canonical:true}}));
   };
@@ -124,6 +125,22 @@
   window.addEventListener('testhp:spatial-layer-changed',reconcile);
   window.addEventListener('testhp:spatial-target-changed',reconcile);
   window.addEventListener('testhp:viewport-manager-ready',install);
-  const observer = new MutationObserver(() => { repairPhotoShell(); reconcile(); });
+
+  // DOM churn is common during viewport/evidence rendering. Coalesce bursts
+  // into one reconciliation and ignore attribute-only mutations: neither can
+  // change the canonical spatial identity we own here.
+  let reconcileScheduled = false;
+  const scheduleReconcile = () => {
+    if (reconcileScheduled) return;
+    reconcileScheduled = true;
+    queueMicrotask(() => {
+      reconcileScheduled = false;
+      repairPhotoShell();
+      reconcile();
+    });
+  };
+  const observer = new MutationObserver(mutations => {
+    if (mutations.some(m => m.type === 'childList' && (m.addedNodes.length || m.removedNodes.length))) scheduleReconcile();
+  });
   if (document.documentElement) observer.observe(document.documentElement,{childList:true,subtree:true});
 })();
