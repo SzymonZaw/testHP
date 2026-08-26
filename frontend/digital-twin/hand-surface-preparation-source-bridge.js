@@ -53,11 +53,34 @@
       if (status) { status.textContent = '✓ Zdjęcie jest już przygotowane.'; status.className = 'hs-prep-status hs-prep-good'; }
     } catch {}
   }
-  const schedule = () => setTimeout(sync, 100);
+
+  // Do not schedule from every DOM mutation. The previous body-wide observer
+  // created a new 100 ms timeout for essentially every render mutation,
+  // including mutations caused by this bridge itself. That produced hundreds
+  // of pending timers and a feedback loop in the preparation UI.
+  let syncTimer = null;
+  const schedule = () => {
+    if (syncTimer !== null) return;
+    syncTimer = setTimeout(() => {
+      syncTimer = null;
+      void sync();
+    }, 100);
+  };
+
   document.addEventListener('change', e => { if (e.target?.id === 'hs-prep-source') schedule(); });
   window.addEventListener('testhp:evidence-updated', schedule);
   window.addEventListener('testhp:evidence-attached', schedule);
-  new MutationObserver(() => schedule()).observe(document.body, {childList:true, subtree:true});
+
+  // Keep dynamic-page support without reacting to unrelated render mutations.
+  // In particular, changes to #hs-prep-preview/result/status must not retrigger
+  // sync after sync() updates those elements.
+  const isPrepSourceNode = node => {
+    if (!(node instanceof Element)) return false;
+    return node.id === 'hs-prep-source' || !!node.querySelector?.('#hs-prep-source');
+  };
+  new MutationObserver(mutations => {
+    if (mutations.some(m => [...m.addedNodes, ...m.removedNodes].some(isPrepSourceNode))) schedule();
+  }).observe(document.body, {childList:true, subtree:true});
 
   // Geometry is a first-class part of the unified surface workflow. Load the
   // canonical bridge here because this source bridge is already injected by
