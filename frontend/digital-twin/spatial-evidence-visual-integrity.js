@@ -66,9 +66,6 @@
 
   async function run() {
     try {
-      // Observer only: projection synchronization belongs to
-      // photo-surface-projection.js. Calling sync() here would feed the
-      // projection-ready event back into the projection pipeline.
       const s=await state();
       const q=stage5Quality(s), p=stage6Projection(s), pkg=stage7Package(s,q,p);
       const result={target:target(),stage5:q,stage6:p,stage7:pkg,generatedAt:new Date().toISOString()};
@@ -90,17 +87,15 @@
     el.innerHTML=`<strong>Integralność wizualna</strong><br>${ok(5)} Etap 5: jakość widoków · ${ok(6)} Etap 6: projekcja · ${ok(7)} Etap 7: pakiet bliźniaka`;
   }
 
-  // Event storms are expected during bootstrap because several independent
-  // bridges announce the same state. Keep one timer only, debounce bursts,
-  // and remember an event that arrives while a run is in progress. The old
-  // implementation cancelled/recreated the timer on every event, producing
-  // repeated timer creation and unnecessary state fetches under noisy boot cycles.
+  // Coalesce noisy bootstrap events. This observer must not run on every
+  // registry/state event: a quiet period is enough to refresh diagnostics,
+  // and a minimum gap prevents repeated API reads during event storms.
   let scheduledRun = null;
   let running = false;
   let rerunRequested = false;
   let lastRunAt = 0;
-  const DEBOUNCE_MS = 250;
-  const MIN_RUN_GAP_MS = 500;
+  const DEBOUNCE_MS = 2000;
+  const MIN_RUN_GAP_MS = 5000;
 
   function scheduleRun(delay=DEBOUNCE_MS) {
     if (running) {
