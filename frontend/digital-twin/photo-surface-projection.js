@@ -8,19 +8,44 @@
   const read = key => { try { return JSON.parse(localStorage.getItem(key) || 'null'); } catch { return null; } };
   const write = (key, value) => localStorage.setItem(key, JSON.stringify(value));
 
-  async function state() {
-    const t = target();
-    const r = await fetch(`${API}/state?subject_id=own_cohort&timepoint=T0&spatial_id=${encodeURIComponent(t)}`);
+  async function fetchState(spatialId) {
+    const r = await fetch(`${API}/state?subject_id=own_cohort&timepoint=T0&spatial_id=${encodeURIComponent(spatialId)}`);
     if (!r.ok) throw new Error('Nie udało się odczytać stanu rejestracji.');
     return r.json();
+  }
+
+  function isDescendantOf(targetId, sourceId) {
+    const t = normalize(targetId), s = normalize(sourceId);
+    return !!s && (t === s || t.startsWith(`${s}/`));
+  }
+
+  async function state() {
+    const t = target();
+    const direct = await fetchState(t);
+    if (t === 'hand' || direct.registered_count > 0 || direct.prepared_count > 0 || direct.reconstruction) return direct;
+
+    // A leaf such as hand/palm is a projection target, not a separate
+    // photographic-ingestion scope. Reuse the nearest registered ancestor
+    // without promoting/copying its evidence into the child registry.
+    const ancestor = await fetchState('hand');
+    if (ancestor.registered_count > 0 || ancestor.prepared_count > 0 || ancestor.reconstruction) {
+      return {
+        ...ancestor,
+        spatial_id: t,
+        source_spatial_id: 'hand',
+        evidence_scope: 'inherited',
+        projection_target: t
+      };
+    }
+    return direct;
   }
 
   function buildPlan(s) {
     const views = (s.registered_views || []).filter(v => VIEWS.includes(v));
     const coverage = Math.round((views.length / VIEWS.length) * 100);
     return {
-      schema: 'surface-projection-v2', target: s.spatial_id, views, coverage,
-      method: 'registered-view-projection', calibrated: false,
+      schema: 'surface-projection-v2', target: s.spatial_id, source_spatial_id: s.source_spatial_id || s.spatial_id,
+      views, coverage, method: 'registered-view-projection', calibrated: false,
       status: views.length >= 1 ? 'ready' : 'incomplete',
       quality: coverage >= 80 ? 'good' : coverage >= 20 ? 'partial' : 'insufficient',
       generatedAt: new Date().toISOString(),
@@ -33,7 +58,8 @@
     write(PLAN_KEY, plan);
     const surface = read(SURFACE_KEY) || { geometry: {} };
     const mappings = (s.evidence || []).filter(x => x.registration?.status === 'registered' && x.prepared_asset).map(x => ({
-      spatialTarget: s.spatial_id, view: x.registration.view, assetId: x.asset_id,
+      spatialTarget: s.spatial_id, sourceSpatialId: s.source_spatial_id || x.spatial_node_id || s.spatial_id,
+      view: x.registration.view, assetId: x.asset_id,
       preparedAssetId: x.prepared_asset.prepared_asset_id, quality: Number(x.registration.quality || 1),
       method: 'registered-view-projection', registeredAt: x.registration.registered_at
     }));
@@ -42,7 +68,8 @@
     surface.appliedToModel = false;
     surface.surfaceAssetId = s.reconstruction?.reconstruction_id || null;
     surface.twinPackage = {
-      schema: 'hand-surface-package-v1', spatial_id: s.spatial_id,
+      schema: 'hand-surface-package-v1', spatial_id: s.source_spatial_id || s.spatial_id,
+      projection_target: s.spatial_id,
       reconstruction_id: s.reconstruction?.reconstruction_id || null,
       registered_views: plan.views, coverage: plan.coverage, quality: plan.quality,
       mapping_count: mappings.length, calibrated: false,
@@ -52,6 +79,7 @@
     const previousParameters = surface.geometry[s.spatial_id]?.parameters || {};
     surface.geometry[s.spatial_id] = {
       schema: 'hand-surface-geometry-v1', spatial_id: s.spatial_id,
+      source_spatial_id: s.source_spatial_id || s.spatial_id,
       status: 'available', source: 'photo-registration', method: 'registered-view-projection',
       calibrated: false, clinical_claim: false, coordinate_system: 'hand-surface-v1',
       parameters: previousParameters,
@@ -64,13 +92,17 @@
 
   async function ensureBuild() {
     let s = await state();
-    // One prepared view is sufficient. If it has not yet been registered,
-    // register it automatically so projection does not retain the old
-    // two-view gate as an implicit UI requirement.
+    if (s.evidence_scope === 'inherited') {
+      if ((s.registered_count || 0) < 1) return null;
+      const existing = read(PLAN_KEY);
+      if (!existing || normalize(existing.target) !== normalize(s.spatial_id) || existing.views?.length !== s.registered_count) {
+        return { state: s, plan: savePlan(s) };
+      }
+      return { state: s, plan: existing };
+    }
     if ((s.registered_count || 0) < 1 && (s.prepared_count || 0) >= 1) {
       const r = await fetch(`${API}/register`, {
-        method: 'POST',
-        headers: {'Content-Type':'application/json'},
+        method: 'POST', headers: {'Content-Type':'application/json'},
         body: JSON.stringify({subject_id:'own_cohort',timepoint:'T0',spatial_id:s.spatial_id})
       });
       const registered = await r.json();
@@ -102,8 +134,7 @@
   function findTargetMesh(root, spatialTarget) {
     const leaf = normalize(spatialTarget).split('/').filter(Boolean).pop() || 'hand';
     const aliases = new Set([leaf, `skin:${leaf}`, `skin_${leaf}`, `${leaf}_mesh`, `${leaf}-mesh`]);
-    let exact = null;
-    let fuzzy = null;
+    let exact = null, fuzzy = null;
     root.traverse?.(object => {
       if (!object?.isMesh) return;
       const name = normalize(object.name);
@@ -114,19 +145,12 @@
   }
 
   function meshBounds(mesh, THREE) {
-    const box = new THREE.Box3().setFromObject(mesh);
-    const size = new THREE.Vector3();
-    const center = new THREE.Vector3();
-    box.getSize(size);
-    box.getCenter(center);
-    return { box, size, center };
+    const box = new THREE.Box3().setFromObject(mesh), size = new THREE.Vector3(), center = new THREE.Vector3();
+    box.getSize(size); box.getCenter(center); return { box, size, center };
   }
 
   function projectionPlacement(view, bounds, THREE) {
-    const { center, size } = bounds;
-    const depth = Math.max(size.x, size.y, size.z) * 0.12;
-    const width = Math.max(size.x, size.y) * 0.92;
-    const height = Math.max(size.x, size.y) * 0.72;
+    const { center, size } = bounds, depth = Math.max(size.x, size.y, size.z) * 0.12, width = Math.max(size.x, size.y) * 0.92, height = Math.max(size.x, size.y) * 0.72;
     const placements = {
       front: { position: new THREE.Vector3(center.x, center.y, bounds.box.max.z + depth), rotation: new THREE.Euler(0, 0, 0) },
       back: { position: new THREE.Vector3(center.x, center.y, bounds.box.min.z - depth), rotation: new THREE.Euler(0, Math.PI, 0) },
@@ -142,57 +166,35 @@
     if (!ctx || !window.spatialViewportManager?.active?.scene) return false;
     const THREE = await import('three');
     const { DecalGeometry } = await import('https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/geometries/DecalGeometry.js');
-    const manager = window.spatialViewportManager;
-    const root = manager.active.scene;
-    const spatialTarget = normalize(ctx.plan?.target || target());
+    const manager = window.spatialViewportManager, root = manager.active.scene, spatialTarget = normalize(ctx.plan?.target || target());
     const targetMesh = findTargetMesh(root, spatialTarget);
     window.__testhpSpatialProjectionDiagnostics = {
-      target: spatialTarget,
-      managerVersion: manager.version || null,
-      activeKey: manager.activeKey || null,
-      scene: !!root,
-      targetMesh: targetMesh?.name || null,
-      targetMeshFound: !!targetMesh
+      target: spatialTarget, sourceSpatialId: ctx.state.source_spatial_id || ctx.state.spatial_id,
+      evidenceScope: ctx.state.evidence_scope || 'direct', managerVersion: manager.version || null,
+      activeKey: manager.activeKey || null, scene: !!root, targetMesh: targetMesh?.name || null, targetMeshFound: !!targetMesh
     };
     if (!targetMesh?.isMesh) return false;
 
     root.getObjectByName('__photo_surface_projection__')?.removeFromParent();
-    const group = new THREE.Group();
-    group.name = '__photo_surface_projection__';
-    const views = ctx.plan.views || [];
-    const records = ctx.state.evidence || [];
-    const bounds = meshBounds(targetMesh, THREE);
-    const applied = [];
-
+    const group = new THREE.Group(); group.name = '__photo_surface_projection__';
+    const views = ctx.plan.views || [], records = ctx.state.evidence || [], bounds = meshBounds(targetMesh, THREE), applied = [];
     for (const view of views) {
       const record = records.find(x => x.registration?.view === view && x.prepared_asset);
       if (!record) continue;
       const imageUrl = `/api/spatial/preview/${encodeURIComponent(record.asset_id)}?max_width=1400&max_height=1000`;
       try {
-        const texture = await new THREE.TextureLoader().loadAsync(imageUrl);
-        texture.colorSpace = THREE.SRGBColorSpace;
+        const texture = await new THREE.TextureLoader().loadAsync(imageUrl); texture.colorSpace = THREE.SRGBColorSpace;
         const material = new THREE.MeshBasicMaterial({ map:texture, transparent:true, opacity:0.62, depthWrite:false, polygonOffset:true, polygonOffsetFactor:-1 });
         const placement = projectionPlacement(view, bounds, THREE);
         const decal = new THREE.Mesh(new DecalGeometry(targetMesh, placement.position, placement.rotation, placement.scale), material);
-        decal.name = `photo-projection:${view}`;
-        group.add(decal);
-        applied.push(view);
+        decal.name = `photo-projection:${view}`; group.add(decal); applied.push(view);
       } catch (e) { console.warn('[photo-surface-projection]', view, e); }
     }
-
-    if (!group.children.length) {
-      window.__testhpSpatialProjectionDiagnostics.reason = 'no-registered-prepared-evidence';
-      return false;
-    }
+    if (!group.children.length) { window.__testhpSpatialProjectionDiagnostics.reason = 'no-registered-prepared-evidence'; return false; }
     root.add(group);
     const surface = read(SURFACE_KEY) || {};
-    surface.appliedToModel = true;
-    surface.appliedViews = applied;
-    surface.appliedTarget = spatialTarget;
-    surface.appliedAt = new Date().toISOString();
-    write(SURFACE_KEY, surface);
-    window.__testhpSpatialProjectionDiagnostics.appliedViews = applied;
-    window.__testhpSpatialProjectionDiagnostics.reason = 'applied';
+    surface.appliedToModel = true; surface.appliedViews = applied; surface.appliedTarget = spatialTarget; surface.appliedAt = new Date().toISOString(); write(SURFACE_KEY, surface);
+    window.__testhpSpatialProjectionDiagnostics.appliedViews = applied; window.__testhpSpatialProjectionDiagnostics.reason = 'applied';
     renderStatus(surface, ctx.plan);
     try { manager.render?.(); } catch {}
     window.dispatchEvent(new CustomEvent('testhp:hand-surface-ready', { detail: { applied: true, views: applied, target: spatialTarget } }));
@@ -202,17 +204,8 @@
   async function sync() {
     try {
       const ctx = await ensureBuild();
-      if (ctx) {
-        const surface = read(SURFACE_KEY) || {};
-        renderStatus(surface, ctx.plan);
-        await applyOverlay(ctx);
-      } else {
-        window.__testhpSpatialProjectionDiagnostics = {
-          target: target(),
-          reason: 'no-registered-views',
-          applied: false
-        };
-      }
+      if (ctx) { const surface = read(SURFACE_KEY) || {}; renderStatus(surface, ctx.plan); await applyOverlay(ctx); }
+      else window.__testhpSpatialProjectionDiagnostics = { target: target(), reason: 'no-registered-views', applied: false };
     } catch (e) {
       window.__testhpSpatialProjectionDiagnostics = { target: target(), reason: 'projection-error', message: e?.message || String(e), applied: false };
       console.warn('[photo-surface-projection]', e);
