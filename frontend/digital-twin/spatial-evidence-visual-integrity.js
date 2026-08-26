@@ -1,4 +1,60 @@
 (() => {
+  // The spatial UI has several read-only consumers (registry, preparation,
+  // projection and integrity diagnostics). They can react to the same state
+  // event at nearly the same time. Keep one short-lived cache/in-flight request
+  // per exact endpoint so an event storm cannot become an HTTP polling loop.
+  if (!window.__testhpSpatialRequestGuardInstalled) {
+    window.__testhpSpatialRequestGuardInstalled = true;
+    const originalFetch = window.fetch.bind(window);
+    const cache = new Map();
+    const inflight = new Map();
+    const TTL_MS = 5000;
+    const isTracked = url => /\/api\/(?:spatial\/(?:registry|state)|hand\/photo-reconstruction\/state)(?:\?|$)/.test(url);
+    const keyFor = (url, options) => {
+      const method = String(options?.method || 'GET').toUpperCase();
+      if (method !== 'GET') return null;
+      const parsed = new URL(url, location.href);
+      if (!isTracked(parsed.pathname + parsed.search)) return null;
+      return `${method} ${parsed.pathname}${parsed.search}`;
+    };
+    const invalidate = () => { cache.clear(); };
+
+    window.fetch = async (input, options = {}) => {
+      const url = typeof input === 'string' ? input : input?.url || '';
+      const method = String(options?.method || (typeof input !== 'string' ? input?.method : '') || 'GET').toUpperCase();
+      if (method !== 'GET') {
+        const response = await originalFetch(input, options);
+        if (/^\/api\/(?:spatial\/|hand\/photo-reconstruction\/)/.test(new URL(url, location.href).pathname)) invalidate();
+        return response;
+      }
+
+      const key = keyFor(url, options);
+      if (!key) return originalFetch(input, options);
+
+      const now = Date.now();
+      const cached = cache.get(key);
+      if (cached && now - cached.at < TTL_MS) return cached.response.clone();
+
+      if (inflight.has(key)) {
+        const response = await inflight.get(key);
+        return response.clone();
+      }
+
+      const promise = originalFetch(input, options).then(response => {
+        if (response.ok) cache.set(key, { at: Date.now(), response: response.clone() });
+        return response;
+      }).finally(() => inflight.delete(key));
+      inflight.set(key, promise);
+      return (await promise).clone();
+    };
+
+    window.__testhpSpatialRequestGuard = {
+      ttlMs: TTL_MS,
+      clear: invalidate,
+      stats: () => ({ cacheEntries: cache.size, inflight: inflight.size })
+    };
+  }
+
   const API = '/api/hand/photo-reconstruction';
   const VIEWS = ['front', 'back', 'side_left', 'side_right', 'thumb'];
   const normalize = v => String(v ?? '').trim().replace(/^\/+|\/+$/g, '').toLowerCase();
