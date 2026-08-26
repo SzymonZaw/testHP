@@ -33,7 +33,7 @@
   const loadVisualWorkflow = () => {
     if (document.querySelector('script[data-visual-workflow-5-9]')) return;
     const css = document.createElement('link'); css.rel = 'stylesheet'; css.href = '/digital-twin/visual-integrity-workflow-5-9.css?v=workflow-5-9-1'; document.head.appendChild(css);
-    const script = document.createElement('script'); script.src = '/digital-twin/visual-integrity-workflow-5-9.js?v=workflow-5-9-1'; script.dataset.visualWorkflow59 = '1'; document.head.appendChild(script);
+    const script = document.createElement('script'); script.src = '/digital-twin/visual-integrity-workflow-5-9.js?v=workflow-5-9-1'; script.dataset.visualWorkflow59 = '1'; script.setAttribute('data-visual-workflow-5-9','1'); document.head.appendChild(script);
   };
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', loadVisualWorkflow, {once:true}); else setTimeout(loadVisualWorkflow, 0);
 })();
