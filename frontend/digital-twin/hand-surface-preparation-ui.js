@@ -60,7 +60,13 @@
     try {
       const saved = await request(`${API}/state?subject_id=own_cohort&timepoint=T0`, {cache:'no-store'});
       for(const raw of (saved.inputs || saved.evidence || [])) {
-        const item=withSavedView(normalizeItem(raw));
+        // State records may be attached to the registered root (`hand`) while
+        // the preparation UI is scoped to its child target (`hand/palm`).
+        // Preserve the real backend asset id instead of letting a legacy/local
+        // source id shadow it later.
+        const rootSpatial = canonical(raw.spatial_id || raw.spatialId || raw.spatial_node_id || '');
+        const scopedSpatial = rootSpatial === 'hand' && t !== 'hand' ? t : rootSpatial;
+        const item=withSavedView(normalizeItem({...raw, spatial_id:scopedSpatial}));
         if(item) byId.set(item.asset_id,item);
       }
     } catch {}
@@ -71,16 +77,24 @@
         const savedView = source.view || savedViewFor({asset_id:sourceId, id:source.id, sourceAssetId:source.sourceAssetId});
         const item = normalizeItem({asset_id:sourceId, id:source.id, filename:source.filename, spatial_id:source.spatial_id || source.target, view:savedView, timepoint:source.timepoint, prepared:source.prepared, prepared_asset_id:source.preparedAssetId || source.prepared_asset_id});
         if(item) {
-          const existing = byId.get(item.asset_id) || {};
-          const localFields = Object.fromEntries(Object.entries(item).filter(([,value]) => value !== undefined && value !== null && value !== ''));
-          const merged = {...existing, ...localFields};
-          if (existing.prepared === true && existing.prepared_asset_id) {
-            merged.prepared = true;
-            merged.prepared_asset_id = existing.prepared_asset_id;
-            if (existing.prepared_asset) merged.prepared_asset = existing.prepared_asset;
-            if (existing.prepared_path) merged.prepared_path = existing.prepared_path;
+          // Prefer a canonical server asset already loaded above. Legacy/local
+          // evidence can contain synthetic ids (for example `skin-*`) for the
+          // same filename; merge its useful view/preparation metadata without
+          // replacing the real backend asset id.
+          const existing = byId.get(item.asset_id) || [...byId.values()].find(x => x.filename === item.filename);
+          if(existing) {
+            const localFields = Object.fromEntries(Object.entries(item).filter(([,value]) => value !== undefined && value !== null && value !== ''));
+            const merged = {...existing, ...localFields, asset_id:existing.asset_id};
+            if(existing.prepared === true && existing.prepared_asset_id) {
+              merged.prepared = true;
+              merged.prepared_asset_id = existing.prepared_asset_id;
+              if(existing.prepared_asset) merged.prepared_asset = existing.prepared_asset;
+              if(existing.prepared_path) merged.prepared_path = existing.prepared_path;
+            }
+            byId.set(existing.asset_id,{...merged,view:merged.view || savedViewFor(merged)});
+          } else {
+            byId.set(item.asset_id,item);
           }
-          byId.set(item.asset_id,{...merged,view:merged.view || savedViewFor(merged)});
         }
       }
     } catch {}
@@ -93,14 +107,17 @@
       const saved = await request(`${API}/state?subject_id=own_cohort&timepoint=T0`, {cache:'no-store'});
       const records = saved.inputs || saved.evidence || [];
       const current = state.inputs.find(x => x.asset_id === assetId);
-      const raw = records.find(x => x.asset_id === assetId || (current?.filename && x.filename === current.filename));
+      const raw = records.find(x =>
+        x.asset_id === assetId ||
+        (current?.filename && (x.filename === current.filename || x.name === current.filename))
+      );
       if (!raw) return;
 
       // The preparation state endpoint can legitimately describe a source at
       // the registered root (`hand`) while the UI source is scoped to the
       // active child target (`hand/palm`). Do not pass this record through
-      // normalizeItem here: doing so discarded the exact prepared state that
-      // the server had already persisted.
+      // normalizeItem here: doing so discarded the exact prepared state
+      // already persisted by the server.
       const serverFields = {
         prepared: raw.prepared === true,
         prepared_asset_id: raw.prepared_asset_id || raw.preparedAssetId,
@@ -154,18 +171,63 @@
       item.prepared=true; item.prepared_asset_id=id; item.prepared_asset=prepared; item.view=savedView;
       state.inputs = state.inputs.map(x=>x.asset_id===item.asset_id ? {...x,...item} : x);
       showPrepared(item);
-      status.textContent='✓ Gotowe. Oryginał pozostał niezmieniony.'; status.className='hs-prep-status hs-prep-good';
-      await loadSources();
-      const refreshed=state.inputs.find(x=>x.asset_id===item.asset_id); if(refreshed) { item.prepared=refreshed.prepared; item.prepared_asset_id=refreshed.prepared_asset_id; item.prepared_asset=refreshed.prepared_asset; }
-    }catch(err){status.textContent=err.message||'Nie udało się przygotować zdjęcia.';status.className='hs-prep-status hs-prep-warn';run.disabled=false;}};
-    save.onclick=()=>{const item=selected();if(!item||!prepared)return;try{const raw=JSON.parse(localStorage.getItem(EVIDENCE)||'{}');const evidence=Array.isArray(raw.evidence)?raw.evidence:[];if(!evidence.some(x=>x.sourceAssetId===item.asset_id&&x.preparedAssetId===prepared.prepared_asset_id))evidence.unshift({id:`prepared-${prepared.prepared_asset_id}`,type:'Macro',sourceType:'prepared-image',target:t,spatial_id:t,timepoint:item.timepoint||'T0',view:item.view,filename:item.filename,sourceAssetId:item.asset_id,preparedAssetId:prepared.prepared_asset_id,prepared:true,quality:prepared.quality,crop:prepared.crop,provenance:{sourceAssetId:item.asset_id,preparation:'photo-reconstruction/prepare',originalUnchanged:true},archived:false,history:[{at:new Date().toISOString(),action:'prepared image saved'}]});localStorage.setItem(EVIDENCE,JSON.stringify({...raw,evidence,target:t}));}catch{}status.textContent='✓ Przygotowane zdjęcie zapisane i gotowe do rejestracji.';status.className='hs-prep-status hs-prep-good';window.dispatchEvent(new CustomEvent('testhp:evidence-attached'));};
-    update();
+      status.textContent='✓ Zdjęcie przygotowane. Możesz je teraz zapisać.'; status.className='hs-prep-status hs-prep-good';
+      window.dispatchEvent(new CustomEvent('testhp:evidence-updated'));
+    } catch(error) { status.textContent=`Błąd: ${error.message}`; status.className='hs-prep-status hs-prep-warn'; run.disabled=false; }
+    };
+    save.onclick=()=>{
+      const id=save.dataset.id, sourceId=save.dataset.source, filename=document.getElementById('hs-prep-filename')?.value?.trim() || `${selected()?.filename?.replace(/\.[^.]+$/,'') || 'prepared-image'}_prepared.png`;
+      if(!id || !sourceId) return;
+      const safe=filename.replace(/[\\/:*?"<>|]+/g,'_').replace(/\s+/g,' ').trim() || 'prepared-image.png';
+      try {
+        const raw=JSON.parse(localStorage.getItem(EVIDENCE)||'{}');
+        const evidence=Array.isArray(raw.evidence)?raw.evidence:[];
+        const existing=evidence.find(x=>x.sourceAssetId===sourceId && x.preparedAssetId===id);
+        const record={id:`prepared-${id}`,type:'Macro',sourceType:'prepared-image',target:t,spatial_id:t,timepoint:'T0',view:selected()?.view||null,filename:/\.[A-Za-z0-9]{1,8}$/.test(safe)?safe:`${safe}.png`,sourceAssetId:sourceId,preparedAssetId:id,prepared:true,provenance:{sourceAssetId:sourceId,preparation:'photo-reconstruction/prepare',originalUnchanged:true},archived:false,history:[{at:new Date().toISOString(),action:'prepared image saved'}]};
+        if(existing) Object.assign(existing,record); else evidence.unshift(record);
+        localStorage.setItem(EVIDENCE,JSON.stringify({...raw,evidence,target:t}));
+        window.dispatchEvent(new CustomEvent('testhp:evidence-attached'));
+        status.textContent='✓ Zapisano przygotowane zdjęcie.'; status.className='hs-prep-status hs-prep-good';
+      } catch(error) { status.textContent=`Błąd zapisu: ${error.message}`; status.className='hs-prep-status hs-prep-warn'; }
+    };
+    const filename=document.getElementById('hs-prep-filename');
+    if(filename) { const current=selected(); filename.value=`${(current?.filename||'prepared-image').replace(/\.[^.]+$/,'')}_prepared.png`; }
+    loadSources().then(()=>{if(!document.getElementById('hs-prep-source'))return;const currentValue=select.value;select.innerHTML=`<option value="">${state.inputs.length?'Wybierz zapisane zdjęcie…':'Brak zaakceptowanych zdjęć dla tego celu…'}</option>${state.inputs.map(x=>`<option value="${esc(x.asset_id)}">${esc(x.filename)} · ${esc(VIEWS[x.view]||x.view||'widok nieprzypisany')}</option>`).join('')}`;if(currentValue)select.value=currentValue;update();}).catch(()=>update());
   }
 
-  async function boot(){const active=document.querySelector('#hand-surface-studio .hss-tabs button.active')?.dataset.tab;if(active!=='prepare')return;await loadSources();render();}
-  const schedule=()=>setTimeout(()=>boot(),0);
-  window.addEventListener('testhp:spatial-contract-changed',schedule);window.addEventListener('testhp:spatial-layer-changed',schedule);window.addEventListener('testhp:evidence-attached',schedule);
-  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',schedule,{once:true});else schedule();
-  observer=new MutationObserver(()=>{const active=document.querySelector('#hand-surface-studio .hss-tabs button.active')?.dataset.tab;const content=document.getElementById('hss-content');if(active==='prepare'&&content&&!content.dataset.cleanPreparation)boot();});
-  if(document.body)observer.observe(document.body,{childList:true,subtree:true});
+  async function prepareImage(){
+    const select=document.getElementById('hs-prep-source');
+    const item=state.inputs.find(x=>x.asset_id===select?.value);
+    if(!item) return;
+    if(!Object.prototype.hasOwnProperty.call(VIEWS,item.view)) return;
+    const tol=Math.max(4,Math.min(80,Number(document.getElementById('hs-prep-tol')?.value||28)));
+    const max=Math.max(1024,Math.min(8192,Number(document.getElementById('hs-prep-max')?.value||4096)));
+    const src=await (await fetch(`${API}/file/source/${encodeURIComponent(item.asset_id)}`)).blob();
+    const url=URL.createObjectURL(src); const img=new Image();
+    await new Promise((resolve,reject)=>{img.onload=resolve;img.onerror=reject;img.src=url;});
+    const canvas=document.createElement('canvas'); canvas.width=img.naturalWidth; canvas.height=img.naturalHeight;
+    const ctx=canvas.getContext('2d'); ctx.drawImage(img,0,0); URL.revokeObjectURL(url);
+    const pixels=ctx.getImageData(0,0,canvas.width,canvas.height);
+    const d=pixels.data;
+    for(let i=0;i<d.length;i+=4){const r=d[i],g=d[i+1],b=d[i+2];const mx=Math.max(r,g,b),mn=Math.min(r,g,b);if(mx-mn<tol&&r>150&&g>150&&b>150)d[i+3]=Math.max(0,255-Math.round((Math.min(r,g,b)-150)*2));}
+    ctx.putImageData(pixels,0,0);
+    const out=document.createElement('canvas'); const scale=Math.min(1,max/Math.max(canvas.width,canvas.height)); out.width=Math.max(1,Math.round(canvas.width*scale));out.height=Math.max(1,Math.round(canvas.height*scale));out.getContext('2d').drawImage(canvas,0,0,out.width,out.height);
+    const dataUrl=out.toDataURL('image/png');
+    prepared={name:item.filename,originalName:item.filename,size:Math.round(dataUrl.length*0.75),width:out.width,height:out.height,status:'prepared',dataUrl};
+    state.prepared=prepared;
+    return prepared;
+  }
+
+  async function applyGeometry(focusKey){const e=window.handSurfaceGeometry?.apply;if(typeof e==='function'){await e(focusKey);return;}const panel=document.querySelector('.hs-geometry-panel');if(panel){panel.dataset.focus=focusKey||'';window.__testhpGeometryFocusUntil=performance.now()+500;panel.dispatchEvent(new CustomEvent('geometry-focus',{bubbles:true,detail:{focusKey}}));}}
+
+  function init(){
+    const root=document.getElementById('hand-surface-unified');
+    if(!root)return;
+    observer=new MutationObserver(()=>{const c=document.getElementById('hss-content');if(c&&!c.dataset.cleanPreparation)render();});
+    observer.observe(root,{childList:true,subtree:true});
+    root.addEventListener('click',e=>{const tab=e.target.closest('[data-hsu-under]');if(tab?.dataset.hsuUnder==='prepare')setTimeout(render,0);});
+    render();
+  }
+  window.handSurfaceStages11to15={state,render,prepareImage,applyGeometry,surfaceTarget:target};
+  init();
 })();
