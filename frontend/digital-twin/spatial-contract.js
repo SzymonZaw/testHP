@@ -195,8 +195,11 @@
   };
 
   const publish = detail => {
-    current = normalizeTarget(detail);
+    const next = normalizeTarget(detail);
+    const changed = next.spatial_id !== current.spatial_id || next.level !== current.level;
+    current = next;
     syncCompatibility();
+    if (!changed) return current;
     window.dispatchEvent(new CustomEvent('testhp:spatial-contract-changed', { detail: current }));
     return current;
   };
