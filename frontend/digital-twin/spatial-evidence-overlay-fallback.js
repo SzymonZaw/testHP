@@ -86,8 +86,39 @@
   }
 
   async function applyRegistryOverlay(ctx) {
+    if (!ctx.items.length) {
+      const existing = window.__testhpSpatialProjectionDiagnostics || {};
+      if (
+        existing.applied === true &&
+        Array.isArray(existing.appliedViews) &&
+        existing.appliedViews.length > 0 &&
+        existing.targetMeshFound === true
+      ) {
+        // The photo-surface projection may legitimately use inherited evidence
+        // from the macro spatial node. Do not let an empty direct-registry
+        // lookup erase an already-successful projection.
+        return {
+          applied: true,
+          reason: 'applied',
+          target: ctx.target,
+          appliedViews: existing.appliedViews,
+          registryCount: ctx.registryCount,
+          localizedCount: ctx.localizedCount,
+          skippedNonLocalizedCount: ctx.skippedNonLocalizedCount,
+          preservedProjection: true,
+        };
+      }
+      return {
+        applied: false,
+        reason: 'no-localized-registry-evidence',
+        registryCount: ctx.registryCount,
+        localizedCount: ctx.localizedCount,
+        skippedNonLocalizedCount: ctx.skippedNonLocalizedCount
+      };
+    }
+
     const manager = window.spatialViewportManager;
-    if (!manager?.active?.scene || !ctx.items.length) return { applied: false, reason: 'no-localized-registry-evidence', registryCount: ctx.registryCount, localizedCount: ctx.localizedCount, skippedNonLocalizedCount: ctx.skippedNonLocalizedCount };
+    if (!manager?.active?.scene) return { applied: false, reason: 'no-scene', registryCount: ctx.registryCount, localizedCount: ctx.localizedCount, skippedNonLocalizedCount: ctx.skippedNonLocalizedCount };
     const THREE = await import('three');
     const { DecalGeometry } = await import('https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/geometries/DecalGeometry.js');
     const root = manager.active.scene;
@@ -146,14 +177,20 @@
     try {
       const ctx = await fetchRegistry();
       const result = await applyRegistryOverlay(ctx);
+      const existing = window.__testhpSpatialProjectionDiagnostics || {};
+      const preservedProjection = result.preservedProjection === true;
       window.__testhpSpatialProjectionDiagnostics = {
-        ...(window.__testhpSpatialProjectionDiagnostics || {}),
+        ...existing,
         target: ctx.target,
         directRegistryEvidence: true,
         registryCount: ctx.registryCount,
         localizedCount: ctx.localizedCount,
         skippedNonLocalizedCount: ctx.skippedNonLocalizedCount,
-        ...result
+        ...(preservedProjection ? {
+          applied: true,
+          reason: 'applied',
+          appliedViews: result.appliedViews,
+        } : result),
       };
       window.dispatchEvent(new CustomEvent('testhp:spatial-evidence-overlay-applied', { detail: result }));
       return result;
