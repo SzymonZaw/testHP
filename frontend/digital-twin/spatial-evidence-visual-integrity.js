@@ -66,10 +66,10 @@
 
   async function run() {
     try {
+      // This module is an observer. Projection synchronization belongs to
+      // photo-surface-projection.js; calling sync() here creates a feedback
+      // loop because projection emits testhp:hand-surface-ready after apply.
       const s=await state();
-      // Projection must be synchronized before Stage 6 reads its diagnostics;
-      // otherwise a previous "no-localized-registry-evidence" snapshot can win.
-      if (window.testhpPhotoSurfaceProjection?.sync) await window.testhpPhotoSurfaceProjection.sync();
       const q=stage5Quality(s), p=stage6Projection(s), pkg=stage7Package(s,q,p);
       const result={target:target(),stage5:q,stage6:p,stage7:pkg,generatedAt:new Date().toISOString()};
       window.__testhpSpatialVisualIntegrity=result;
@@ -90,9 +90,25 @@
     el.innerHTML=`<strong>Integralność wizualna</strong><br>${ok(5)} Etap 5: jakość widoków · ${ok(6)} Etap 6: projekcja · ${ok(7)} Etap 7: pakiet bliźniaka`;
   }
 
+  let scheduledRun = null;
+  let running = false;
+  let rerunRequested = false;
+  function scheduleRun(delay=250) {
+    if (scheduledRun !== null) clearTimeout(scheduledRun);
+    scheduledRun = setTimeout(async () => {
+      scheduledRun = null;
+      if (running) { rerunRequested = true; return; }
+      running = true;
+      try { await run(); } finally {
+        running = false;
+        if (rerunRequested) { rerunRequested = false; scheduleRun(250); }
+      }
+    }, delay);
+  }
+
   window.testhpSpatialVisualIntegrity={run,getDiagnostics:()=>window.__testhpSpatialVisualIntegrity||null};
-  window.addEventListener('testhp:hand-surface-ready',()=>setTimeout(run,250));
-  window.addEventListener('testhp:evidence-registry-synced',()=>setTimeout(run,250));
-  window.addEventListener('testhp:spatial-contract-changed',()=>setTimeout(run,250));
-  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',()=>setTimeout(run,900),{once:true});else setTimeout(run,900);
+  window.addEventListener('testhp:hand-surface-ready',()=>scheduleRun(250));
+  window.addEventListener('testhp:evidence-registry-synced',()=>scheduleRun(250));
+  window.addEventListener('testhp:spatial-contract-changed',()=>scheduleRun(250));
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',()=>scheduleRun(900),{once:true});else scheduleRun(900);
 })();
