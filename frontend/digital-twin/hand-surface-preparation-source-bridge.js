@@ -74,8 +74,6 @@
   // Allow preparation of an unassigned-view source. The backend preparation
   // contract explicitly permits this (it stores the result as `unassigned`),
   // while view assignment remains a separate step required before registration.
-  // The canonical UI previously disabled the button and returned early, even
-  // though POST /prepare/:asset_id could successfully create the prepared asset.
   let unassignedPreparationBusy = false;
   const prepareUnassigned = async event => {
     const run = event.target?.closest?.('#hs-prep-run');
@@ -169,6 +167,27 @@
   new MutationObserver(mutations => {
     if (mutations.some(m => [...m.addedNodes, ...m.removedNodes].some(isPrepSourceNode))) schedule();
   }).observe(document.body, {childList:true, subtree:true});
+
+  // Canonical UI may recreate/update the prepare button after this bridge has
+  // enabled it. Observe only the prepare button's disabled attribute and
+  // restore the actionable state for an unassigned source. This avoids a
+  // body-wide feedback loop while closing the race between the canonical
+  // renderer and this compatibility bridge.
+  const prepButtonObserver = new MutationObserver(() => {
+    const select = document.getElementById('hs-prep-source');
+    const run = document.getElementById('hs-prep-run');
+    const option = select?.selectedOptions?.[0];
+    if (!select?.value || !run || !/widok nieprzypisany|unassigned/i.test(option?.textContent || '')) return;
+    if (run.disabled && !unassignedPreparationBusy) {
+      run.disabled = false;
+      const status = document.getElementById('hs-prep-status');
+      if (status && !/przygotowane|Przygotowywanie/i.test(status.textContent || '')) {
+        status.textContent = 'Widok nieprzypisany — można przygotować zdjęcie; widok przypisz przed rejestracją.';
+        status.className = 'hs-prep-status hs-prep-warn';
+      }
+    }
+  });
+  prepButtonObserver.observe(document.body, {attributes:true, attributeFilter:['disabled'], subtree:true});
 
   // Geometry is a first-class part of the unified surface workflow. Load the
   // canonical bridge here because this source bridge is already injected by
