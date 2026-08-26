@@ -1,11 +1,13 @@
 from pathlib import Path
 
+from backend import observation_routes
 from backend.observation_registry import _canonical_spatial_id
 from backend.stage_2_4 import _direct_state, _node_match_debug
 
 
 ROOT = Path(__file__).resolve().parents[1]
 CONTRACT = ROOT / "frontend" / "digital-twin" / "spatial-contract.js"
+OVERLAY = ROOT / "frontend" / "digital-twin" / "spatial-evidence-overlay-fallback.js"
 
 
 def test_frontend_contract_keeps_manager_and_legacy_channels_on_one_id():
@@ -71,3 +73,37 @@ def test_deep_target_does_not_inherit_root_evidence():
     state = _direct_state([root], "hand/palm/hypothenar/hypothenar-field-a")
     assert state["evidence_count"] == 0
     assert state["insufficient_evidence"] is True
+
+
+def test_spatial_registry_uses_stable_exact_match_reason(monkeypatch):
+    monkeypatch.setattr(
+        observation_routes,
+        "registry_status",
+        lambda: {
+            "assets": [
+                {
+                    "asset_id": "asset-hand",
+                    "evidence_id": "evidence-hand",
+                    "spatial_node_id": "hand",
+                    "subject_id": "own_cohort",
+                    "timepoint": "T0",
+                    "attachment_status": "registered_root",
+                    "spatially_localized": False,
+                }
+            ]
+        },
+    )
+    payload = observation_routes.spatial_registry(
+        subject_id="own_cohort",
+        timepoint="T0",
+        spatial_node_id="hand",
+        debug=True,
+    )
+    assert payload["count"] == 1
+    assert payload["debug"]["decisions"][0]["reason"] == "EXACT_SPATIAL_ID_MATCH"
+
+
+def test_visual_overlay_only_consumes_localized_registry_evidence():
+    source = OVERLAY.read_text(encoding="utf-8")
+    assert "item?.spatially_localized === true" in source
+    assert "skippedNonLocalizedCount" in source
