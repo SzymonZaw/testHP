@@ -13,7 +13,7 @@ from typing import Any, Iterable
 from .spatial_contract import canonical_spatial_id, make_photo_asset_id
 
 HAND_LANDMARK_COUNT = 21
-SUPPORTED_VIEWS = ("front", "back", "side_left", "side_right", "thumb")
+SUPPORTED_VIEWS = ("front", "back", "side_left", "side_right", "thumb", "unknown")
 
 
 @dataclass(frozen=True)
