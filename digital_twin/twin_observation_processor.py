@@ -2,10 +2,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
 from typing import Any, Dict, Optional
 
-from ..core.observation import Observation
+from .observation import Observation
 
 
 @dataclass(frozen=True)
@@ -29,30 +28,26 @@ class ObservationProcessResult:
 
 
 def process_observation(twin: Any, observation: Observation, confidence: Optional[float] = None) -> ObservationProcessResult:
-    """Store an observation, infer its cell when possible, and preserve prior history."""
+    """Store an observation and preserve replaced observations as immutable revisions."""
     if observation.subject_id != twin.subject_id:
         raise ValueError("Observation subject_id must match the DigitalTwin subject_id")
+    observation.validate()
 
-    previous = twin.observations.get(observation.id)
-    is_revision = previous is not None
+    previous = twin.observations.get(observation.observation_id)
+    history = twin.metadata.setdefault("observation_revisions", {}).setdefault(observation.observation_id, [])
+    version = len(history) + 1
     if previous is not None:
-        observation.version = previous.version + 1
-        observation.created_at = previous.created_at
-        observation.updated_at = datetime.utcnow()
+        history.append(previous.to_dict())
 
-    evidence = twin.add_observation(observation, confidence=confidence)
-    cell_id = getattr(observation, "cell_id", None)
-    inference = None
-    trend = None
-    if cell_id:
-        inference = twin.infer_cell(cell_id, observed_at=observation.observed_at)
-        trend = twin.cell_inference_trend(cell_id)
+    twin.add_observation(observation, confidence=confidence)
+    inference = twin.infer_cell(observation.cell_id, observed_at=observation.observed_at)
+    trend = twin.cell_inference_trend(observation.cell_id)
 
     return ObservationProcessResult(
-        observation_id=observation.id,
-        cell_id=cell_id,
+        observation_id=observation.observation_id,
+        cell_id=observation.cell_id,
         inference=inference,
         trend=trend,
-        is_revision=is_revision,
-        version=observation.version,
+        is_revision=previous is not None,
+        version=version,
     )
