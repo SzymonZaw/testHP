@@ -17,6 +17,7 @@ from .twin_update import TwinUpdater
 from .spatial import CellLocation, HandRegion, HandSpatialModel, SpatialPoint, StructureRegion, TissueRegion
 from .individual_cell import CellTimeline, IndividualCellState
 from .cell_aggregation import aggregate_cells
+from .cell_assessment import CellAssessment
 
 
 @dataclass
@@ -31,6 +32,7 @@ class DigitalTwin:
     temporal_state: TemporalState = field(default_factory=TemporalState)
     spatial_model: HandSpatialModel = field(default_factory=HandSpatialModel)
     cell_timeline: CellTimeline = field(default_factory=CellTimeline)
+    cell_assessments: Dict[str, CellAssessment] = field(default_factory=dict)
     metadata: Dict[str, Any] = field(default_factory=dict)
     created_at: str = field(default_factory=lambda: datetime.utcnow().isoformat())
     updated_at: str = field(default_factory=lambda: datetime.utcnow().isoformat())
@@ -45,6 +47,16 @@ class DigitalTwin:
     def add_cell_state(self, state: IndividualCellState) -> None:
         self.cell_timeline.add(state)
         self.updated_at = datetime.utcnow().isoformat()
+
+    def add_cell_assessment(self, assessment: CellAssessment) -> None:
+        """Store the latest evidence-aware assessment for a cell."""
+        if assessment.cell_id not in self.cell_timeline.states:
+            raise KeyError(f"Cannot assess untracked cell: {assessment.cell_id}")
+        self.cell_assessments[assessment.cell_id] = assessment
+        self.updated_at = datetime.utcnow().isoformat()
+
+    def get_cell_assessment(self, cell_id: str) -> Optional[CellAssessment]:
+        return self.cell_assessments.get(cell_id)
 
     def cell_state_history(self, cell_id: str):
         return self.cell_timeline.get(cell_id)
@@ -67,6 +79,7 @@ class DigitalTwin:
             "temporal_state": self.temporal_state.to_dict(),
             "spatial_model": self.spatial_model.to_dict(),
             "cell_timeline": self.cell_timeline.to_dict(),
+            "cell_assessments": {cell_id: assessment.to_dict() for cell_id, assessment in self.cell_assessments.items()},
             "metadata": self.metadata,
             "created_at": self.created_at,
             "updated_at": self.updated_at,
@@ -85,6 +98,7 @@ class DigitalTwin:
             "spatial_regions": len(self.spatial_model.regions),
             "spatial_cells": cell_count,
             "tracked_cells": len(self.cell_timeline.states),
+            "assessed_cells": len(self.cell_assessments),
             "timepoints": len(self.temporal_state.timepoints),
             "updated_at": self.updated_at,
         }
@@ -104,6 +118,10 @@ class DigitalTwin:
 
         spatial_model = cls._load_spatial_model(data.get("spatial_model", {}))
         timeline = cls._load_cell_timeline(data.get("cell_timeline", {}))
+        assessments = {
+            cell_id: CellAssessment.from_dict(raw)
+            for cell_id, raw in data.get("cell_assessments", {}).items()
+        }
 
         return cls(
             subject_id=data["subject_id"],
@@ -114,6 +132,7 @@ class DigitalTwin:
             temporal_state=TemporalState.from_dict(data.get("temporal_state", {})),
             spatial_model=spatial_model,
             cell_timeline=timeline,
+            cell_assessments=assessments,
             metadata=data.get("metadata", {}),
             created_at=data.get("created_at", datetime.utcnow().isoformat()),
             updated_at=data.get("updated_at", datetime.utcnow().isoformat()),
@@ -134,31 +153,22 @@ class DigitalTwin:
         )
         for region_id, raw_region in data.get("regions", {}).items():
             region = HandRegion(
-                region_id=raw_region.get("region_id", region_id),
-                name=raw_region.get("name", region_id),
-                side=raw_region.get("side"),
-                bounds_min=cls._point(raw_region.get("bounds_min")),
-                bounds_max=cls._point(raw_region.get("bounds_max")),
-                metadata=raw_region.get("metadata", {}),
+                region_id=raw_region.get("region_id", region_id), name=raw_region.get("name", region_id),
+                side=raw_region.get("side"), bounds_min=cls._point(raw_region.get("bounds_min")),
+                bounds_max=cls._point(raw_region.get("bounds_max")), metadata=raw_region.get("metadata", {}),
             )
             for tissue_id, raw_tissue in raw_region.get("tissues", {}).items():
                 tissue = TissueRegion(
-                    tissue_id=raw_tissue.get("tissue_id", tissue_id),
-                    tissue_type=raw_tissue.get("tissue_type", "skin"),
-                    name=raw_tissue.get("name"),
-                    region_id=raw_tissue.get("region_id"),
-                    bounds_min=cls._point(raw_tissue.get("bounds_min")),
-                    bounds_max=cls._point(raw_tissue.get("bounds_max")),
+                    tissue_id=raw_tissue.get("tissue_id", tissue_id), tissue_type=raw_tissue.get("tissue_type", "skin"),
+                    name=raw_tissue.get("name"), region_id=raw_tissue.get("region_id"),
+                    bounds_min=cls._point(raw_tissue.get("bounds_min")), bounds_max=cls._point(raw_tissue.get("bounds_max")),
                     metadata=raw_tissue.get("metadata", {}),
                 )
                 for structure_id, raw_structure in raw_tissue.get("structures", {}).items():
                     tissue.add_structure(StructureRegion(
-                        structure_id=raw_structure.get("structure_id", structure_id),
-                        name=raw_structure.get("name", structure_id),
-                        region_id=raw_structure.get("region_id"),
-                        structure_type=raw_structure.get("structure_type"),
-                        bounds_min=cls._point(raw_structure.get("bounds_min")),
-                        bounds_max=cls._point(raw_structure.get("bounds_max")),
+                        structure_id=raw_structure.get("structure_id", structure_id), name=raw_structure.get("name", structure_id),
+                        region_id=raw_structure.get("region_id"), structure_type=raw_structure.get("structure_type"),
+                        bounds_min=cls._point(raw_structure.get("bounds_min")), bounds_max=cls._point(raw_structure.get("bounds_max")),
                         metadata=raw_structure.get("metadata", {}),
                     ))
                 for cell_id, raw_cell in raw_tissue.get("cells", {}).items():
@@ -166,12 +176,9 @@ class DigitalTwin:
                     if position is None:
                         raise ValueError(f"Cell '{cell_id}' is missing position")
                     tissue.add_cell(CellLocation(
-                        cell_id=raw_cell.get("cell_id", cell_id),
-                        position=position,
-                        tissue_id=raw_cell.get("tissue_id"),
-                        structure_id=raw_cell.get("structure_id"),
-                        cell_type=raw_cell.get("cell_type"),
-                        confidence=raw_cell.get("confidence", 0.0),
+                        cell_id=raw_cell.get("cell_id", cell_id), position=position,
+                        tissue_id=raw_cell.get("tissue_id"), structure_id=raw_cell.get("structure_id"),
+                        cell_type=raw_cell.get("cell_type"), confidence=raw_cell.get("confidence", 0.0),
                         metadata=raw_cell.get("metadata", {}),
                     ))
                 region.add_tissue(tissue)
@@ -184,16 +191,11 @@ class DigitalTwin:
         for cell_id, history in data.items():
             for item in history:
                 timeline.add(IndividualCellState(
-                    cell_id=item.get("cell_id", cell_id),
-                    observed_at=datetime.fromisoformat(item["observed_at"]),
-                    morphology=item.get("morphology", {}),
-                    biomarkers=item.get("biomarkers", {}),
-                    proliferation=item.get("proliferation"),
-                    senescence=item.get("senescence"),
-                    apoptosis=item.get("apoptosis"),
-                    abnormality=item.get("abnormality"),
-                    biological_age=item.get("biological_age"),
-                    confidence=item.get("confidence"),
+                    cell_id=item.get("cell_id", cell_id), observed_at=datetime.fromisoformat(item["observed_at"]),
+                    morphology=item.get("morphology", {}), biomarkers=item.get("biomarkers", {}),
+                    proliferation=item.get("proliferation"), senescence=item.get("senescence"),
+                    apoptosis=item.get("apoptosis"), abnormality=item.get("abnormality"),
+                    biological_age=item.get("biological_age"), confidence=item.get("confidence"),
                     metadata=item.get("metadata", {}),
                 ))
         return timeline
