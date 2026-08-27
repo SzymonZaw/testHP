@@ -1,0 +1,43 @@
+name: Frontend Digital Twin E2E
+
+on:
+  push:
+    branches:
+      - dev/next-cleanup
+  pull_request:
+    branches:
+      - dev/next-cleanup
+  workflow_dispatch:
+
+jobs:
+  browser-e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install Playwright
+        run: |
+          npm install --no-save @playwright/test
+          npx playwright install --with-deps chromium
+
+      - name: Start local static server
+        run: |
+          python -m http.server 4173 --directory . > /tmp/testhp-server.log 2>&1 &
+          echo $! > /tmp/testhp-server.pid
+          for i in $(seq 1 20); do
+            if curl -fsS http://127.0.0.1:4173/digital-twin/ >/dev/null; then exit 0; fi
+            sleep 1
+          done
+          cat /tmp/testhp-server.log
+          exit 1
+
+      - name: Run frontend Digital Twin E2E
+        env:
+          PLAYWRIGHT_BASE_URL: http://127.0.0.1:4173
+        run: npx playwright test tests/test_frontend_digital_twin_e2e.spec.js --reporter=line
