@@ -17,8 +17,6 @@ from .multiscale_registry import (
     _register_biological_state_conn,
     _register_cell_conn,
     _register_tissue_conn,
-    register_biological_age,
-    register_biological_state,
 )
 
 
@@ -72,26 +70,30 @@ def register_cell_research_outputs(
         model_id=model_id, model_version=model_version,
     )
 
-    # Schema creation is deliberately outside the data transaction because
-    # ensure_schema() and ensure_evidence_attachment_schema() commit their DDL.
+    # DDL/schema setup is outside the data transaction because the schema
+    # helpers intentionally commit their DDL.
     ensure_schema()
     ensure_evidence_attachment_schema()
 
     tissue = registry.tissues.get(cell.tissue_id)
     if tissue is None:
         raise ValueError("cell analysis requires an existing registered tissue")
-    registry.add_cell_state_assessment(CellStateAssessment(
-        assessment_id=state_assessment.assessment_id,
-        cell_id=cell.cell_id,
-        state=state_assessment.state,
-        confidence=state_assessment.confidence,
-    ))
     analysis.attachment.validate()
     if analysis.attachment.spatial_node_id != cell.cell_id or analysis.attachment.spatial_level != "cell":
         raise ValueError("evidence attachment must target the registered cell")
     if analysis.evidence.evidence_id != analysis.attachment.evidence_id:
         raise ValueError("evidence must match attachment")
 
+    cell_state = CellStateAssessment(
+        assessment_id=state_assessment.assessment_id,
+        cell_id=cell.cell_id,
+        state=state_assessment.state,
+        confidence=state_assessment.confidence,
+    )
+    cell_state.validate()
+
+    # psycopg's connection context commits on normal exit and rolls back on
+    # exception. No helper below opens another connection or commits.
     with connect() as conn:
         _register_tissue_conn(conn, tissue)
         _register_cell_conn(conn, cell)
@@ -99,4 +101,6 @@ def register_cell_research_outputs(
         _register_biological_state_conn(conn, state_assessment)
         _register_biological_age_conn(conn, age_estimate)
 
+    # Only mutate the in-memory registry after PostgreSQL has committed.
+    registry.add_cell_state_assessment(cell_state)
     return state_assessment, age_estimate
