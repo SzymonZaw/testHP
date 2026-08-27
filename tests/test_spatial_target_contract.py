@@ -103,7 +103,9 @@ def test_spatial_registry_uses_stable_exact_match_reason(monkeypatch):
     assert payload["debug"]["decisions"][0]["reason"] == "EXACT_SPATIAL_NODE_MATCH"
 
 
-def test_visual_overlay_only_consumes_localized_registry_evidence():
+def test_visual_overlay_fallback_is_a_disabled_compatibility_shim():
     source = OVERLAY.read_text(encoding="utf-8")
-    assert "item?.spatially_localized === true" in source
-    assert "skippedNonLocalizedCount" in source
+    assert "Projection ownership belongs to photo-surface-projection.js" in source
+    assert "disabled: true" in source
+    assert "projection-owned-by-photo-surface-projection" in source
+    assert "/api/spatial/registry" not in source
