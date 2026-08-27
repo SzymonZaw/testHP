@@ -2,8 +2,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from datetime import datetime
 from typing import Any, Dict, Iterable, List, Optional
 
+from .evidence import Evidence, evidence_summary
 from .regional_trajectory import RegionalTrajectory
 
 
@@ -19,6 +21,11 @@ class AgingSignal:
     magnitude: Optional[float]
     confidence: float
     evidence: Dict[str, Any] = field(default_factory=dict)
+    evidence_records: List[Evidence] = field(default_factory=list)
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "confidence", max(0.0, min(1.0, float(self.confidence))))
+        object.__setattr__(self, "evidence_records", list(self.evidence_records))
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -30,6 +37,7 @@ class AgingSignal:
             "magnitude": self.magnitude,
             "confidence": self.confidence,
             "evidence": dict(self.evidence),
+            "evidence_records": [item.to_dict() for item in self.evidence_records],
         }
 
 
@@ -90,9 +98,57 @@ def signals_from_trajectory(trajectory: RegionalTrajectory) -> List[AgingSignal]
     return signals
 
 
+def attach_evidence(
+    signal: AgingSignal,
+    evidence_records: Iterable[Evidence],
+) -> AgingSignal:
+    """Attach traceable evidence and recompute effective signal confidence."""
+    records = list(evidence_records)
+    summary = evidence_summary(records)
+    effective = min(signal.confidence, float(summary["confidence"])) if records else signal.confidence
+    merged_evidence = {**signal.evidence, "evidence_summary": summary}
+    return AgingSignal(
+        structure_id=signal.structure_id,
+        structure_type=signal.structure_type,
+        signal_type=signal.signal_type,
+        severity=_severity(signal.magnitude, effective),
+        direction=signal.direction,
+        magnitude=signal.magnitude,
+        confidence=effective,
+        evidence=merged_evidence,
+        evidence_records=records,
+    )
+
+
+def evidence_from_trajectory(
+    trajectory: RegionalTrajectory,
+    *,
+    source_type: str = "longitudinal_observation",
+) -> List[Evidence]:
+    """Create one traceable evidence record per trajectory point."""
+    records: List[Evidence] = []
+    for point in trajectory.points:
+        observed_at = datetime.fromisoformat(point["observed_at"])
+        records.append(Evidence(
+            evidence_id=f"{trajectory.structure_id}:{point['observation_id']}",
+            source_type=source_type,
+            source_id=point["observation_id"],
+            observed_at=observed_at,
+            feature=f"{trajectory.structure_type}.{trajectory.structure_id}",
+            value={
+                "biological_age": point.get("biological_age"),
+                "health_distribution": point.get("health_distribution", {}),
+                "function_distribution": point.get("function_distribution", {}),
+            },
+            confidence=float(point.get("confidence", 0.0)),
+        ))
+    return records
+
+
 def build_aging_signals(trajectories: Iterable[RegionalTrajectory]) -> List[AgingSignal]:
-    """Build signals for a collection of regional/tissue trajectories."""
+    """Build signals with traceable trajectory evidence attached."""
     signals: List[AgingSignal] = []
     for trajectory in trajectories:
-        signals.extend(signals_from_trajectory(trajectory))
+        for signal in signals_from_trajectory(trajectory):
+            signals.append(attach_evidence(signal, evidence_from_trajectory(trajectory)))
     return signals
