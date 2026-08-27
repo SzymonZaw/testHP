@@ -17,30 +17,10 @@ class ZoneTrend:
     status: str
 
     def to_dict(self) -> dict[str, Any]:
-        return {
-            "zone_id": self.zone_id,
-            "level": self.level,
-            "metric": self.metric,
-            "cell_count": self.cell_count,
-            "changed_cells": self.changed_cells,
-            "mean_delta": self.mean_delta,
-            "status": self.status,
-        }
+        return {"zone_id": self.zone_id, "level": self.level, "metric": self.metric, "cell_count": self.cell_count, "changed_cells": self.changed_cells, "mean_delta": self.mean_delta, "status": self.status}
 
 
-def aggregate_cell_trends(
-    trends: list[dict[str, Any]],
-    *,
-    cell_to_tissue: dict[str, str],
-    tissue_to_anatomy: dict[str, str],
-) -> list[dict[str, Any]]:
-    """Aggregate already-observed cell trends upward without inventing missing data.
-
-    Input trends must contain ``zone`` (cell id), ``metric`` and optional numeric
-    ``delta``. A zone is marked ``attention`` when at least one observed cell
-    changed; this is a research prioritisation signal, not a diagnosis or a
-    treatment recommendation.
-    """
+def aggregate_cell_trends(trends: list[dict[str, Any]], *, cell_to_tissue: dict[str, str], tissue_to_anatomy: dict[str, str]) -> list[dict[str, Any]]:
     buckets: dict[tuple[str, str, str], list[dict[str, Any]]] = {}
     for trend in trends:
         cell = str(trend.get("zone") or "")
@@ -58,7 +38,7 @@ def aggregate_cell_trends(
     for (level, zone, metric), items in sorted(buckets.items()):
         deltas = [float(x["delta"]) for x in items if isinstance(x.get("delta"), (int, float)) and not isinstance(x.get("delta"), bool)]
         changed = sum(1 for x in items if x.get("status") == "observed_change")
-        mean_delta = round(sum(deltas) / len(deltas), 12) if deltas else None
+        mean_delta = sum(deltas) / len(deltas) if deltas else None
         status = "attention" if changed else ("stable_observation" if items else "insufficient_data")
         results.append(ZoneTrend(zone, level, metric, len(items), changed, mean_delta, status).to_dict())
     return results
