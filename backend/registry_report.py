@@ -22,6 +22,14 @@ def _dict_value(value: Any) -> dict[str, Any]:
     raise TypeError("report component cannot be serialized as a dictionary")
 
 
+def _age_report_value(value: Any) -> dict[str, Any]:
+    data = _dict_value(value)
+    if "biological_age_years" not in data and "estimated_age_years" in data:
+        data = dict(data)
+        data["biological_age_years"] = data["estimated_age_years"]
+    return data
+
+
 def build_registry_report(
     registry: MultiscaleRegistry,
     *,
@@ -45,15 +53,13 @@ def build_registry_report(
     canonical_cells = [registry.canonical_cell_state(x.cell_id).to_dict() for x in current_cells]
 
     cells = [_dict_value(x["cell"]) for x in canonical_cells]
-    # The canonical biological state is a read model, but an unassessed cell
-    # must not appear as if a clinical/biological assessment was performed.
     assessments = [
         _dict_value(x["state_assessment"])
         for x in canonical_cells
         if x["state_assessment"] is not None
     ]
     ages = [
-        _dict_value(x["age_estimate"])
+        _age_report_value(x["age_estimate"])
         for x in canonical_cells
         if x["age_estimate"] is not None
     ]
