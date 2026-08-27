@@ -2,7 +2,7 @@
   // Compatibility shim only.
   //
   // Projection ownership belongs to photo-surface-projection.js. This file
-  // must not fetch /api/spatial/registry, wrap projection.sync(), or install
+  // must not fetch the legacy spatial registry endpoint, wrap projection.sync(), or install
   // timers of its own: doing so creates a second projection pipeline and
   // produces repeated state/registry requests during bootstrap.
   //
