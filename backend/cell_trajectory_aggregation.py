@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-"""Evidence-preserving aggregation of cell trajectories into tissue/anatomy trends."""
+"""Evidence-preserving aggregation of cell trajectories across hand scales."""
 
 from dataclasses import dataclass
 from typing import Any, Iterable
@@ -36,13 +36,36 @@ def _age_delta(trajectory: CellTrajectory) -> float | None:
     return trajectory.biological_age_delta
 
 
+def _aggregate(grouped: dict[tuple[str, str], list[tuple[str, float | None]]]) -> list[AggregatedTrajectory]:
+    result: list[AggregatedTrajectory] = []
+    for (level, zone_id), items in grouped.items():
+        observed = [delta for _, delta in items if delta is not None]
+        changed = [delta for delta in observed if delta != 0]
+        mean = sum(observed) / len(observed) if observed else None
+        status = "attention" if changed else ("stable_observation" if observed else "insufficient_observation")
+        result.append(
+            AggregatedTrajectory(
+                zone_id=zone_id,
+                level=level,
+                metric="biological_age_years",
+                cell_count=len(items),
+                changed_cells=len(changed),
+                mean_delta=mean,
+                status=status,
+                source_cell_ids=tuple(sorted(cell_id for cell_id, _ in items)),
+            )
+        )
+    order = {"hand": 0, "anatomy": 1, "tissue": 2}
+    return sorted(result, key=lambda item: (order.get(item.level, 99), item.zone_id))
+
+
 def aggregate_cell_trajectories(
     trajectories: Iterable[CellTrajectory],
     *,
     cell_to_tissue: dict[str, str],
     tissue_to_anatomy: dict[str, str],
 ) -> list[AggregatedTrajectory]:
-    """Roll biological-age trajectories from cells to tissue and anatomy."""
+    """Roll biological-age trajectories from cells to tissue, anatomy and hand."""
     grouped: dict[tuple[str, str], list[tuple[str, float | None]]] = {}
     for trajectory in trajectories:
         tissue = cell_to_tissue.get(trajectory.cell_id)
@@ -54,23 +77,5 @@ def aggregate_cell_trajectories(
         delta = _age_delta(trajectory)
         grouped.setdefault(("tissue", tissue), []).append((trajectory.cell_id, delta))
         grouped.setdefault(("anatomy", anatomy), []).append((trajectory.cell_id, delta))
-
-    result: list[AggregatedTrajectory] = []
-    for (level, zone_id), items in grouped.items():
-        observed = [delta for _, delta in items if delta is not None]
-        changed = [delta for delta in observed if delta != 0]
-        mean = sum(observed) / len(observed) if observed else None
-        status = "attention" if changed else ("stable_observation" if observed else "insufficient_observation")
-        result.append(
-            AggregatedTrajectory(
-                zone_id,
-                level,
-                "biological_age_years",
-                len(items),
-                len(changed),
-                mean,
-                status,
-                tuple(sorted(cell_id for cell_id, _ in items)),
-            )
-        )
-    return sorted(result, key=lambda item: (0 if item.level == "anatomy" else 1, item.zone_id))
+        grouped.setdefault(("hand", trajectory.hand_id), []).append((trajectory.cell_id, delta))
+    return _aggregate(grouped)
