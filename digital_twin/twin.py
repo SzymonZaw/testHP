@@ -99,6 +99,31 @@ class DigitalTwin:
         """Rank hand hierarchy nodes for further observation, not treatment."""
         return build_inference_attention(self.hierarchical_inference())
 
+    def summary(self) -> Dict[str, Any]:
+        """Return a unified, evidence-aware snapshot for API/UI consumers."""
+        assessment = self.hierarchical_assessment()
+        inference = self.hierarchical_inference()
+        attention = self.inference_attention_map()
+        hand_assessment = assessment.get("hand", {}).get("hand")
+        hand_inference = inference.get("hand", {}).get("hand")
+        return {
+            "subject_id": self.subject_id,
+            "updated_at": self.updated_at,
+            "hand": {
+                "assessment": hand_assessment.to_dict() if hand_assessment else None,
+                "inference": hand_inference.to_dict() if hand_inference else None,
+            },
+            "regions": {k: v.to_dict() for k, v in assessment.get("region", {}).items()},
+            "tissues": {k: v.to_dict() for k, v in assessment.get("tissue", {}).items()},
+            "inference_regions": {k: v.to_dict() for k, v in inference.get("region", {}).items()},
+            "inference_tissues": {k: v.to_dict() for k, v in inference.get("tissue", {}).items()},
+            "attention": [item.to_dict() for item in attention],
+            "coverage": {
+                "assessed_cells": hand_assessment.assessed_cells if hand_assessment else 0,
+                "inferred_cells": hand_inference.cells if hand_inference else 0,
+            },
+        }
+
     def add_cell_state(self, state: IndividualCellState) -> None:
         self.cell_timeline.add(state)
         self.updated_at = datetime.utcnow().isoformat()
