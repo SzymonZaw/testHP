@@ -17,6 +17,7 @@ from .individual_cell import CellTimeline, IndividualCellState
 from .cell_assessment import CellAssessment
 from .hierarchical_assessment import aggregate_assessments
 from .hierarchical_inference import aggregate_inference, HierarchicalInference
+from .inference_intervention import InferenceAttention, build_inference_attention
 from .assessment_trends import AssessmentTrend, compare_cell_assessments
 from .intervention_map import InterventionItem, build_intervention_map
 from .assessment_pipeline import build_assessment_view
@@ -93,6 +94,10 @@ class DigitalTwin:
                 if len(snapshots) > 1:
                     trends[cell_id] = self.inference_history.trend(cell_id)
         return aggregate_inference(self.spatial_model, latest, trends)
+
+    def inference_attention_map(self) -> List[InferenceAttention]:
+        """Rank hand hierarchy nodes for further observation, not treatment."""
+        return build_inference_attention(self.hierarchical_inference())
 
     def add_cell_state(self, state: IndividualCellState) -> None:
         self.cell_timeline.add(state)
