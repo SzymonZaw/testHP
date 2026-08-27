@@ -40,9 +40,21 @@ class CellAssessment:
     uncertainty: Optional[float] = None
     evidence: List[Evidence] = field(default_factory=list)
     model_metadata: Dict[str, Any] = field(default_factory=dict)
+    biological_age_estimate: Optional[Dict[str, Any]] = None
 
     def add_evidence(self, evidence: Evidence) -> None:
         self.evidence.append(evidence)
+
+    def set_biological_age_estimate(self, estimate: Any) -> None:
+        """Attach a BiologicalAgeEstimate without coupling the assessment layer to its class."""
+        if hasattr(estimate, "__dataclass_fields__"):
+            self.biological_age_estimate = asdict(estimate)
+        elif isinstance(estimate, dict):
+            self.biological_age_estimate = dict(estimate)
+        else:
+            raise TypeError("estimate must be a BiologicalAgeEstimate-like object or dict")
+        self.biological_age = self.biological_age_estimate.get("overall_age")
+        self.age_confidence = self.biological_age_estimate.get("confidence", 0.0)
 
     def to_dict(self) -> Dict[str, Any]:
         data = asdict(self)
