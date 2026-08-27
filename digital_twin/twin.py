@@ -21,6 +21,7 @@ from .hierarchical_inference import aggregate_inference, HierarchicalInference
 from .inference_intervention import InferenceAttention, build_inference_attention
 from .forecast import Forecast, forecast_cell
 from .inference_quality import InferenceQuality, assess_inference_quality
+from .aging_deviation_map import build_deviation_map
 from .assessment_trends import AssessmentTrend, compare_cell_assessments
 from .intervention_map import InterventionItem, build_intervention_map
 from .assessment_pipeline import build_assessment_view
@@ -112,6 +113,17 @@ class DigitalTwin:
         self.updated_at = datetime.utcnow().isoformat()
         return estimate
 
+    def aging_deviation_map(self, nodes: Optional[List[Dict[str, Any]]] = None) -> Dict[str, Any]:
+        """Build an observational map of regional/tissue age deviations."""
+        if nodes is None:
+            nodes = self.metadata.get("biological_age_nodes", [])
+        baseline = self.biological_age.biological_age
+        return build_deviation_map(baseline, nodes)
+
+    def rank_aging_deviations(self, nodes: Optional[List[Dict[str, Any]]] = None) -> List[Dict[str, Any]]:
+        """Return reliable deviations ordered by strongest signal."""
+        return self.aging_deviation_map(nodes).get("reliable_items", [])
+
     def cell_forecast(self, cell_id: str) -> Optional[Forecast]:
         snapshots = self.inference_history.get(cell_id)
         if not snapshots:
@@ -165,6 +177,7 @@ class DigitalTwin:
         hand_assessment = assessment.get("hand", {}).get("hand")
         hand_inference = inference.get("hand", {}).get("hand")
         quality = {cell_id: self.cell_inference_quality(cell_id).to_dict() for cell_id in self.inference_history._items}
+        deviation_map = self.aging_deviation_map()
         return {
             "subject_id": self.subject_id,
             "updated_at": self.updated_at,
@@ -181,6 +194,7 @@ class DigitalTwin:
             "forecast_regions": forecasts.get("region", {}),
             "forecast_tissues": forecasts.get("tissue", {}),
             "inference_quality": quality,
+            "aging_deviations": deviation_map,
             "attention": [item.to_dict() for item in attention],
             "coverage": {
                 "assessed_cells": hand_assessment.assessed_cells if hand_assessment else 0,
