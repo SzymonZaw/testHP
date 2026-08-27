@@ -29,6 +29,23 @@ class IndividualCellState:
         return data
 
 
+@dataclass(frozen=True)
+class CellTrend:
+    """Observed longitudinal direction; not a clinical diagnosis."""
+
+    cell_id: str
+    direction: str
+    age_delta: Optional[float]
+    abnormality_delta: Optional[float]
+    senescence_delta: Optional[float]
+    confidence: float
+    observations: int
+    status: str
+
+    def to_dict(self) -> Dict[str, Any]:
+        return asdict(self)
+
+
 @dataclass
 class CellTimeline:
     """Chronological state history for individual cells."""
@@ -55,6 +72,32 @@ class CellTimeline:
         if len(values) < 2:
             return None
         return float(values[-1] - values[0])
+
+    def trend(self, cell_id: str) -> Optional[CellTrend]:
+        history = self.get(cell_id)
+        if not history:
+            return None
+        first, last = history[0], history[-1]
+        age_delta = self.change(cell_id, "biological_age")
+        abnormality_delta = self.change(cell_id, "abnormality")
+        senescence_delta = self.change(cell_id, "senescence")
+        confidence_values = [item.confidence for item in history if isinstance(item.confidence, (int, float))]
+        confidence = sum(confidence_values) / len(confidence_values) if confidence_values else 0.0
+        if len(history) < 2:
+            direction = "uncertain"
+        elif abnormality_delta is not None and abnormality_delta >= 0.15:
+            direction = "worsening"
+        elif abnormality_delta is not None and abnormality_delta <= -0.15:
+            direction = "improving"
+        elif age_delta is not None and age_delta > 0:
+            direction = "aging"
+        else:
+            direction = "stable"
+        return CellTrend(cell_id, direction, age_delta, abnormality_delta, senescence_delta, confidence, len(history), "estimated" if len(history) >= 2 else "insufficient_evidence")
+
+    def snapshot(self, cell_id: str) -> Dict[str, Any]:
+        history = self.get(cell_id)
+        return {"cell_id": cell_id, "observations": [state.to_dict() for state in history], "trend": self.trend(cell_id).to_dict() if history else None}
 
     def to_dict(self) -> Dict[str, Any]:
         return {
