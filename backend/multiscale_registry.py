@@ -12,6 +12,8 @@ from .anatomy_foundation import (
     HistologyRegion, Registration, TissueRegion,
 )
 from .biological_state import BiologicalAgeEstimate, BiologicalStateAssessment
+from .biological_age import BiologicalAgeEngine
+from .cell_assessment import CellAssessmentEngine
 from .database import connect, ensure_schema
 from .multiscale_chain import MultiscaleChain, build_multiscale_chain
 
@@ -35,6 +37,12 @@ class ModalityAcquisition:
     modality: str
     source_data_ids: list[str]
     frame_id: str
+
+
+@dataclass(frozen=True)
+class CellAssessmentBundle:
+    state_assessment: CellStateAssessment
+    age_estimate: BiologicalAgeEstimate
 
 
 @dataclass
@@ -119,6 +127,23 @@ class MultiscaleRegistry:
         if not self._same_context(value, cell):
             raise ValueError("biological age estimate and cell must share subject/hand/timepoint")
         self.biological_age_estimates[value.estimate_id] = value
+
+    def assess_and_register_cell(self, cell_id: str, *, observations: dict[str, Any], age_observations: dict[str, Any], source_data_ids: tuple[str, ...], assessed_at: str, state_engine: CellAssessmentEngine | None = None, age_engine: BiologicalAgeEngine | None = None) -> CellAssessmentBundle:
+        """Run the research baselines and register their outputs for one cell."""
+        cell = self.cells.get(cell_id)
+        if cell is None:
+            raise KeyError(f"unknown cell: {cell_id}")
+        if not source_data_ids:
+            raise ValueError("source_data_ids are required")
+        state_result = (state_engine or CellAssessmentEngine()).assess(
+            cell, observations=observations, source_data_ids=source_data_ids, assessed_at=assessed_at
+        )
+        age_result = (age_engine or BiologicalAgeEngine()).estimate(
+            cell, observations=age_observations, source_data_ids=source_data_ids, assessed_at=assessed_at
+        )
+        self.add_cell_state_assessment(state_result.assessment)
+        self.add_biological_age_estimate(age_result.estimate)
+        return CellAssessmentBundle(state_result.assessment, age_result.estimate)
 
     def chain_for_cell(self, cell_id: str) -> MultiscaleChain:
         """Return the validated local hierarchy rooted at ``cell_id``.
