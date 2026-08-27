@@ -2,21 +2,96 @@ from __future__ import annotations
 
 """Persistence boundary for the multiscale digital-twin chain."""
 
-from dataclasses import asdict
+from dataclasses import asdict, dataclass, field
 from typing import Any
 
 from psycopg.types.json import Json
 
-from .anatomy_foundation import CellObject, TissueRegion
+from .anatomy_foundation import (
+    AnatomicalStructure, CellObject, HandCoordinateSystem, HistologyRegion,
+    Registration, TissueRegion,
+)
 from .biological_state import BiologicalAgeEstimate, BiologicalStateAssessment
 from .database import connect, ensure_schema
 
 
 def _json(value: Any) -> Json:
-    """Wrap Python JSON-compatible values for psycopg JSON/JSONB columns."""
     if hasattr(value, "__dataclass_fields__"):
         value = asdict(value)
     return Json(value)
+
+
+def _json_value(value: Any) -> Any:
+    return asdict(value) if hasattr(value, "__dataclass_fields__") else value
+
+
+@dataclass(frozen=True)
+class ModalityAcquisition:
+    acquisition_id: str
+    subject_id: str
+    hand_id: str
+    timepoint_id: str
+    modality: str
+    source_data_ids: list[str]
+    frame_id: str
+
+
+@dataclass
+class MultiscaleRegistry:
+    coordinate_systems: dict[str, HandCoordinateSystem] = field(default_factory=dict)
+    registrations: dict[str, Registration] = field(default_factory=dict)
+    acquisitions: dict[str, ModalityAcquisition] = field(default_factory=dict)
+    anatomy: dict[str, AnatomicalStructure] = field(default_factory=dict)
+    tissues: dict[str, TissueRegion] = field(default_factory=dict)
+    histology: dict[str, HistologyRegion] = field(default_factory=dict)
+    cells: dict[str, CellObject] = field(default_factory=dict)
+
+    def add_coordinate_system(self, value: HandCoordinateSystem) -> None:
+        self.coordinate_systems[value.frame_id] = value
+
+    def add_registration(self, value: Registration) -> None:
+        if value.target_frame not in self.coordinate_systems:
+            raise ValueError("registration target frame must already exist")
+        self.registrations[value.registration_id] = value
+
+    def add_acquisition(self, value: ModalityAcquisition) -> None:
+        self.acquisitions[value.acquisition_id] = value
+
+    def add_anatomy(self, value: AnatomicalStructure) -> None:
+        value.validate()
+        self.anatomy[value.structure_id] = value
+
+    def add_tissue(self, value: TissueRegion) -> None:
+        value.validate()
+        if value.anatomical_structure_id not in self.anatomy:
+            raise ValueError("tissue requires an existing anatomical structure")
+        self.tissues[value.tissue_id] = value
+
+    def add_histology(self, value: HistologyRegion) -> None:
+        value.validate()
+        if value.tissue_id not in self.tissues:
+            raise ValueError("histology requires an existing tissue")
+        self.histology[value.histology_id] = value
+
+    def add_cell(self, value: CellObject) -> None:
+        value.validate()
+        if value.tissue_id not in self.tissues:
+            raise ValueError("cell requires an existing tissue")
+        self.cells[value.cell_id] = value
+
+    def snapshot(self) -> dict[str, list[dict[str, Any]]]:
+        return {
+            name: [asdict(x) for x in values.values()]
+            for name, values in (
+                ("coordinate_systems", self.coordinate_systems),
+                ("registrations", self.registrations),
+                ("acquisitions", self.acquisitions),
+                ("anatomy", self.anatomy),
+                ("tissues", self.tissues),
+                ("histology", self.histology),
+                ("cells", self.cells),
+            )
+        }
 
 
 def register_tissue(tissue: TissueRegion) -> TissueRegion:
@@ -124,8 +199,3 @@ def register_biological_age(estimate: BiologicalAgeEstimate) -> BiologicalAgeEst
         )
         conn.commit()
     return estimate
-
-
-def _json_value(value: Any) -> Any:
-    """Convert dataclasses recursively to plain JSON-compatible structures."""
-    return asdict(value) if hasattr(value, "__dataclass_fields__") else value
