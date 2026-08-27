@@ -1,9 +1,10 @@
 // Canonical adapter from spatial target to assessment records.
-// Synthetic fixture is used only when no application assessment source exists.
+// Live API is preferred; synthetic fixture remains a demo fallback.
 (() => {
   const contract = () => window.testhpSpatialContract;
   const fixture = () => window.testhpSyntheticE2E;
   const cache = new Map();
+  const apiBase = () => window.testhpDigitalTwinApiBase || '/api/digital-twin';
 
   const findCell = id => {
     const data = fixture();
@@ -14,13 +15,7 @@
     const cell = findCell(id);
     if (!cell) return null;
     const timeline = cell.timeline || {};
-    const points = ['T0', 'T1', 'T2'].filter(key => timeline[key]).map(key => ({
-      timepoint: key,
-      biologicalAge: timeline[key].biologicalAge ?? null,
-      abnormality: timeline[key].abnormalityScore ?? timeline[key].abnormality ?? null,
-      healthScore: timeline[key].healthScore ?? null,
-      uncertainty: timeline[key].uncertainty ?? null
-    }));
+    const points = ['T0', 'T1', 'T2'].filter(key => timeline[key]).map(key => ({ timepoint: key, biologicalAge: timeline[key].biologicalAge ?? null, abnormality: timeline[key].abnormalityScore ?? timeline[key].abnormality ?? null, healthScore: timeline[key].healthScore ?? null, uncertainty: timeline[key].uncertainty ?? null }));
     const first = points[0], last = points[points.length - 1];
     const delta = (a, b) => a != null && b != null ? Number((b - a).toFixed(3)) : null;
     const abnormalityDelta = first && last ? delta(first.abnormality, last.abnormality) : null;
@@ -36,8 +31,7 @@
   };
 
   const aggregate = (targetId, level) => {
-    const data = fixture();
-    const cells = data?.cells || [];
+    const data = fixture(); const cells = data?.cells || [];
     const prefix = contract()?.canonicalTargetId(targetId) || targetId;
     let scoped = cells;
     if (level === 'cellular') return findCell(prefix);
@@ -51,15 +45,21 @@
     return { biologicalAge: age == null ? null : Number(age.toFixed(2)), ageConfidence: withAge.length ? totalConfidence / withAge.length : 0, evidenceCount: evidence, coverage: scoped.length ? withAge.length / scoped.length : 0, assessedCells: scoped.length, sufficientCells: withAge.length, status: withAge.length ? 'estimated' : 'insufficient_evidence' };
   };
 
-  const get = target => {
-    const id = contract()?.canonicalTargetId(target) || target;
-    const level = target?.level || contract()?.getTarget?.().level || 'macro';
-    const key = `${level}:${id}`;
-    if (cache.has(key)) return cache.get(key);
-    const value = aggregate(id, level);
-    cache.set(key, value);
-    return value;
+  const liveCell = async id => {
+    const response = await fetch(`${apiBase()}/cells/${encodeURIComponent(id)}/assessment`, { headers: { Accept: 'application/json' } });
+    if (!response.ok) throw new Error(`assessment_api_${response.status}`);
+    return response.json();
   };
 
-  window.testhpAssessmentDataAdapter = Object.freeze({ get, findCell, cellTimeline, aggregate, clear: () => cache.clear() });
+  const getLive = async target => {
+    const id = contract()?.canonicalTargetId(target) || target;
+    const key = `live:${id}`;
+    if (cache.has(key)) return cache.get(key);
+    const promise = liveCell(id).catch(() => null);
+    cache.set(key, promise);
+    return promise;
+  };
+
+  const get = target => aggregate(contract()?.canonicalTargetId(target) || target, target?.level || contract()?.getTarget?.().level || 'macro');
+  window.testhpAssessmentDataAdapter = Object.freeze({ get, getLive, findCell, cellTimeline, aggregate, clear: () => cache.clear() });
 })();
