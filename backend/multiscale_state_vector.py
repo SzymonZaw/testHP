@@ -2,7 +2,7 @@ from __future__ import annotations
 
 """Canonical observational state vector for the hand digital twin.
 
-This module intentionally stays below diagnosis and intervention logic.  It
+This module intentionally stays below diagnosis and intervention logic. It
 turns evidence-backed multiscale trend/attention records into a stable,
 serializable read model for later analytics and ML.
 """
@@ -34,7 +34,7 @@ class MultiscaleStateLevel:
             "status": self.status,
             "attention_score": self.attention_score,
             "confidence": self.confidence,
-            "source_cell_ids": self.source_cell_ids,
+            "source_cell_ids": list(self.source_cell_ids),
         }
 
 
@@ -64,6 +64,17 @@ def _status(items: list[dict[str, Any]]) -> str:
     if any(item.get("status") in {"observed_change", "stable_observation", "monitor"} for item in items):
         return "observed"
     return "insufficient_observation"
+
+
+def _confidence(items: list[dict[str, Any]]) -> float | None:
+    values = [
+        float(item["confidence"])
+        for item in items
+        if isinstance(item.get("confidence"), (int, float))
+        and not isinstance(item.get("confidence"), bool)
+        and 0.0 <= float(item["confidence"]) <= 1.0
+    ]
+    return sum(values) / len(values) if values else None
 
 
 def build_multiscale_state_vector(
@@ -118,7 +129,7 @@ def build_multiscale_state_vector(
                 mean_age_delta=(sum(deltas) / len(deltas)) if deltas else None,
                 status=_status(rows),
                 attention_score=max(scores) if scores else None,
-                confidence=None,
+                confidence=_confidence(rows),
                 source_cell_ids=tuple(source_ids),
             )
         )
