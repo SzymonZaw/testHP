@@ -39,8 +39,8 @@ class CanonicalCellState:
                 "spatial_reference": self.cell.spatial_reference,
             },
             "state": self.state.to_dict(),
-            "state_assessment": self.state_assessment,
-            "age_estimate": self.age_estimate,
+            "state_assessment": self.state_assessment.to_dict() if self.state_assessment is not None else None,
+            "age_estimate": self.age_estimate.to_dict() if self.age_estimate is not None else None,
         }
 
 
@@ -60,11 +60,7 @@ def build_canonical_cell_state(
     evidence: list[EvidenceItem] = []
 
     if isinstance(state_assessment, CellStateAssessment):
-        state_map = {
-            "normal": "normal",
-            "pathological": "abnormal",
-            "unknown": "uncertain",
-        }
+        state_map = {"normal": "normal", "pathological": "abnormal", "unknown": "uncertain"}
         state = state_map.get(state_assessment.state, "uncertain")
         confidence = state_assessment.confidence
         uncertainty = 1.0 - confidence if confidence is not None else 1.0
@@ -85,8 +81,8 @@ def build_canonical_cell_state(
 
     if not evidence:
         evidence.append(EvidenceItem(
-            evidence_id=f"cell:{cell.cell_id}:morphology",
-            source_object_ids=cell.source_data_ids,
+            evidence_id=f"cell:{cell.cell_id}:observation",
+            source_object_ids=cell.source_data_ids or (f"cell:{cell.cell_id}",),
             kind="cell_observation",
             value={"morphology": cell.morphology, "size": cell.size, "nucleus": cell.nucleus},
             confidence=cell.confidence if cell.confidence is not None else 0.0,
