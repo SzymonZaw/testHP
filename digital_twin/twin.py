@@ -2,10 +2,8 @@
 
 from __future__ import annotations
 
-import json
 from dataclasses import dataclass, field
 from datetime import datetime
-from pathlib import Path
 from typing import Any, Dict, Optional
 
 from .tissue_state import TissueState
@@ -14,13 +12,13 @@ from .biological_age import BiologicalAge
 from .risk_state import RiskState
 from .temporal_state import TemporalState
 from .twin_update import TwinUpdater
-from .spatial import CellLocation, HandRegion, HandSpatialModel, SpatialPoint, StructureRegion, TissueRegion
+from .spatial import HandSpatialModel
 from .individual_cell import CellTimeline, IndividualCellState
-from .cell_aggregation import aggregate_cells
 from .cell_assessment import CellAssessment
 from .hierarchical_assessment import aggregate_assessments
 from .assessment_trends import AssessmentTrend, compare_cell_assessments
 from .intervention_map import InterventionItem, build_intervention_map
+from .assessment_pipeline import build_assessment_view
 
 
 @dataclass
@@ -66,6 +64,10 @@ class DigitalTwin:
 
     def get_cell_assessment(self, cell_id: str) -> Optional[CellAssessment]:
         return self.cell_assessments.get(cell_id)
+
+    def assessment_view(self, cell_id: str, previous_assessment: Optional[CellAssessment] = None) -> Optional[Dict[str, Any]]:
+        """Return the unified assessment payload used by API/UI consumers."""
+        return build_assessment_view(self, cell_id, previous_assessment)
 
     def hierarchical_assessment(self) -> Dict[str, Dict[str, Any]]:
         aggregated = aggregate_assessments(self.spatial_model, self.cell_assessments)
