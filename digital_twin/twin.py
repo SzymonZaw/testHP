@@ -16,6 +16,7 @@ from .spatial import HandSpatialModel
 from .individual_cell import CellTimeline, IndividualCellState
 from .cell_assessment import CellAssessment
 from .hierarchical_assessment import aggregate_assessments
+from .hierarchical_inference import aggregate_inference, HierarchicalInference
 from .assessment_trends import AssessmentTrend, compare_cell_assessments
 from .intervention_map import InterventionItem, build_intervention_map
 from .assessment_pipeline import build_assessment_view
@@ -81,6 +82,17 @@ class DigitalTwin:
 
     def cell_inference_trend(self, cell_id: str) -> Optional[InferenceTrend]:
         return self.inference_history.trend(cell_id)
+
+    def hierarchical_inference(self) -> Dict[str, Dict[str, HierarchicalInference]]:
+        """Aggregate latest cell inferences through tissue, region and hand."""
+        latest = {}
+        trends = {}
+        for cell_id, snapshots in self.inference_history._items.items():
+            if snapshots:
+                latest[cell_id] = snapshots[-1].inference
+                if len(snapshots) > 1:
+                    trends[cell_id] = self.inference_history.trend(cell_id)
+        return aggregate_inference(self.spatial_model, latest, trends)
 
     def add_cell_state(self, state: IndividualCellState) -> None:
         self.cell_timeline.add(state)
