@@ -9,6 +9,7 @@ from typing import Any, Dict, List, Optional
 from .tissue_state import TissueState
 from .cell_state import CellState
 from .biological_age import BiologicalAge
+from .biological_age_model import BiologicalAgeEstimate, estimate_biological_age
 from .risk_state import RiskState
 from .temporal_state import TemporalState
 from .twin_update import TwinUpdater
@@ -87,6 +88,30 @@ class DigitalTwin:
     def cell_inference_quality(self, cell_id: str) -> InferenceQuality:
         return assess_inference_quality(self.inference_history.get(cell_id))
 
+    def biological_age_estimate(
+        self,
+        markers: List[float],
+        chronological_age: Optional[float] = None,
+        confidence: float = 0.0,
+        aging_rate: Optional[float] = None,
+    ) -> BiologicalAgeEstimate:
+        """Estimate biological age from supplied marker-derived estimates."""
+        chronological_age = chronological_age if chronological_age is not None else self.biological_age.chronological_age
+        estimate = estimate_biological_age(
+            chronological_age,
+            markers,
+            confidence=confidence,
+            aging_rate=aging_rate,
+        )
+        self.biological_age.update(
+            biological_age=estimate.biological_age,
+            chronological_age=estimate.chronological_age,
+            confidence=estimate.confidence,
+        )
+        self.metadata["biological_age_estimate"] = estimate.to_dict()
+        self.updated_at = datetime.utcnow().isoformat()
+        return estimate
+
     def cell_forecast(self, cell_id: str) -> Optional[Forecast]:
         snapshots = self.inference_history.get(cell_id)
         if not snapshots:
@@ -147,6 +172,7 @@ class DigitalTwin:
                 "assessment": hand_assessment.to_dict() if hand_assessment else None,
                 "inference": hand_inference.to_dict() if hand_inference else None,
                 "forecast": forecasts.get("hand", {}).get("hand"),
+                "biological_age": self.biological_age.summary(),
             },
             "regions": {k: v.to_dict() for k, v in assessment.get("region", {}).items()},
             "tissues": {k: v.to_dict() for k, v in assessment.get("tissue", {}).items()},
