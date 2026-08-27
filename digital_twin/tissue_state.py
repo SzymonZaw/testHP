@@ -1,22 +1,22 @@
 """
 Tissue state representation for the digital twin.
 
-This module stores tissue-level biological measurements obtained from
-image analysis, WSI analysis, morphology analysis, pathology models, etc.
+This module stores tissue-level biological measurements and can also
+aggregate single-cell profiles without discarding cellular distributions.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field, asdict
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Iterable, Optional
 from datetime import datetime
+
+from .cell_profile import CellProfile
 
 
 @dataclass
 class TissueState:
-    """
-    Represents the current tissue-level state of a subject.
-    """
+    """Represents the current tissue-level state of a subject."""
 
     tissue_type: str = "skin"
 
@@ -35,6 +35,13 @@ class TissueState:
     morphology_score: Optional[float] = None
     pathology_score: Optional[float] = None
 
+    cell_count: int = 0
+    health_distribution: Dict[str, int] = field(default_factory=dict)
+    function_distribution: Dict[str, int] = field(default_factory=dict)
+    biological_age: Optional[float] = None
+    biological_age_range: Optional[tuple[float, float]] = None
+    cellular_heterogeneity: float = 0.0
+
     confidence: float = 0.0
 
     timestamp: str = field(
@@ -48,17 +55,12 @@ class TissueState:
         values: Dict[str, Any],
         confidence: Optional[float] = None,
     ) -> None:
-        """
-        Update tissue state from a dictionary of measurements.
-        """
-
+        """Update tissue state from a dictionary of measurements."""
         for key, value in values.items():
-
             if key == "metadata":
                 if isinstance(value, dict):
                     self.metadata.update(value)
                 continue
-
             if hasattr(self, key):
                 setattr(self, key, value)
 
@@ -67,24 +69,54 @@ class TissueState:
 
         self.timestamp = datetime.utcnow().isoformat()
 
+    def aggregate_cells(
+        self,
+        cells: Iterable[CellProfile],
+        confidence: Optional[float] = None,
+    ) -> None:
+        """Fold cell profiles into this tissue while retaining distributions."""
+        cell_list = list(cells)
+        self.cell_count = len(cell_list)
+        self.health_distribution = {}
+        self.function_distribution = {}
+
+        ages = []
+        confidence_values = []
+        for cell in cell_list:
+            self.health_distribution[cell.health.status] = self.health_distribution.get(cell.health.status, 0) + 1
+            self.function_distribution[cell.function.status] = self.function_distribution.get(cell.function.status, 0) + 1
+            if cell.biological_age is not None:
+                ages.append(float(cell.biological_age))
+            confidence_values.append(float(cell.confidence))
+
+        if ages:
+            self.biological_age = sum(ages) / len(ages)
+            self.biological_age_range = (min(ages), max(ages))
+        else:
+            self.biological_age = None
+            self.biological_age_range = None
+
+        if self.cell_count:
+            self.cellular_heterogeneity = 1.0 - max(self.health_distribution.values()) / self.cell_count
+            inferred = sum(confidence_values) / len(confidence_values)
+        else:
+            self.cellular_heterogeneity = 0.0
+            inferred = 0.0
+
+        self.confidence = max(0.0, min(1.0, float(confidence if confidence is not None else inferred)))
+        self.timestamp = datetime.utcnow().isoformat()
+
     def to_dict(self) -> Dict[str, Any]:
-        """
-        Convert tissue state to a serializable dictionary.
-        """
+        """Convert tissue state to a serializable dictionary."""
         return asdict(self)
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "TissueState":
-        """
-        Create TissueState from dictionary.
-        """
+        """Create TissueState from dictionary."""
         return cls(**data)
 
     def summary(self) -> Dict[str, Any]:
-        """
-        Return a compact tissue summary.
-        """
-
+        """Return a compact tissue summary."""
         return {
             "tissue_type": self.tissue_type,
             "thickness": self.thickness,
@@ -94,6 +126,12 @@ class TissueState:
             "vascular_abnormality": self.vascular_abnormality,
             "tissue_abnormality_score": self.tissue_abnormality_score,
             "pathology_score": self.pathology_score,
+            "cell_count": self.cell_count,
+            "health_distribution": dict(self.health_distribution),
+            "function_distribution": dict(self.function_distribution),
+            "biological_age": self.biological_age,
+            "biological_age_range": self.biological_age_range,
+            "cellular_heterogeneity": self.cellular_heterogeneity,
             "confidence": self.confidence,
             "timestamp": self.timestamp,
         }
