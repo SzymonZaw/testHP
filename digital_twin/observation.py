@@ -1,9 +1,11 @@
-"""Canonical raw observation model for Digital Twin inputs."""
+"""Canonical raw observation model and conversion to evidence."""
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from typing import Any, Dict, Optional
+
+from .evidence import Evidence
 
 
 @dataclass(frozen=True)
@@ -38,3 +40,22 @@ class Observation:
         for name, value in (("quality", self.quality), ("uncertainty", self.uncertainty)):
             if value is not None and not 0.0 <= value <= 1.0:
                 raise ValueError(f"{name} must be between 0 and 1")
+
+    def to_evidence(self, confidence: Optional[float] = None) -> Evidence:
+        """Convert a validated observation into traceable assessment evidence."""
+        self.validate()
+        inferred = confidence
+        if inferred is None:
+            inferred = 1.0 - self.uncertainty if self.uncertainty is not None else self.quality if self.quality is not None else 0.0
+        return Evidence(
+            evidence_id=self.observation_id,
+            source_type=self.modality,
+            source_id=self.sample_id,
+            observed_at=self.observed_at,
+            feature=self.feature,
+            value=self.value,
+            unit=self.unit,
+            quality=self.quality,
+            confidence=max(0.0, min(1.0, inferred)),
+            provenance=self.provenance,
+        )
