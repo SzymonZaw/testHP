@@ -9,6 +9,7 @@ from .digital_twin_report import build_digital_twin_report
 from .longitudinal import compare_observations
 from .longitudinal_cells import CellTimepointRecord, build_cell_trajectory
 from .multiscale_registry import MultiscaleRegistry
+from .multiscale_state_delta import compare_multiscale_state_vectors
 from .multiscale_state_vector import build_multiscale_state_vector
 from .spatial_attention import build_spatial_attention_map
 
@@ -48,6 +49,7 @@ def build_registry_report(
     hand_id: str,
     timepoint_id: str,
     longitudinal_observations: Iterable[Any] | None = None,
+    prior_state_vectors: Iterable[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     registry.validate_integrity()
 
@@ -116,9 +118,6 @@ def build_registry_report(
     )
     trends = trends + [item.to_dict() for item in multiscale_trends]
 
-    # The attention layer consumes every evidence-backed trend level. Spatial
-    # projection remains intentionally cell-only because tissue/anatomy zones
-    # do not yet have canonical 3D geometry in this report contract.
     attention_inputs = [
         {
             "zone_id": x.get("zone", x.get("zone_id")),
@@ -173,4 +172,8 @@ def build_registry_report(
         spatial_attention=spatial,
     )
     report["state_vector"] = state_vector
+    if prior_state_vectors is not None:
+        history = [dict(item) for item in prior_state_vectors]
+        history.append(state_vector)
+        report["state_vector_deltas"] = compare_multiscale_state_vectors(history)
     return report
