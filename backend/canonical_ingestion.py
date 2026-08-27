@@ -5,8 +5,8 @@ import uuid
 from pathlib import Path
 from typing import Any
 
-from .data_foundation import Acquisition, DataObject, Hand, Provenance, Quality, SpatialReference, Timepoint
-from .data_ingestion import DataAsset, load_registry
+from .data_foundation import Acquisition, DataObject, Hand, Provenance, Quality, SpatialReference, Timepoint, Uncertainty
+from .data_ingestion import DataAsset
 
 ROOT = Path(__file__).resolve().parents[1]
 FOUNDATION_ROOT = ROOT / "data" / "registry"
@@ -36,13 +36,8 @@ def _save_foundation_registry(items: list[dict[str, Any]]) -> None:
 
 
 def canonicalize_asset(asset: DataAsset) -> DataObject:
-    """Map a legacy DataAsset into the Phase-A canonical data model.
-
-    This is deliberately lossless: the legacy registry remains intact while the
-    canonical object records the same raw file as an observed acquisition.
-    """
+    """Map a legacy DataAsset into the Phase-A canonical data model."""
     acquisition_id = f"acq_{uuid.uuid5(uuid.NAMESPACE_URL, f'testhp:acq:{asset.asset_id}').hex[:12]}"
-    frame_id = f"hand-frame:{asset.subject_id}:{asset.timepoint}"
     acquisition = Acquisition(
         acquisition_id=acquisition_id,
         subject_id=asset.subject_id,
@@ -55,11 +50,6 @@ def canonicalize_asset(asset: DataAsset) -> DataObject:
     timepoint = Timepoint(timepoint_id=asset.timepoint, subject_id=asset.subject_id, acquired_at=asset.created_at)
     hand = Hand(hand_id=_stable_hand_id(asset.subject_id), subject_id=asset.subject_id, laterality="unknown")
     data_type = "image" if asset.modality in {"hand", "images", "wsi"} else asset.modality
-    spatial = SpatialReference(
-        frame_id=frame_id,
-        registration_status="unregistered",
-        anatomical_target="hand" if asset.modality == "hand" else None,
-    )
     obj = DataObject(
         data_id=asset.asset_id,
         data_type=data_type,
@@ -70,9 +60,8 @@ def canonicalize_asset(asset: DataAsset) -> DataObject:
         modality=asset.modality,
         status=asset.status,
         quality=Quality(status="unknown"),
-        uncertainty=__import__("backend.data_foundation", fromlist=["Uncertainty"]).Uncertainty(kind="not_assessed"),
+        uncertainty=Uncertainty(kind="not_assessed"),
         provenance=Provenance(
-            source_object_ids=(),
             method="upload",
             method_version="1",
             processing_timestamp=asset.created_at,
@@ -80,7 +69,11 @@ def canonicalize_asset(asset: DataAsset) -> DataObject:
             pipeline_id="ingestion",
             parameters={"filename": asset.filename, "view": asset.view, "subtype": asset.subtype},
         ),
-        spatial_reference=spatial,
+        spatial_reference=SpatialReference(
+            frame_id=f"hand-frame:{asset.subject_id}:{asset.timepoint}",
+            registration_status="unregistered",
+            anatomical_target="hand" if asset.modality == "hand" else None,
+        ),
         metadata={
             "path": asset.path,
             "filename": asset.filename,
