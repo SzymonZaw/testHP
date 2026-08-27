@@ -7,6 +7,9 @@ from typing import Any
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
+from digital_twin.assessment_api import get_cell_assessment
+from digital_twin.twin import DigitalTwin
+
 from .biological_state_routes import biological_state
 from .data_ingestion import registry_status
 from .observation_registry import archive_observation, create_observation, get_observation, list_observations, observation_history, restore_observation, update_observation
@@ -155,9 +158,6 @@ def spatial_registry(
         for item in raw_assets
         if item.get("subject_id") == subject_id and item.get("timepoint") == timepoint
     ]
-    # The registry is an API boundary: normalize both the requested target and
-    # stored evidence IDs here so display aliases (e.g. "Palm"/"Śródręcze")
-    # cannot cause a false empty scope.
     target = canonical_spatial_id(spatial_node_id, fallback="") if spatial_node_id else None
     decisions: list[dict[str, Any]] = []
     matched: list[dict[str, Any]] = []
@@ -222,6 +222,16 @@ def observations(subject_id: str = "own_cohort", timepoint: str | None = None, s
 @router.get("/api/biological-state")
 def state(subject_id: str = "own_cohort", timepoint: str = "T0", spatial_id: str | None = None, include_descendants: bool = True):
     return biological_state(subject_id=subject_id, timepoint=timepoint, spatial_id=spatial_id, include_descendants=include_descendants)
+
+
+@router.get("/api/digital-twin/cells/{cell_id}/assessment")
+def digital_twin_cell_assessment(cell_id: str, subject_id: str = "own_cohort"):
+    """Return the unified research assessment for one tracked cell."""
+    twin = DigitalTwin(subject_id=subject_id)
+    payload = get_cell_assessment(twin, cell_id)
+    if payload.get("error") == "cell_not_found":
+        raise HTTPException(status_code=404, detail=payload)
+    return payload
 
 
 @router.post("/api/observations", status_code=201)
