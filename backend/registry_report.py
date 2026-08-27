@@ -9,6 +9,7 @@ from .digital_twin_report import build_digital_twin_report
 from .longitudinal import compare_observations
 from .longitudinal_cells import CellTimepointRecord, build_cell_trajectory
 from .multiscale_registry import MultiscaleRegistry
+from .multiscale_state_vector import build_multiscale_state_vector
 from .spatial_attention import build_spatial_attention_map
 
 
@@ -126,11 +127,20 @@ def build_registry_report(
             "cell_count": x.get("cell_count", 1),
             "changed_cells": x.get("changed_cells", 1 if x.get("status") == "observed_change" else 0),
             "mean_delta": x.get("mean_delta", x.get("delta")),
+            "source_cell_ids": x.get("source_cell_ids", ()),
         }
         for x in trends
         if x.get("status") != "insufficient_timepoints"
     ]
     attention = build_attention_map(attention_inputs)
+
+    state_vector = build_multiscale_state_vector(
+        subject_id=subject_id,
+        hand_id=hand_id,
+        timepoint_id=timepoint_id,
+        trends=trends,
+        attention=attention,
+    )
 
     cell_positions = {
         x.cell_id: {
@@ -149,7 +159,7 @@ def build_registry_report(
             if x["level"] == "cell"
         },
     )
-    return build_digital_twin_report(
+    report = build_digital_twin_report(
         subject_id=subject_id,
         hand_id=hand_id,
         timepoint_id=timepoint_id,
@@ -162,3 +172,5 @@ def build_registry_report(
         attention=attention,
         spatial_attention=spatial,
     )
+    report["state_vector"] = state_vector
+    return report
