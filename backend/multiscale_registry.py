@@ -13,6 +13,7 @@ from .anatomy_foundation import (
 )
 from .biological_state import BiologicalAgeEstimate, BiologicalStateAssessment
 from .database import connect, ensure_schema
+from .multiscale_chain import MultiscaleChain, build_multiscale_chain
 
 
 def _json(value: Any) -> Json:
@@ -46,6 +47,8 @@ class MultiscaleRegistry:
     histology: dict[str, HistologyRegion] = field(default_factory=dict)
     cells: dict[str, CellObject] = field(default_factory=dict)
     cell_state_assessments: dict[str, CellStateAssessment] = field(default_factory=dict)
+    biological_state_assessments: dict[str, BiologicalStateAssessment] = field(default_factory=dict)
+    biological_age_estimates: dict[str, BiologicalAgeEstimate] = field(default_factory=dict)
 
     def add_coordinate_system(self, value: HandCoordinateSystem) -> None:
         self.coordinate_systems[value.frame_id] = value
@@ -99,6 +102,60 @@ class MultiscaleRegistry:
             raise ValueError("cell state assessment requires an existing cell")
         self.cell_state_assessments[value.assessment_id] = value
 
+    def add_biological_state_assessment(self, value: BiologicalStateAssessment) -> None:
+        value.validate()
+        cell = self.cells.get(value.target_object_id)
+        if cell is None:
+            raise ValueError("biological state assessment requires an existing cell")
+        if not self._same_context(value, cell):
+            raise ValueError("biological state assessment and cell must share subject/hand/timepoint")
+        self.biological_state_assessments[value.assessment_id] = value
+
+    def add_biological_age_estimate(self, value: BiologicalAgeEstimate) -> None:
+        value.validate()
+        cell = self.cells.get(value.target_object_id)
+        if cell is None:
+            raise ValueError("biological age estimate requires an existing cell")
+        if not self._same_context(value, cell):
+            raise ValueError("biological age estimate and cell must share subject/hand/timepoint")
+        self.biological_age_estimates[value.estimate_id] = value
+
+    def chain_for_cell(self, cell_id: str) -> MultiscaleChain:
+        """Return the validated local hierarchy rooted at ``cell_id``.
+
+        Optional histology, state and age records are selected only when they
+        target the exact tissue/cell and context. Ambiguous multiple records
+        are rejected rather than silently choosing one.
+        """
+        cell = self.cells.get(cell_id)
+        if cell is None:
+            raise KeyError(f"unknown cell: {cell_id}")
+        tissue = self.tissues.get(cell.tissue_id)
+        if tissue is None:
+            raise ValueError(f"cell {cell_id} has no tissue parent")
+        anatomy = self.anatomy.get(tissue.anatomical_structure_id)
+        if anatomy is None:
+            raise ValueError(f"tissue {tissue.tissue_id} has no anatomical parent")
+
+        histologies = [x for x in self.histology.values() if x.tissue_id == tissue.tissue_id and self._same_context(x, cell)]
+        if len(histologies) > 1:
+            raise ValueError(f"cell {cell_id} has multiple matching histology records")
+        states = [x for x in self.biological_state_assessments.values() if x.target_object_id == cell_id and self._same_context(x, cell)]
+        if len(states) > 1:
+            raise ValueError(f"cell {cell_id} has multiple matching biological state assessments")
+        ages = [x for x in self.biological_age_estimates.values() if x.target_object_id == cell_id and self._same_context(x, cell)]
+        if len(ages) > 1:
+            raise ValueError(f"cell {cell_id} has multiple matching biological age estimates")
+
+        return build_multiscale_chain(
+            anatomy,
+            tissue,
+            histology=histologies[0] if histologies else None,
+            cell=cell,
+            state_assessment=states[0] if states else None,
+            age_estimate=ages[0] if ages else None,
+        )
+
     def validate_integrity(self) -> None:
         for tissue in self.tissues.values():
             parent = self.anatomy.get(tissue.anatomical_structure_id)
@@ -121,6 +178,18 @@ class MultiscaleRegistry:
         for assessment in self.cell_state_assessments.values():
             if assessment.cell_id not in self.cells:
                 raise ValueError(f"cell state assessment {assessment.assessment_id} has no cell parent")
+        for assessment in self.biological_state_assessments.values():
+            cell = self.cells.get(assessment.target_object_id)
+            if cell is None:
+                raise ValueError(f"biological state assessment {assessment.assessment_id} has no cell parent")
+            if not self._same_context(assessment, cell):
+                raise ValueError(f"biological state assessment {assessment.assessment_id} has mismatched context")
+        for estimate in self.biological_age_estimates.values():
+            cell = self.cells.get(estimate.target_object_id)
+            if cell is None:
+                raise ValueError(f"biological age estimate {estimate.estimate_id} has no cell parent")
+            if not self._same_context(estimate, cell):
+                raise ValueError(f"biological age estimate {estimate.estimate_id} has mismatched context")
 
     def snapshot(self) -> dict[str, list[dict[str, Any]]]:
         self.validate_integrity()
@@ -128,6 +197,8 @@ class MultiscaleRegistry:
             ("coordinate_systems", self.coordinate_systems), ("registrations", self.registrations),
             ("acquisitions", self.acquisitions), ("anatomy", self.anatomy), ("tissues", self.tissues),
             ("histology", self.histology), ("cells", self.cells), ("cell_state_assessments", self.cell_state_assessments),
+            ("biological_state_assessments", self.biological_state_assessments),
+            ("biological_age_estimates", self.biological_age_estimates),
         )}
 
 
