@@ -31,6 +31,7 @@ from .video_analysis import analyze_video_directory, inspect_video
 from .stage_2_4 import register_stage_routes
 from .stages_5_8 import register_stage_5_8_routes
 from .hand_surface_photo import register_hand_surface_photo_routes
+from .stages_21_32 import register_stage_21_32_routes
 
 ROOT = Path(__file__).resolve().parents[1]
 RAW_ROOT = ROOT / "data" / "raw"
@@ -46,6 +47,7 @@ app = FastAPI(title="Human Pathology Platform", version="0.8.0")
 register_stage_routes(app)
 register_stage_5_8_routes(app)
 register_hand_surface_photo_routes(app)
+register_stage_21_32_routes(app)
 app.include_router(observation_router)
 
 class PipelineRequest(BaseModel):
