@@ -4,6 +4,7 @@ from digital_twin.biological_age_model import estimate_biological_age
 from digital_twin.aging_deviation import build_aging_deviation
 from digital_twin.temporal_aging_deviation import analyze_temporal_aging_deviation
 from digital_twin.temporal_aging_map import build_temporal_aging_map
+from digital_twin.twin import DigitalTwin
 
 
 def test_biological_age_estimate_aggregates_markers():
@@ -58,3 +59,22 @@ def test_temporal_map_ranks_and_filters_nodes():
     assert result["persistent"][0]["identifier"] == "thumb"
     assert result["increasing"][0]["identifier"] == "thumb"
     assert result["items"][1]["persistence"] == "insufficient"
+
+
+def test_digital_twin_summary_exposes_aging_maps():
+    twin = DigitalTwin("test-subject")
+    twin.biological_age_estimate([52, 54, 56], chronological_age=50, confidence=0.9)
+    twin.metadata["biological_age_nodes"] = [
+        {"identifier": "thumb", "observed_age": 61, "confidence": 0.9},
+    ]
+    twin.metadata["temporal_biological_age_nodes"] = [
+        {"identifier": "thumb", "points": [
+            {"observed_at": "2026-01-01T00:00:00", "deviation": 6, "confidence": 0.9},
+            {"observed_at": "2026-02-01T00:00:00", "deviation": 9, "confidence": 0.9},
+        ]},
+    ]
+    summary = twin.summary()
+    assert "aging_deviations" in summary
+    assert "temporal_aging_deviations" in summary
+    assert summary["aging_deviations"]["reliable_items"][0]["identifier"] == "thumb"
+    assert summary["temporal_aging_deviations"]["persistent"][0]["identifier"] == "thumb"
