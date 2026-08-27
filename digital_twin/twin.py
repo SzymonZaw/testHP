@@ -19,6 +19,7 @@ from .hierarchical_assessment import aggregate_assessments
 from .hierarchical_inference import aggregate_inference, HierarchicalInference
 from .inference_intervention import InferenceAttention, build_inference_attention
 from .forecast import Forecast, forecast_cell
+from .inference_quality import InferenceQuality, assess_inference_quality
 from .assessment_trends import AssessmentTrend, compare_cell_assessments
 from .intervention_map import InterventionItem, build_intervention_map
 from .assessment_pipeline import build_assessment_view
@@ -55,7 +56,6 @@ class DigitalTwin:
         self.updated_at = datetime.utcnow().isoformat()
 
     def add_observation(self, observation: Observation, confidence: Optional[float] = None) -> Evidence:
-        """Register a raw observation and expose its traceable evidence."""
         if observation.subject_id != self.subject_id:
             raise ValueError("Observation subject_id must match the DigitalTwin subject_id")
         evidence = observation.to_evidence(confidence=confidence)
@@ -72,7 +72,6 @@ class DigitalTwin:
         return [item for item in self.evidence.values() if self.observations.get(item.evidence_id) and self.observations[item.evidence_id].cell_id == cell_id]
 
     def infer_cell(self, cell_id: str, observed_at: Optional[datetime] = None) -> CellInference:
-        """Infer and record the current conservative state of a cell."""
         inference = infer_cell(self.get_cell_evidence(cell_id))
         when = observed_at or max((item.observed_at for item in self.get_cell_observations(cell_id)), default=datetime.utcnow())
         self.inference_history.add(cell_id, when, inference)
@@ -85,8 +84,10 @@ class DigitalTwin:
     def cell_inference_trend(self, cell_id: str) -> Optional[InferenceTrend]:
         return self.inference_history.trend(cell_id)
 
+    def cell_inference_quality(self, cell_id: str) -> InferenceQuality:
+        return assess_inference_quality(self.inference_history.get(cell_id))
+
     def cell_forecast(self, cell_id: str) -> Optional[Forecast]:
-        """Return a conservative forward trajectory for a cell with inference history."""
         snapshots = self.inference_history.get(cell_id)
         if not snapshots:
             return None
@@ -95,7 +96,6 @@ class DigitalTwin:
         return forecast_cell(cell_id, inference, trend)
 
     def hierarchical_inference(self) -> Dict[str, Dict[str, HierarchicalInference]]:
-        """Aggregate latest cell inferences through tissue, region and hand."""
         latest = {}
         trends = {}
         for cell_id, snapshots in self.inference_history._items.items():
@@ -106,17 +106,14 @@ class DigitalTwin:
         return aggregate_inference(self.spatial_model, latest, trends)
 
     def inference_attention_map(self) -> List[InferenceAttention]:
-        """Rank hand hierarchy nodes for further observation, not treatment."""
         return build_inference_attention(self.hierarchical_inference())
 
     def hierarchical_forecast(self) -> Dict[str, Dict[str, Dict[str, Any]]]:
-        """Aggregate cell forecasts through tissue, region and hand."""
         forecasts = [forecast for cell_id in self.inference_history._items for forecast in [self.cell_forecast(cell_id)] if forecast]
         result: Dict[str, Dict[str, Dict[str, Any]]] = {"cell": {}, "tissue": {}, "region": {}, "hand": {}}
         for forecast in forecasts:
             result["cell"][forecast.cell_id] = forecast.to_dict()
         for level in ("tissue", "region"):
-            groups = {}
             for identifier in self.hierarchical_inference().get(level, {}):
                 values = []
                 for region in self.spatial_model.regions.values():
@@ -136,31 +133,33 @@ class DigitalTwin:
         return result
 
     def summary(self) -> Dict[str, Any]:
-        """Return a unified, evidence-aware snapshot for API/UI consumers."""
         assessment = self.hierarchical_assessment()
         inference = self.hierarchical_inference()
         attention = self.inference_attention_map()
+        forecasts = self.hierarchical_forecast()
         hand_assessment = assessment.get("hand", {}).get("hand")
         hand_inference = inference.get("hand", {}).get("hand")
+        quality = {cell_id: self.cell_inference_quality(cell_id).to_dict() for cell_id in self.inference_history._items}
         return {
             "subject_id": self.subject_id,
             "updated_at": self.updated_at,
             "hand": {
                 "assessment": hand_assessment.to_dict() if hand_assessment else None,
                 "inference": hand_inference.to_dict() if hand_inference else None,
-                "forecast": self.hierarchical_forecast().get("hand", {}).get("hand"),
+                "forecast": forecasts.get("hand", {}).get("hand"),
             },
             "regions": {k: v.to_dict() for k, v in assessment.get("region", {}).items()},
             "tissues": {k: v.to_dict() for k, v in assessment.get("tissue", {}).items()},
             "inference_regions": {k: v.to_dict() for k, v in inference.get("region", {}).items()},
             "inference_tissues": {k: v.to_dict() for k, v in inference.get("tissue", {}).items()},
-            "forecast_regions": self.hierarchical_forecast().get("region", {}),
-            "forecast_tissues": self.hierarchical_forecast().get("tissue", {}),
+            "forecast_regions": forecasts.get("region", {}),
+            "forecast_tissues": forecasts.get("tissue", {}),
+            "inference_quality": quality,
             "attention": [item.to_dict() for item in attention],
             "coverage": {
                 "assessed_cells": hand_assessment.assessed_cells if hand_assessment else 0,
                 "inferred_cells": hand_inference.cells if hand_inference else 0,
-                "forecast_cells": self.hierarchical_forecast().get("hand", {}).get("hand", {}).get("forecast_cells", 0),
+                "forecast_cells": forecasts.get("hand", {}).get("hand", {}).get("forecast_cells", 0),
             },
         }
 
@@ -186,7 +185,6 @@ class DigitalTwin:
         return self.cell_assessments.get(cell_id)
 
     def assessment_view(self, cell_id: str, previous_assessment: Optional[CellAssessment] = None) -> Optional[Dict[str, Any]]:
-        """Return the unified assessment payload used by API/UI consumers."""
         return build_assessment_view(self, cell_id, previous_assessment)
 
     def hierarchical_assessment(self) -> Dict[str, Dict[str, Any]]:
@@ -215,7 +213,6 @@ class DigitalTwin:
         return self.cell_timeline.snapshot(cell_id)
 
     def cell_spatial_context(self, cell_id: str) -> Optional[Dict[str, Any]]:
-        """Return the full hand -> region -> tissue context for a cell."""
         location = self.spatial_model.locate_cell(cell_id)
         if location is None:
             return None
