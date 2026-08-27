@@ -26,6 +26,12 @@ Every image assigned to a layer carries a stable `spatial.layerId`. A surface-pr
 
 Each stage is represented by status rather than by implicit UI state.
 
+## Runtime integration
+
+`hand-data-contract-integration.js` is a non-invasive adapter between this contract and the existing viewport/projection runtime. It reads `spatialViewportManager`, `testhpSpatialContract`, and `digitalTwinHandSurface.v1`, normalizes them into a layer snapshot, and validates ownership without replacing the current renderer.
+
+It exposes `window.__testhpHandDataRuntime.getState()` and emits `testhp:hand-data-runtime-synced` when the viewport or surface-projection state changes.
+
 ## Real mode
 
 `canUseRealMode()` only answers whether real data exists. It does not manufacture missing geometry. The mode switch remains responsible for the user's explicit classic/real choice.
