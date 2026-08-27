@@ -14,6 +14,7 @@ from .photo_reconstruction import prepare_image
 from .hand_segmentation import detect_hand_landmarks
 from .spatial_contract import canonical_spatial_id
 from .stage_2_4 import _load as load_spatial_evidence, _save as save_spatial_evidence
+from .hand_data_pipeline import router as hand_data_pipeline_router
 
 VIEWS = ("front", "back", "side_left", "side_right", "thumb")
 router = APIRouter(prefix="/api/hand/photo-reconstruction", tags=["hand-photo-reconstruction"])
@@ -134,4 +135,6 @@ def clear(request: TargetRequest):
         for key in ("prepared_asset","prepared","registration","reconstruction","preparation","landmarks"): item.pop(key,None)
     save_spatial_evidence(items); return _state(request)
 
-def register_hand_surface_photo_routes(app: Any) -> None: app.include_router(router)
+def register_hand_surface_photo_routes(app: Any) -> None:
+    app.include_router(router)
+    app.include_router(hand_data_pipeline_router)
