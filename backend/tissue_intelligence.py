@@ -12,7 +12,7 @@ from typing import Any
 
 from .anatomy_foundation import CellObject, TissueRegion
 from .biological_state import BiologicalStateAssessment, InterpretationEvidence
-from .cell_intelligence import CellObservation, CellStatePrediction, observation_from_cell
+from .cell_intelligence import CellStatePrediction, observation_from_cell
 from .data_foundation import Provenance, Uncertainty
 
 
@@ -36,9 +36,9 @@ class TissueObservation:
             raise ValueError("observation_id and tissue_id are required")
         if self.cell_count <= 0:
             raise ValueError("tissue observation requires at least one cell")
-        if sum(self.state_counts.values()) != self.cell_count:
+        if self.state_counts and sum(self.state_counts.values()) != self.cell_count:
             raise ValueError("state counts must equal cell_count")
-        if not self.source_object_ids:
+        if self.source_object_ids == ():
             raise ValueError("tissue observation requires source_object_ids")
         if not self.spatial_reference_frame.strip():
             raise ValueError("tissue observation requires a spatial reference frame")
@@ -113,7 +113,7 @@ def observe_tissue(tissue: TissueRegion, cells: tuple[CellObject, ...], observat
                 feature_values.setdefault(key, []).append(float(value))
     means = {key: sum(values) / len(values) for key, values in feature_values.items()}
     sources = tuple(dict.fromkeys(source for item in observations for source in item.source_object_ids))
-    return TissueObservation(
+    result = TissueObservation(
         observation_id=observation_id,
         tissue_id=tissue.tissue_id,
         subject_id=tissue.subject_id,
@@ -127,15 +127,11 @@ def observe_tissue(tissue: TissueRegion, cells: tuple[CellObject, ...], observat
         spatial_reference_frame=tissue.spatial_reference.frame_id,
         provenance=Provenance(source_object_ids=sources, method="tissue-observation", method_version="1.0"),
     )
+    result.validate()
+    return result
 
 
-def summarize_tissue_states(
-    tissue: TissueRegion,
-    predictions: tuple[CellStatePrediction, ...],
-    *,
-    summary_id: str,
-    assessed_at: str,
-) -> TissueStateSummary:
+def summarize_tissue_states(tissue: TissueRegion, predictions: tuple[CellStatePrediction, ...], *, summary_id: str, assessed_at: str) -> TissueStateSummary:
     tissue.validate()
     if not predictions:
         raise ValueError("cannot summarize tissue without cell predictions")
@@ -150,26 +146,7 @@ def summarize_tissue_states(
     fractions = {state: count / total for state, count in counts.items()}
     dominant = max(counts, key=counts.get)
     confidence = fractions[dominant]
-    evidence = (InterpretationEvidence(
-        evidence_id=f"{summary_id}:cells",
-        source_object_ids=tuple(prediction.prediction_id for prediction in predictions),
-        kind="cell_state_distribution",
-        value={"counts": counts, "fractions": fractions},
-        confidence=confidence,
-        provenance=Provenance(source_object_ids=tuple(prediction.prediction_id for prediction in predictions), method="cell-state-aggregation", method_version="1.0"),
-    ),)
-    return TissueStateSummary(
-        summary_id=summary_id,
-        tissue_id=tissue.tissue_id,
-        subject_id=tissue.subject_id,
-        hand_id=tissue.hand_id,
-        timepoint_id=tissue.timepoint_id,
-        dominant_state=dominant,
-        confidence=confidence,
-        uncertainty=Uncertainty(kind="distribution", score=1.0 - confidence),
-        cell_count=total,
-        state_fractions=fractions,
-        evidence=evidence,
-        provenance=Provenance(source_object_ids=tuple(prediction.prediction_id for prediction in predictions), method="cell-state-aggregation", method_version="1.0"),
-        assessed_at=assessed_at,
-    )
+    prediction_ids = tuple(prediction.prediction_id for prediction in predictions)
+    provenance = Provenance(source_object_ids=prediction_ids, method="cell-state-aggregation", method_version="1.0")
+    evidence = (InterpretationEvidence(evidence_id=f"{summary_id}:cells", source_object_ids=prediction_ids, kind="cell_state_distribution", value={"counts": counts, "fractions": fractions}, confidence=confidence, provenance=provenance),)
+    return TissueStateSummary(summary_id=summary_id, tissue_id=tissue.tissue_id, subject_id=tissue.subject_id, hand_id=tissue.hand_id, timepoint_id=tissue.timepoint_id, dominant_state=dominant, confidence=confidence, uncertainty=Uncertainty(kind="distribution", score=1.0 - confidence), cell_count=total, state_fractions=fractions, evidence=evidence, provenance=provenance, assessed_at=assessed_at)
