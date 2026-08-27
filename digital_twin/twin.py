@@ -22,6 +22,7 @@ from .inference_intervention import InferenceAttention, build_inference_attentio
 from .forecast import Forecast, forecast_cell
 from .inference_quality import InferenceQuality, assess_inference_quality
 from .aging_deviation_map import build_deviation_map
+from .temporal_aging_map import build_temporal_aging_map
 from .assessment_trends import AssessmentTrend, compare_cell_assessments
 from .intervention_map import InterventionItem, build_intervention_map
 from .assessment_pipeline import build_assessment_view
@@ -124,6 +125,12 @@ class DigitalTwin:
         """Return reliable deviations ordered by strongest signal."""
         return self.aging_deviation_map(nodes).get("reliable_items", [])
 
+    def temporal_aging_deviation_map(self, nodes: Optional[List[Dict[str, Any]]] = None) -> Dict[str, Any]:
+        """Build a longitudinal map of regional/tissue aging deviations."""
+        if nodes is None:
+            nodes = self.metadata.get("temporal_biological_age_nodes", [])
+        return build_temporal_aging_map(nodes)
+
     def cell_forecast(self, cell_id: str) -> Optional[Forecast]:
         snapshots = self.inference_history.get(cell_id)
         if not snapshots:
@@ -178,6 +185,7 @@ class DigitalTwin:
         hand_inference = inference.get("hand", {}).get("hand")
         quality = {cell_id: self.cell_inference_quality(cell_id).to_dict() for cell_id in self.inference_history._items}
         deviation_map = self.aging_deviation_map()
+        temporal_deviation_map = self.temporal_aging_deviation_map()
         return {
             "subject_id": self.subject_id,
             "updated_at": self.updated_at,
@@ -195,6 +203,7 @@ class DigitalTwin:
             "forecast_tissues": forecasts.get("tissue", {}),
             "inference_quality": quality,
             "aging_deviations": deviation_map,
+            "temporal_aging_deviations": temporal_deviation_map,
             "attention": [item.to_dict() for item in attention],
             "coverage": {
                 "assessed_cells": hand_assessment.assessed_cells if hand_assessment else 0,
