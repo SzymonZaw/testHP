@@ -26,7 +26,6 @@ from .intervention_map import InterventionItem, build_intervention_map
 @dataclass
 class DigitalTwin:
     """Central digital representation of a biological subject."""
-
     subject_id: str
     tissue_state: TissueState = field(default_factory=TissueState)
     cell_state: CellState = field(default_factory=CellState)
@@ -52,7 +51,6 @@ class DigitalTwin:
         self.updated_at = datetime.utcnow().isoformat()
 
     def assess_cell(self, state: IndividualCellState, assessment: CellAssessment) -> Optional[AssessmentTrend]:
-        """Record a cell state and assessment, returning its longitudinal trend."""
         if state.cell_id != assessment.cell_id:
             raise ValueError("Cell state and assessment must reference the same cell")
         self.add_cell_state(state)
@@ -74,7 +72,6 @@ class DigitalTwin:
         return {level: {identifier: assessment.to_dict() for identifier, assessment in groups.items()} for level, groups in aggregated.items()}
 
     def observation_priority_map(self, previous_assessments: Optional[Dict[str, CellAssessment]] = None) -> Dict[str, InterventionItem]:
-        """Build transparent observation priorities from current and optional prior assessments."""
         trends: Dict[str, AssessmentTrend] = {}
         if previous_assessments:
             for cell_id, current in self.cell_assessments.items():
@@ -90,16 +87,30 @@ class DigitalTwin:
         return self.cell_timeline.change(cell_id, field_name)
 
     def cell_trend(self, cell_id: str):
-        """Return the longitudinal trend for one tracked cell."""
         return self.cell_timeline.trend(cell_id)
 
     def cell_timeline_snapshot(self, cell_id: str) -> Dict[str, Any]:
-        """Return observations and derived trend for frontend/API consumers."""
         return self.cell_timeline.snapshot(cell_id)
 
-    def aggregate_cells(self) -> Dict[str, Any]:
-        states = [self.cell_timeline.latest(cell_id) for cell_id in self.cell_timeline.states]
-        return aggregate_cells(state for state in states if state is not None)
+    def cell_spatial_context(self, cell_id: str) -> Optional[Dict[str, Any]]:
+        """Return the full hand -> region -> tissue context for a cell."""
+        location = self.spatial_model.locate_cell(cell_id)
+        if location is None:
+            return None
+        for region_id, region in self.spatial_model.regions.items():
+            for tissue_id, tissue in region.tissues.items():
+                if cell_id not in tissue.cells:
+                    continue
+                structure_id = location.structure_id
+                structure = tissue.structures.get(structure_id) if structure_id else None
+                return {
+                    "hand": {"id": "hand", "level": "hand"},
+                    "region": {"id": region_id, "level": "region", "name": region.name},
+                    "tissue": {"id": tissue_id, "level": "tissue", "name": tissue.name or tissue.tissue_type},
+                    "cell": {"id": cell_id, "level": "cell", "cell_type": location.cell_type},
+                    "structure": {"id": structure_id, "level": "structure", "name": structure.name} if structure else None,
+                }
+        return None
 
     def snapshot(self) -> Dict[str, Any]:
         return {
