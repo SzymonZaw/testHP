@@ -40,14 +40,9 @@ class ObservationPipeline:
     _ids: set[str] = field(default_factory=set, init=False, repr=False)
 
     def ingest(self, observation: Observation) -> ObservationRecord:
-        """Validate, spatially resolve, and retain an observation.
-
-        Ingestion is append-only for a given observation id. Duplicate ids are
-        rejected so that one measurement cannot silently create two histories.
-        """
+        """Validate, spatially resolve, and retain an observation."""
         if observation.id in self._ids:
             raise ValueError(f"Observation already ingested: {observation.id}")
-
         context = self.mapper.resolve(observation)
         record = ObservationRecord(observation=observation, spatial_context=context)
         self.records.append(record)
@@ -55,22 +50,26 @@ class ObservationPipeline:
         return record
 
     def ingest_many(self, observations: List[Observation]) -> List[ObservationRecord]:
-        """Ingest a batch while preserving input order."""
         return [self.ingest(observation) for observation in observations]
 
     def for_cell(self, cell_id: str) -> List[ObservationRecord]:
-        """Return observations mapped to one cell."""
-        return [
-            record for record in self.records
-            if record.spatial_context.get("cell_id") == cell_id
-        ]
+        return [record for record in self.records if record.spatial_context.get("cell_id") == cell_id]
 
     def for_timepoint(self, timepoint_id: str) -> List[ObservationRecord]:
-        """Return observations from one timepoint."""
-        return [
-            record for record in self.records
-            if record.observation.timepoint_id == timepoint_id
-        ]
+        return [record for record in self.records if record.observation.timepoint_id == timepoint_id]
 
     def to_dict(self) -> Dict[str, Any]:
         return {"records": [record.to_dict() for record in self.records]}
+
+    def ingest_into_twin(self, twin: Any, observation: Observation, timepoint_name: str | None = None) -> ObservationRecord:
+        """Validate spatial identity, retain the observation, then update the twin.
+
+        The existing aggregate updater remains backward compatible. Biological
+        state is updated only when the observation explicitly carries a
+        ``metadata['twin_update']`` payload.
+        """
+        record = self.ingest(observation)
+        payload = observation.metadata.get("twin_update") if observation.metadata else None
+        if payload:
+            twin.update(payload, timepoint=timepoint_name or observation.timepoint_id)
+        return record
