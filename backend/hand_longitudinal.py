@@ -4,15 +4,10 @@ from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from typing import Any
 
-HAND_ZONES = (
-    "wrist", "palm", "thumb", "index", "middle", "ring", "little",
-    "nails", "skin_regions",
-)
+from .data_foundation import Acquisition, DataObject, Hand, Provenance, Quality, SpatialReference, Timepoint, Uncertainty
 
-OBSERVATION_TYPES = (
-    "geometry", "landmark_quality", "image_quality", "appearance", "motion",
-    "depth", "microstructure", "cellular", "molecular",
-)
+HAND_ZONES = ("wrist", "palm", "thumb", "index", "middle", "ring", "little", "nails", "skin_regions")
+OBSERVATION_TYPES = ("geometry", "landmark_quality", "image_quality", "appearance", "motion", "depth", "microstructure", "cellular", "molecular")
 
 @dataclass(frozen=True)
 class SubjectRef:
@@ -36,20 +31,23 @@ class HandObservation:
     confidence: float | None = None
     evidence_level: str = "observed"
     notes: str | None = None
+    data_id: str | None = None
+    acquisition_id: str | None = None
+    spatial_reference: SpatialReference | None = None
+    quality: Quality = field(default_factory=Quality)
+    uncertainty: Uncertainty = field(default_factory=Uncertainty)
 
     def validate(self) -> None:
         if not self.subject_id.strip(): raise ValueError("subject_id is required")
         if not self.session_id.strip(): raise ValueError("session_id is required")
         if not self.timepoint.strip(): raise ValueError("timepoint is required")
-        if self.laterality not in {"left", "right", "unknown"}:
-            raise ValueError("laterality must be left, right or unknown")
+        if self.laterality not in {"left", "right", "unknown"}: raise ValueError("laterality must be left, right or unknown")
         if self.zone not in HAND_ZONES: raise ValueError(f"unknown hand zone: {self.zone}")
-        if self.observation_type not in OBSERVATION_TYPES:
-            raise ValueError(f"unknown observation type: {self.observation_type}")
-        if self.confidence is not None and not 0 <= self.confidence <= 1:
-            raise ValueError("confidence must be between 0 and 1")
-        if self.evidence_level != "observed":
-            raise ValueError("hand observations must remain observed; interpretation is a separate layer")
+        if self.observation_type not in OBSERVATION_TYPES: raise ValueError(f"unknown observation type: {self.observation_type}")
+        if self.confidence is not None and not 0 <= self.confidence <= 1: raise ValueError("confidence must be between 0 and 1")
+        if self.evidence_level not in {"observed", "computed", "default", "simulated"}: raise ValueError("invalid evidence/source class")
+        self.quality.validate(); self.uncertainty.validate()
+        if self.spatial_reference: self.spatial_reference.validate()
 
     def to_dict(self) -> dict[str, Any]:
         self.validate(); return asdict(self)
