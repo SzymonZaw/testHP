@@ -9,8 +9,8 @@ research reconstruction to an accepted Surface T0 without all gates passing.
 from dataclasses import dataclass, field
 from typing import Any
 
-from hand_camera_calibration import quality_gate
-from multiview_reconstruction import reconstruct_from_views
+from .hand_camera_calibration import quality_gate
+from .multiview_reconstruction import reconstruct_from_views
 
 
 @dataclass
