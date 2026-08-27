@@ -39,7 +39,7 @@ def test_unknown_view_is_normalized():
 
 def test_display_alias_resolves_to_canonical_spatial_id():
     assert canonical_spatial_id("Palm") == "hand/palm"
-    assert canonical_spatial_id("Śródręcze") == "Śródręcze"
+    assert canonical_spatial_id("Śródręcze") == "hand/palm"
     assert same_spatial_target("palm", "hand/palm")
 
 
