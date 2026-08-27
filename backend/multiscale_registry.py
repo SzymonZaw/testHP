@@ -8,8 +8,8 @@ from typing import Any
 from psycopg.types.json import Json
 
 from .anatomy_foundation import (
-    AnatomicalStructure, CellObject, HandCoordinateSystem, HistologyRegion,
-    Registration, TissueRegion,
+    AnatomicalStructure, CellObject, CellStateAssessment, HandCoordinateSystem,
+    HistologyRegion, Registration, TissueRegion,
 )
 from .biological_state import BiologicalAgeEstimate, BiologicalStateAssessment
 from .database import connect, ensure_schema
@@ -45,6 +45,7 @@ class MultiscaleRegistry:
     tissues: dict[str, TissueRegion] = field(default_factory=dict)
     histology: dict[str, HistologyRegion] = field(default_factory=dict)
     cells: dict[str, CellObject] = field(default_factory=dict)
+    cell_state_assessments: dict[str, CellStateAssessment] = field(default_factory=dict)
 
     def add_coordinate_system(self, value: HandCoordinateSystem) -> None:
         self.coordinate_systems[value.frame_id] = value
@@ -79,6 +80,12 @@ class MultiscaleRegistry:
             raise ValueError("cell requires an existing tissue")
         self.cells[value.cell_id] = value
 
+    def add_cell_state_assessment(self, value: CellStateAssessment) -> None:
+        value.validate()
+        if value.cell_id not in self.cells:
+            raise ValueError("cell state assessment requires an existing cell")
+        self.cell_state_assessments[value.assessment_id] = value
+
     def snapshot(self) -> dict[str, list[dict[str, Any]]]:
         return {
             name: [asdict(x) for x in values.values()]
@@ -90,6 +97,7 @@ class MultiscaleRegistry:
                 ("tissues", self.tissues),
                 ("histology", self.histology),
                 ("cells", self.cells),
+                ("cell_state_assessments", self.cell_state_assessments),
             )
         }
 
