@@ -3,22 +3,20 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-from .canonical_cell_state import CanonicalCellState
+from .anatomy_foundation import CellObject
+from .biological_state import BiologicalAgeEstimate
+from .canonical_cell_state import CanonicalCellState, build_canonical_cell_state
+from .cell_observation import CellObservation
 from .longitudinal_cells import CellTrajectory
 
 
 @dataclass(frozen=True)
 class CellDigitalTwin:
-    """Auditable digital representation of one observed cell.
-
-    The object is intentionally a composition of existing domain contracts:
-    ``CanonicalCellState`` is the current snapshot and ``CellTrajectory`` is
-    the optional longitudinal view. This layer does not infer diagnosis or
-    treatment decisions.
-    """
+    """Auditable digital representation of one observed cell."""
 
     snapshot: CanonicalCellState
     trajectory: CellTrajectory | None = None
+    observations: tuple[CellObservation, ...] = ()
 
     @property
     def cell_id(self) -> str:
@@ -38,6 +36,10 @@ class CellDigitalTwin:
 
     def validate(self) -> None:
         self.snapshot.validate()
+        for observation in self.observations:
+            observation.validate()
+            if not observation.matches_cell(self.snapshot.cell):
+                raise ValueError("cell observation identity must match digital twin")
         if self.trajectory is not None:
             if (self.trajectory.cell_id, self.trajectory.subject_id, self.trajectory.hand_id) != (
                 self.cell_id, self.subject_id, self.hand_id
@@ -57,6 +59,7 @@ class CellDigitalTwin:
                 "timepoint_id": self.timepoint_id,
             },
             "snapshot": self.snapshot.to_dict(),
+            "observations": [observation.to_dict() for observation in self.observations],
             "trajectory": (
                 {
                     "cell_id": self.trajectory.cell_id,
@@ -83,8 +86,32 @@ def build_cell_digital_twin(
     snapshot: CanonicalCellState,
     *,
     trajectory: CellTrajectory | None = None,
+    observations: tuple[CellObservation, ...] = (),
 ) -> CellDigitalTwin:
-    """Build one auditable cell twin from an existing canonical snapshot."""
-    twin = CellDigitalTwin(snapshot=snapshot, trajectory=trajectory)
+    """Build one auditable cell twin from a canonical snapshot."""
+    twin = CellDigitalTwin(snapshot=snapshot, trajectory=trajectory, observations=observations)
     twin.validate()
     return twin
+
+
+def build_cell_digital_twin_from_observation(
+    cell: CellObject,
+    observation: CellObservation,
+    *,
+    age_estimate: BiologicalAgeEstimate | None = None,
+    trajectory: CellTrajectory | None = None,
+) -> CellDigitalTwin:
+    """Build a cell twin from a cell observation and preserve the observation."""
+    observation.validate()
+    if not observation.matches_cell(cell):
+        raise ValueError("cell observation must match supplied cell")
+    snapshot = build_canonical_cell_state(
+        cell,
+        state_assessment=observation.assessment,
+        age_estimate=age_estimate,
+    )
+    return build_cell_digital_twin(
+        snapshot,
+        trajectory=trajectory,
+        observations=(observation,),
+    )
