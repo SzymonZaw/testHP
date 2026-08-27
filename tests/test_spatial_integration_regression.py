@@ -20,7 +20,7 @@ def test_canonical_view_names_are_stable():
     from backend.hand_surface import SUPPORTED_VIEWS
 
     assert tuple(SUPPORTED_VIEWS) == (
-        "front", "back", "side_left", "side_right", "thumb", "unknown"
+        "front", "back", "side_left", "side_right", "thumb"
     )
 
 
