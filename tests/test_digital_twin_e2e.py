@@ -6,7 +6,7 @@ aggregation, not biological or clinical validity.
 
 from datetime import datetime, timedelta
 
-from digital_twin.assessment_trends import compare_cell_assessments
+from digital_twin.assessment_trends import AssessmentTrend, compare_cell_assessments
 from digital_twin.cell_assessment import CellAssessment
 from digital_twin.intervention_map import build_intervention_map
 from digital_twin.spatial import CellLocation, HandRegion, HandSpatialModel, SpatialPoint, TissueRegion
@@ -49,6 +49,7 @@ def test_synthetic_hand_end_to_end():
     t0 = datetime(2026, 1, 1)
     t1 = t0 + timedelta(days=30)
     t2 = t0 + timedelta(days=60)
+    previous_assessments = {}
 
     for i, cell_id in enumerate(cell_ids):
         group = i % 20
@@ -71,19 +72,19 @@ def test_synthetic_hand_end_to_end():
             CellAssessment(cell_id, t1, "healthy", .85, values[1][0], values[1][1], .90, .10),
             CellAssessment(cell_id, t2, "abnormal" if group == 17 else "healthy", .70 if group == 17 else .85, values[2][0], values[2][1], .90, .10),
         ]
+        previous_assessments[cell_id] = assessments[0]
         twin.add_cell_assessment(assessments[-1])
 
-        if group == 17:
-            twin.metadata.setdefault("synthetic_trends", {})[cell_id] = compare_cell_assessments(assessments[0], assessments[-1]).to_dict()
-
     hierarchy = twin.hierarchical_assessment()
-    priorities = build_intervention_map(twin.cell_assessments, {
-        cell_id: type("Trend", (), data)() for cell_id, data in twin.metadata["synthetic_trends"].items()
-    })
+    trends = {
+        cell_id: compare_cell_assessments(previous_assessments[cell_id], assessment)
+        for cell_id, assessment in twin.cell_assessments.items()
+    }
+    priorities = build_intervention_map(twin.cell_assessments, trends)
 
     assert len(cell_ids) == 1000
     assert len(twin.cell_timeline.states) == 1000
     assert set(hierarchy) == {"tissue", "region", "hand"}
-    assert hierarchy["hand"]["hand"].assessed_cells == 1000
+    assert hierarchy["hand"]["hand"]["assessed_cells"] == 1000
     assert sum(item.priority == "investigate" for item in priorities.values()) == 50
     assert all(item.priority == "no_action" for cell_id, item in priorities.items() if int(cell_id.split("-")[1]) % 20 < 14)
