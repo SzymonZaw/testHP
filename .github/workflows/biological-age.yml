@@ -1,0 +1,28 @@
+name: Biological age validation
+
+on:
+  push:
+    branches: [main, dev/next-cleanup]
+  pull_request:
+    branches: [main, dev/next-cleanup]
+
+jobs:
+  test-biological-age:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install test dependencies
+        run: python -m pip install --upgrade pip pytest
+
+      - name: Run biological age tests
+        run: python -m pytest tests/test_biological_age_chain.py -q
+
+      - name: Compile digital twin package
+        run: python -m compileall -q digital_twin
