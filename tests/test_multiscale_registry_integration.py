@@ -1,11 +1,14 @@
 import os
-from datetime import datetime, timezone
 
 import pytest
 
 from backend.anatomy_foundation import AnatomicalStructure, CellObject, Geometry, TissueRegion
-from backend.biological_state import BiologicalAgeEstimate, BiologicalStateAssessment
-from backend.data_foundation import Evidence, Provenance, SpatialReference
+from backend.biological_state import (
+    BiologicalAgeEstimate,
+    BiologicalStateAssessment,
+    InterpretationEvidence,
+)
+from backend.data_foundation import Provenance, SpatialReference, Uncertainty
 from backend.multiscale_registry import (
     register_biological_age,
     register_biological_state,
@@ -17,7 +20,11 @@ pytestmark = pytest.mark.integration
 
 
 def _provenance() -> Provenance:
-    return Provenance(method="integration-test", method_version="1", source_object_ids=("dataset-e2e",))
+    return Provenance(
+        method="integration-test",
+        method_version="1",
+        source_object_ids=("dataset-e2e",),
+    )
 
 
 def test_multiscale_chain_persists_to_postgresql():
@@ -28,7 +35,8 @@ def test_multiscale_chain_persists_to_postgresql():
     hand_id = "e2e_multiscale_hand"
     timepoint_id = "T0"
     frame = "hand-frame:e2e:T0"
-    sr = SpatialReference(frame, "registered")
+    # A registered reference must carry an explicit transform.
+    sr = SpatialReference(frame, "registered", transform={"type": "identity", "version": "1"})
     provenance = _provenance()
 
     anatomy = AnatomicalStructure(
@@ -71,6 +79,14 @@ def test_multiscale_chain_persists_to_postgresql():
         provenance=provenance,
     )
 
+    evidence = InterpretationEvidence(
+        evidence_id="evidence-e2e-001",
+        source_object_ids=("dataset-e2e",),
+        kind="morphology",
+        value={"area": 12.5},
+        confidence=0.91,
+        provenance=provenance,
+    )
     assessment = BiologicalStateAssessment(
         assessment_id="assessment-e2e-001",
         subject_id=subject_id,
@@ -79,8 +95,8 @@ def test_multiscale_chain_persists_to_postgresql():
         target_object_id=cell.cell_id,
         state="normal",
         confidence=0.91,
-        evidence=(Evidence("evidence-e2e-001", ("dataset-e2e",), "morphology", {"area": 12.5}),),
-        uncertainty={"type": "test", "value": 0.09},
+        evidence=(evidence,),
+        uncertainty=Uncertainty(kind="test", score=0.09),
         provenance=provenance,
         assessed_at="2026-08-27T00:00:00+00:00",
         model_id="test-model",
@@ -93,25 +109,52 @@ def test_multiscale_chain_persists_to_postgresql():
         timepoint_id=timepoint_id,
         target_object_id=cell.cell_id,
         estimated_age_years=42.0,
-        uncertainty={"std_years": 2.5},
-        evidence=assessment.evidence,
+        uncertainty=Uncertainty(kind="test", interval=(39.5, 44.5)),
+        evidence=(evidence,),
         provenance=provenance,
         assessed_at="2026-08-27T00:00:00+00:00",
         model_id="test-age-model",
         model_version="1",
     )
 
+    from backend.database import connect, ensure_schema
+
+    ensure_schema()
+    # The multiscale tables reference the subject and hand, so seed their
+    # canonical parents exactly as the real ingestion layer would.
+    with connect() as conn:
+        conn.execute(
+            "INSERT INTO subjects (subject_id) VALUES (%s) ON CONFLICT (subject_id) DO NOTHING",
+            (subject_id,),
+        )
+        conn.execute(
+            "INSERT INTO hands (hand_id, subject_id, laterality) VALUES (%s,%s,%s) ON CONFLICT (hand_id) DO NOTHING",
+            (hand_id, subject_id, "right"),
+        )
+        conn.commit()
+
     register_tissue(tissue)
     register_cell(cell)
     register_biological_state(assessment)
     register_biological_age(age)
 
-    from backend.database import connect
     with connect() as conn:
-        tissue_row = conn.execute("SELECT tissue_id, anatomical_structure_id FROM tissue_regions WHERE tissue_id=%s", (tissue.tissue_id,)).fetchone()
-        cell_row = conn.execute("SELECT cell_id, tissue_id FROM cells WHERE cell_id=%s", (cell.cell_id,)).fetchone()
-        state_row = conn.execute("SELECT target_object_id, state FROM biological_state_assessments WHERE assessment_id=%s", (assessment.assessment_id,)).fetchone()
-        age_row = conn.execute("SELECT target_object_id, estimated_age_years FROM biological_age_estimates WHERE estimate_id=%s", (age.estimate_id,)).fetchone()
+        tissue_row = conn.execute(
+            "SELECT tissue_id, anatomical_structure_id FROM tissue_regions WHERE tissue_id=%s",
+            (tissue.tissue_id,),
+        ).fetchone()
+        cell_row = conn.execute(
+            "SELECT cell_id, tissue_id FROM cells WHERE cell_id=%s",
+            (cell.cell_id,),
+        ).fetchone()
+        state_row = conn.execute(
+            "SELECT target_object_id, state FROM biological_state_assessments WHERE assessment_id=%s",
+            (assessment.assessment_id,),
+        ).fetchone()
+        age_row = conn.execute(
+            "SELECT target_object_id, estimated_age_years FROM biological_age_estimates WHERE estimate_id=%s",
+            (age.estimate_id,),
+        ).fetchone()
 
     assert tissue_row["anatomical_structure_id"] == anatomy.structure_id
     assert cell_row["tissue_id"] == tissue.tissue_id
