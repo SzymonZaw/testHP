@@ -1,0 +1,44 @@
+schema: testhp.digital_twin.data_foundation.v1
+status: baseline
+source_classes:
+  observed: directly acquired from person, device, or sample
+  computed: derived from observed data
+  default: reference or fallback value
+  simulated: synthetic/research data
+required_provenance:
+  - source_object_ids
+  - method
+  - method_version
+  - processing_timestamp
+  - spatial_reference
+  - validation_status
+entities:
+  subject:
+    required: [subject_id]
+  hand:
+    required: [hand_id, subject_id, laterality]
+    laterality: [left, right, unknown]
+  timepoint:
+    required: [timepoint_id, subject_id]
+  acquisition:
+    required: [acquisition_id, subject_id, timepoint_id, source_type, modality]
+  data_object:
+    required:
+      - data_id
+      - data_type
+      - subject_id
+      - timepoint_id
+      - acquisition_id
+      - source_class
+      - status
+      - quality
+      - uncertainty
+      - provenance
+      - spatial_reference
+spatial_reference:
+  required: [frame_id, registration_status]
+  registration_status: [unregistered, registered, rejected, unknown]
+quality:
+  required: [status]
+  status: [unknown, acceptable, degraded, rejected]
+  note: Quality describes acquisition/processing quality, not biological health.
