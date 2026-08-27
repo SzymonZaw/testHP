@@ -16,6 +16,7 @@ from pydantic import BaseModel
 
 from .availability import build_availability
 from .data_ingestion import ingest_upload, registry_status, safe_component
+from .canonical_ingestion import canonical_registry_status, register_canonical_asset
 from .hand_twin_v2 import build_twin
 from .hand_zones import assign_feature_to_zone, zone_layout
 from .images_layer import scan_skin, validate_skin_dataset
@@ -105,12 +106,14 @@ def run_pipeline(selected: list[str]) -> dict[str, Any]:
 def health(): return {"status":"ok"}
 @app.get("/api/status")
 def status():
-    registry = dataset_registry(); assets = registry_status()
-    return {"status":"ready","raw_data":RAW_ROOT.exists(),"registered_datasets":len(registry),"available_datasets":sum(1 for x in registry if x["available"]),"modalities":sorted({x["modality"] for x in registry}),"uploaded_assets":assets["count"]}
+    registry = dataset_registry(); assets = registry_status(); canonical = canonical_registry_status()
+    return {"status":"ready","raw_data":RAW_ROOT.exists(),"registered_datasets":len(registry),"available_datasets":sum(1 for x in registry if x["available"]),"modalities":sorted({x["modality"] for x in registry}),"uploaded_assets":assets["count"],"canonical_data_objects":canonical["count"]}
 @app.get("/api/datasets")
 def datasets(): return {"raw_exists":RAW_ROOT.exists(),"datasets":[validate_dataset(x) for x in dataset_registry()]}
 @app.get("/api/ingestion/assets")
 def ingestion_assets(): return registry_status()
+@app.get("/api/data-foundation/objects")
+def data_foundation_objects(): return canonical_registry_status()
 @app.get("/api/availability")
 def availability(): return build_availability(registry_status()["assets"])
 @app.get("/api/hand/ontology")
@@ -189,10 +192,12 @@ def validate_hand(request: HandValidationRequest):
 @app.post("/api/upload/{modality}")
 async def upload(modality: str, file: UploadFile = File(...), subject_id: str = Form("own_cohort"), timepoint: str = Form("T0"), subtype: str | None = Form(None), view: str | None = Form(None)):
     if modality not in {"hand","video","images","wsi","rna","metadata"}: raise HTTPException(status_code=400,detail="unsupported modality")
-    try: asset=await ingest_upload(file,subject_id,timepoint,modality,subtype,view)
+    try:
+        asset=await ingest_upload(file,subject_id,timepoint,modality,subtype,view)
+        canonical=register_canonical_asset(asset)
     except ValueError as exc: raise HTTPException(status_code=400,detail=str(exc)) from exc
     analysis=analyze_asset(asset.to_dict())
-    return {"status":asset.status,"asset":asset.to_dict(),"provenance":make_provenance(asset_id=asset.asset_id,source=asset.path,method="upload"),"analysis":analysis}
+    return {"status":asset.status,"asset":asset.to_dict(),"canonical_data_object":canonical.to_dict(),"provenance":make_provenance(asset_id=asset.asset_id,source=asset.path,method="upload"),"analysis":analysis}
 
 @app.post("/api/longitudinal/compare")
 def longitudinal_compare(request: LongitudinalRequest): return {"subject_id":request.subject_id,"changes":compare_observations(request.subject_id,request.observations)}
