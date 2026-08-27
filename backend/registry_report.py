@@ -19,7 +19,7 @@ def build_registry_report(
     timepoint_id: str,
     longitudinal_observations: Iterable[LongitudinalObservation] | None = None,
 ) -> dict[str, Any]:
-    """Build a complete evidence-preserving report from typed observations."""
+    """Build a report using registry records and canonical cell read models."""
     registry.validate_integrity()
 
     def context(item: Any) -> bool:
@@ -31,9 +31,15 @@ def build_registry_report(
 
     anatomy = [asdict(x) for x in registry.anatomy.values() if context(x)]
     tissues = [asdict(x) for x in registry.tissues.values() if context(x)]
-    cells = [asdict(x) for x in registry.cells.values() if context(x)]
-    assessments = [asdict(x) for x in registry.biological_state_assessments.values() if context(x)]
-    ages = [asdict(x) for x in registry.biological_age_estimates.values() if context(x)]
+
+    current_cells = [x for x in registry.cells.values() if context(x)]
+    canonical_cells = [registry.canonical_cell_state(x.cell_id).to_dict() for x in current_cells]
+    cells = [x["cell"] for x in canonical_cells]
+    assessments = [x["state"] for x in canonical_cells]
+    ages = [
+        x["age_estimate"] for x in canonical_cells
+        if x["age_estimate"] is not None
+    ]
 
     typed = list(longitudinal_observations or ())
     for observation in typed:
@@ -62,8 +68,7 @@ def build_registry_report(
             "y": float(x.position.get("y", 0.0)),
             "z": float(x.position.get("z", 0.0)),
         }
-        for x in registry.cells.values()
-        if context(x)
+        for x in current_cells
     }
     spatial = build_spatial_attention_map(
         attention,
