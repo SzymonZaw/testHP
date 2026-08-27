@@ -14,7 +14,7 @@ from .biological_age import BiologicalAge
 from .risk_state import RiskState
 from .temporal_state import TemporalState
 from .twin_update import TwinUpdater
-from .spatial import HandSpatialModel
+from .spatial import CellLocation, HandRegion, HandSpatialModel, SpatialPoint, StructureRegion, TissueRegion
 from .individual_cell import CellTimeline, IndividualCellState
 from .cell_aggregation import aggregate_cells
 
@@ -43,7 +43,6 @@ class DigitalTwin:
         self.updated_at = datetime.utcnow().isoformat()
 
     def add_cell_state(self, state: IndividualCellState) -> None:
-        """Register an individual-cell observation in the longitudinal model."""
         self.cell_timeline.add(state)
         self.updated_at = datetime.utcnow().isoformat()
 
@@ -54,11 +53,11 @@ class DigitalTwin:
         return self.cell_timeline.change(cell_id, field_name)
 
     def aggregate_cells(self) -> Dict[str, Any]:
-        """Return the latest known state of each tracked cell and its aggregates."""
         states = [self.cell_timeline.latest(cell_id) for cell_id in self.cell_timeline.states]
         return aggregate_cells(state for state in states if state is not None)
 
     def snapshot(self) -> Dict[str, Any]:
+        """Return a lossless, JSON-serializable representation of the twin."""
         return {
             "subject_id": self.subject_id,
             "tissue_state": self.tissue_state.to_dict(),
@@ -98,16 +97,94 @@ class DigitalTwin:
 
     @classmethod
     def load(cls, path: str | Path) -> "DigitalTwin":
-        # Preserve the existing loader contract; individual-cell history is
-        # restored separately when present in a snapshot.
+        """Load all current twin layers from a snapshot."""
         path = Path(path)
         with open(path, "r", encoding="utf-8") as f:
             data = json.load(f)
-        twin = cls(subject_id=data["subject_id"])
-        for raw in data.get("cell_timeline", {}).values():
-            for item in raw:
-                twin.add_cell_state(IndividualCellState(
-                    cell_id=item["cell_id"],
+
+        spatial_model = cls._load_spatial_model(data.get("spatial_model", {}))
+        timeline = cls._load_cell_timeline(data.get("cell_timeline", {}))
+
+        return cls(
+            subject_id=data["subject_id"],
+            tissue_state=TissueState.from_dict(data.get("tissue_state", {})),
+            cell_state=CellState.from_dict(data.get("cell_state", {})),
+            biological_age=BiologicalAge.from_dict(data.get("biological_age", {})),
+            risk_state=RiskState.from_dict(data.get("risk_state", {})),
+            temporal_state=TemporalState.from_dict(data.get("temporal_state", {})),
+            spatial_model=spatial_model,
+            cell_timeline=timeline,
+            metadata=data.get("metadata", {}),
+            created_at=data.get("created_at", datetime.utcnow().isoformat()),
+            updated_at=data.get("updated_at", datetime.utcnow().isoformat()),
+        )
+
+    @staticmethod
+    def _point(data: Optional[Dict[str, Any]]) -> Optional[SpatialPoint]:
+        if data is None:
+            return None
+        return SpatialPoint(x=data["x"], y=data["y"], z=data["z"], coordinate_system=data.get("coordinate_system", "hand"))
+
+    @classmethod
+    def _load_spatial_model(cls, data: Dict[str, Any]) -> HandSpatialModel:
+        model = HandSpatialModel(
+            coordinate_system=data.get("coordinate_system", "hand"),
+            metadata=data.get("metadata", {}),
+            updated_at=data.get("updated_at", datetime.utcnow().isoformat()),
+        )
+        for region_id, raw_region in data.get("regions", {}).items():
+            region = HandRegion(
+                region_id=raw_region.get("region_id", region_id),
+                name=raw_region.get("name", region_id),
+                side=raw_region.get("side"),
+                bounds_min=cls._point(raw_region.get("bounds_min")),
+                bounds_max=cls._point(raw_region.get("bounds_max")),
+                metadata=raw_region.get("metadata", {}),
+            )
+            for tissue_id, raw_tissue in raw_region.get("tissues", {}).items():
+                tissue = TissueRegion(
+                    tissue_id=raw_tissue.get("tissue_id", tissue_id),
+                    tissue_type=raw_tissue.get("tissue_type", "skin"),
+                    name=raw_tissue.get("name"),
+                    region_id=raw_tissue.get("region_id"),
+                    bounds_min=cls._point(raw_tissue.get("bounds_min")),
+                    bounds_max=cls._point(raw_tissue.get("bounds_max")),
+                    metadata=raw_tissue.get("metadata", {}),
+                )
+                for structure_id, raw_structure in raw_tissue.get("structures", {}).items():
+                    tissue.add_structure(StructureRegion(
+                        structure_id=raw_structure.get("structure_id", structure_id),
+                        name=raw_structure.get("name", structure_id),
+                        region_id=raw_structure.get("region_id"),
+                        structure_type=raw_structure.get("structure_type"),
+                        bounds_min=cls._point(raw_structure.get("bounds_min")),
+                        bounds_max=cls._point(raw_structure.get("bounds_max")),
+                        metadata=raw_structure.get("metadata", {}),
+                    ))
+                for cell_id, raw_cell in raw_tissue.get("cells", {}).items():
+                    position = cls._point(raw_cell.get("position"))
+                    if position is None:
+                        raise ValueError(f"Cell '{cell_id}' is missing position")
+                    tissue.add_cell(CellLocation(
+                        cell_id=raw_cell.get("cell_id", cell_id),
+                        position=position,
+                        tissue_id=raw_cell.get("tissue_id"),
+                        structure_id=raw_cell.get("structure_id"),
+                        cell_type=raw_cell.get("cell_type"),
+                        confidence=raw_cell.get("confidence", 0.0),
+                        metadata=raw_cell.get("metadata", {}),
+                    ))
+                region.add_tissue(tissue)
+            model.add_region(region)
+        return model
+
+    @staticmethod
+    def _load_cell_timeline(data: Dict[str, Any]) -> CellTimeline:
+        timeline = CellTimeline()
+        for cell_id, history in data.items():
+            for item in history:
+                timeline.add(IndividualCellState(
+                    cell_id=item.get("cell_id", cell_id),
                     observed_at=datetime.fromisoformat(item["observed_at"]),
                     morphology=item.get("morphology", {}),
                     biomarkers=item.get("biomarkers", {}),
@@ -119,4 +196,4 @@ class DigitalTwin:
                     confidence=item.get("confidence"),
                     metadata=item.get("metadata", {}),
                 ))
-        return twin
+        return timeline
