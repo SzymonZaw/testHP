@@ -62,22 +62,43 @@ class MultiscaleRegistry:
         value.validate()
         self.anatomy[value.structure_id] = value
 
+    @staticmethod
+    def _same_context(left: Any, right: Any) -> bool:
+        return (
+            left.subject_id,
+            left.hand_id,
+            left.timepoint_id,
+        ) == (
+            right.subject_id,
+            right.hand_id,
+            right.timepoint_id,
+        )
+
     def add_tissue(self, value: TissueRegion) -> None:
         value.validate()
-        if value.anatomical_structure_id not in self.anatomy:
+        parent = self.anatomy.get(value.anatomical_structure_id)
+        if parent is None:
             raise ValueError("tissue requires an existing anatomical structure")
+        if not self._same_context(value, parent):
+            raise ValueError("tissue and anatomical structure must share subject/hand/timepoint")
         self.tissues[value.tissue_id] = value
 
     def add_histology(self, value: HistologyRegion) -> None:
         value.validate()
-        if value.tissue_id not in self.tissues:
+        parent = self.tissues.get(value.tissue_id)
+        if parent is None:
             raise ValueError("histology requires an existing tissue")
+        if not self._same_context(value, parent):
+            raise ValueError("histology and tissue must share subject/hand/timepoint")
         self.histology[value.histology_id] = value
 
     def add_cell(self, value: CellObject) -> None:
         value.validate()
-        if value.tissue_id not in self.tissues:
+        parent = self.tissues.get(value.tissue_id)
+        if parent is None:
             raise ValueError("cell requires an existing tissue")
+        if not self._same_context(value, parent):
+            raise ValueError("cell and tissue must share subject/hand/timepoint")
         self.cells[value.cell_id] = value
 
     def add_cell_state_assessment(self, value: CellStateAssessment) -> None:
@@ -86,7 +107,39 @@ class MultiscaleRegistry:
             raise ValueError("cell state assessment requires an existing cell")
         self.cell_state_assessments[value.assessment_id] = value
 
+    def validate_integrity(self) -> None:
+        """Validate the complete in-memory macro→tissue→cell chain.
+
+        This is intentionally structural: it checks identity, parent links and
+        context continuity, but never infers health, disease or treatment.
+        """
+        for tissue in self.tissues.values():
+            parent = self.anatomy.get(tissue.anatomical_structure_id)
+            if parent is None:
+                raise ValueError(f"tissue {tissue.tissue_id} has no anatomical parent")
+            if not self._same_context(tissue, parent):
+                raise ValueError(f"tissue {tissue.tissue_id} has mismatched subject/hand/timepoint")
+
+        for histology in self.histology.values():
+            parent = self.tissues.get(histology.tissue_id)
+            if parent is None:
+                raise ValueError(f"histology {histology.histology_id} has no tissue parent")
+            if not self._same_context(histology, parent):
+                raise ValueError(f"histology {histology.histology_id} has mismatched subject/hand/timepoint")
+
+        for cell in self.cells.values():
+            parent = self.tissues.get(cell.tissue_id)
+            if parent is None:
+                raise ValueError(f"cell {cell.cell_id} has no tissue parent")
+            if not self._same_context(cell, parent):
+                raise ValueError(f"cell {cell.cell_id} has mismatched subject/hand/timepoint")
+
+        for assessment in self.cell_state_assessments.values():
+            if assessment.cell_id not in self.cells:
+                raise ValueError(f"cell state assessment {assessment.assessment_id} has no cell parent")
+
     def snapshot(self) -> dict[str, list[dict[str, Any]]]:
+        self.validate_integrity()
         return {
             name: [asdict(x) for x in values.values()]
             for name, values in (
