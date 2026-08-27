@@ -20,7 +20,7 @@ def _trajectory(cell_id: str, *ages: float | None) -> CellTrajectory:
     )
 
 
-def test_cell_trajectories_roll_up_to_tissue_and_anatomy_with_provenance():
+def test_cell_trajectories_roll_up_to_hand_tissue_and_anatomy_with_provenance():
     result = aggregate_cell_trajectories(
         [_trajectory("c1", 40.0, 42.0), _trajectory("c2", 41.0, 41.0)],
         cell_to_tissue={"c1": "t1", "c2": "t1"},
@@ -28,6 +28,16 @@ def test_cell_trajectories_roll_up_to_tissue_and_anatomy_with_provenance():
     )
 
     assert [item.to_dict() for item in result] == [
+        {
+            "zone_id": "h1",
+            "level": "hand",
+            "metric": "biological_age_years",
+            "cell_count": 2,
+            "changed_cells": 1,
+            "mean_delta": 1.0,
+            "status": "attention",
+            "source_cell_ids": ("c1", "c2"),
+        },
         {
             "zone_id": "skin",
             "level": "anatomy",
