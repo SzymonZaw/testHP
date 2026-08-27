@@ -40,10 +40,13 @@ def cell_from_segmentation(
     evidence.validate()
     if confidence is not None and not 0 <= confidence <= 1:
         raise ValueError("confidence must be between 0 and 1")
-    if cell_record not in evidence.cells:
+    cell_id = str(cell_record.get("cell_id", "")).strip()
+    if not cell_id:
+        raise ValueError("cell record requires cell_id")
+    if not any(str(record.get("cell_id", "")).strip() == cell_id for record in evidence.cells):
         raise ValueError("cell record is not part of the supplied segmentation evidence")
     return CellObject(
-        cell_id=str(cell_record["cell_id"]),
+        cell_id=cell_id,
         tissue_id=evidence.tissue_id,
         subject_id=subject_id,
         hand_id=hand_id,
