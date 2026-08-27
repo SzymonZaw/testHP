@@ -22,6 +22,7 @@ from .assessment_pipeline import build_assessment_view
 from .observation import Observation
 from .evidence import Evidence
 from .cell_inference import CellInference, infer_cell
+from .cell_inference_history import CellInferenceHistory, InferenceTrend
 
 
 @dataclass
@@ -38,6 +39,7 @@ class DigitalTwin:
     cell_assessments: Dict[str, CellAssessment] = field(default_factory=dict)
     observations: Dict[str, Observation] = field(default_factory=dict)
     evidence: Dict[str, Evidence] = field(default_factory=dict)
+    inference_history: CellInferenceHistory = field(default_factory=CellInferenceHistory)
     metadata: Dict[str, Any] = field(default_factory=dict)
     created_at: str = field(default_factory=lambda: datetime.utcnow().isoformat())
     updated_at: str = field(default_factory=lambda: datetime.utcnow().isoformat())
@@ -64,11 +66,21 @@ class DigitalTwin:
         return [item for item in self.observations.values() if item.cell_id == cell_id]
 
     def get_cell_evidence(self, cell_id: str) -> List[Evidence]:
-        return [item for item in self.evidence.values() if self.observations.get(item.evidence_id, None) and self.observations[item.evidence_id].cell_id == cell_id]
+        return [item for item in self.evidence.values() if self.observations.get(item.evidence_id) and self.observations[item.evidence_id].cell_id == cell_id]
 
-    def infer_cell(self, cell_id: str) -> CellInference:
-        """Infer a conservative cell state from its currently registered evidence."""
-        return infer_cell(self.get_cell_evidence(cell_id))
+    def infer_cell(self, cell_id: str, observed_at: Optional[datetime] = None) -> CellInference:
+        """Infer and record the current conservative state of a cell."""
+        inference = infer_cell(self.get_cell_evidence(cell_id))
+        when = observed_at or max((item.observed_at for item in self.get_cell_observations(cell_id)), default=datetime.utcnow())
+        self.inference_history.add(cell_id, when, inference)
+        self.updated_at = datetime.utcnow().isoformat()
+        return inference
+
+    def cell_inference_history(self, cell_id: str) -> List[Dict[str, Any]]:
+        return [item.to_dict() for item in self.inference_history.get(cell_id)]
+
+    def cell_inference_trend(self, cell_id: str) -> Optional[InferenceTrend]:
+        return self.inference_history.trend(cell_id)
 
     def add_cell_state(self, state: IndividualCellState) -> None:
         self.cell_timeline.add(state)
@@ -152,6 +164,7 @@ class DigitalTwin:
             "cell_assessments": {cell_id: assessment.to_dict() for cell_id, assessment in self.cell_assessments.items()},
             "observations": {observation_id: observation.to_dict() for observation_id, observation in self.observations.items()},
             "evidence": {evidence_id: evidence.to_dict() for evidence_id, evidence in self.evidence.items()},
+            "inference_history": self.inference_history.to_dict(),
             "metadata": self.metadata,
             "created_at": self.created_at,
             "updated_at": self.updated_at,
