@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from typing import Any
 
 from .anatomy_foundation import CellObject, CellStateAssessment
@@ -40,7 +40,10 @@ class CanonicalCellState:
             },
             "state": self.state.to_dict(),
             "state_assessment": self.state_assessment.to_dict() if self.state_assessment is not None else None,
-            "age_estimate": self.age_estimate.to_dict() if self.age_estimate is not None else None,
+            # Keep the canonical read model serializable even when an upstream
+            # age record is still incomplete. Validation remains the responsibility
+            # of registry insertion/assessment boundaries.
+            "age_estimate": asdict(self.age_estimate) if self.age_estimate is not None else None,
         }
 
 
