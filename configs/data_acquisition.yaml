@@ -1,0 +1,222 @@
+version: "1.0"
+name: digital-twin-hand-data-acquisition
+purpose: "Research data acquisition contract for the hand digital twin"
+
+identity:
+  required:
+    - subject_id
+    - hand_id
+    - timepoint_id
+    - acquisition_id
+    - asset_id
+    - provenance
+    - quality
+    - spatial_reference
+  policy:
+    subject_id: pseudonymous
+    missing_link: "do_not_infer"
+    raw_personal_identity: "kept_outside_analytics_layer"
+
+stages:
+  - id: 1
+    name: data_dictionary
+    sources: [schema, metadata]
+    data_types: [json, jsonl, tabular]
+    minimum: [versioned_schema, identifiers, units, provenance, quality]
+  - id: 2
+    name: subject_hand_timepoint
+    sources: [research_cohort, study_metadata]
+    data_types: [metadata]
+    minimum: [subject_id, hand_id, timepoint_id, consent_reference]
+  - id: 3
+    name: provenance
+    sources: [acquisition_system, processing_pipeline]
+    data_types: [metadata]
+    minimum: [source, method, timestamp, software_version]
+  - id: 4
+    name: quality_confidence
+    sources: [acquisition_qc, annotation_qc, model_qc]
+    data_types: [metrics, labels]
+    minimum: [qc_status, confidence, failure_reason]
+  - id: 5
+    name: spatial_coordinate_system
+    sources: [calibration, anatomy, imaging]
+    data_types: [transforms, landmarks]
+    minimum: [coordinate_system, units, transform_version]
+  - id: 6
+    name: photo_acquisition
+    sources: [standardized_hand_photography]
+    data_types: [image, metadata]
+    formats: [jpg, jpeg, png, tiff]
+    views: [front, back, side_left, side_right, thumb]
+    minimum: [camera_metadata, lighting_protocol, scale_reference]
+  - id: 7
+    name: photo_calibration
+    sources: [camera_calibration, scale_reference]
+    data_types: [calibration_parameters]
+    minimum: [intrinsics, distortion, scale, calibration_quality]
+  - id: 8
+    name: anatomical_landmarks
+    sources: [expert_annotation, computer_vision]
+    data_types: [points, landmarks]
+    minimum: [landmark_schema, annotator_or_model, confidence]
+  - id: 9
+    name: segmentation
+    sources: [computer_vision, expert_annotation]
+    data_types: [masks, polygons]
+    minimum: [label_schema, method, quality_metric]
+  - id: 10
+    name: reconstruction_3d
+    sources: [photogrammetry, depth_sensor]
+    data_types: [mesh, point_cloud, depth, transforms]
+    formats: [ply, obj, glb, npy]
+    minimum: [scale, coordinate_system, reconstruction_error]
+  - id: 11
+    name: medical_imaging
+    sources: [mri, ultrasound, other_imaging]
+    data_types: [dicom, nifti, image_series]
+    minimum: [study_id, series_id, acquisition_metadata, spatial_reference]
+  - id: 12
+    name: anatomical_structures
+    sources: [radiology_annotation, segmentation]
+    data_types: [masks, meshes, labels]
+    minimum: [structure_ontology, annotation_provenance]
+  - id: 13
+    name: multimodal_registration
+    sources: [landmarks, image_registration]
+    data_types: [transforms, metrics]
+    minimum: [source_space, target_space, transform, registration_error]
+  - id: 14
+    name: histology
+    sources: [biobank, research_specimen]
+    data_types: [whole_slide_image, microscopy_metadata]
+    formats: [svs, ndpi, tiff, ome_tiff]
+    minimum: [specimen_id, section_id, stain, acquisition_metadata]
+  - id: 15
+    name: tissue_segmentation
+    sources: [pathologist_annotation, image_model]
+    data_types: [masks, polygons]
+    minimum: [tissue_ontology, annotator_or_model, confidence]
+  - id: 16
+    name: tissue_pathology
+    sources: [pathologist_annotation, pathology_report]
+    data_types: [labels, grades, annotations]
+    minimum: [reference_standard, annotator, confidence]
+  - id: 17
+    name: cell_segmentation
+    sources: [microscopy, image_model]
+    data_types: [cell_masks, centroids, features]
+    minimum: [cell_id, spatial_reference, segmentation_qc]
+  - id: 18
+    name: cell_identity
+    sources: [single_cell_markers, spatial_markers, expert_annotation]
+    data_types: [labels, marker_values]
+    minimum: [cell_type_ontology, evidence, confidence]
+  - id: 19
+    name: cell_morphology
+    sources: [microscopy]
+    data_types: [measurements]
+    minimum: [area, perimeter, shape_features, nucleus_features]
+  - id: 20
+    name: cell_state
+    sources: [validated_markers, molecular_data, expert_annotation]
+    data_types: [state_labels, scores]
+    minimum: [state_definition, evidence, confidence]
+  - id: 21
+    name: scrna_seq
+    sources: [single_cell_rna_sequencing]
+    data_types: [fastq, bam, count_matrix, h5ad]
+    minimum: [sample_id, gene_reference, qc_metrics, batch]
+  - id: 22
+    name: spatial_transcriptomics
+    sources: [spatial_transcriptomics]
+    data_types: [count_matrix, spatial_coordinates, image]
+    minimum: [sample_id, spot_or_cell_id, spatial_reference, qc_metrics]
+  - id: 23
+    name: proteomics
+    sources: [proteomics_assay]
+    data_types: [abundance_table, raw_measurements]
+    minimum: [sample_id, protein_reference, batch, qc_metrics]
+  - id: 24
+    name: epigenetics
+    sources: [atac_seq, methylation, chromatin_assay]
+    data_types: [peaks, methylation_matrix, counts]
+    minimum: [sample_id, assay, reference_build, qc_metrics]
+  - id: 25
+    name: multiomics_integration
+    sources: [scrna_seq, spatial_transcriptomics, proteomics, epigenetics]
+    data_types: [integrated_feature_matrix, links]
+    minimum: [source_asset_ids, normalization_version, batch_metadata]
+  - id: 26
+    name: longitudinal_comparison
+    sources: [repeat_acquisition]
+    data_types: [time_series, feature_deltas]
+    minimum: [subject_id, ordered_timepoints, protocol_version]
+  - id: 27
+    name: biological_age
+    sources: [validated_longitudinal_cohort]
+    data_types: [model_features, predictions, uncertainty]
+    minimum: [ground_truth_definition, training_split, external_test_split]
+  - id: 28
+    name: aging_trajectory
+    sources: [longitudinal_cohort]
+    data_types: [trajectories, rates]
+    minimum: [multiple_timepoints, uncertainty]
+  - id: 29
+    name: disease_trajectory
+    sources: [clinical_research_cohort]
+    data_types: [labels, trajectories, outcomes]
+    minimum: [reference_standard, outcome_definition, follow_up]
+  - id: 30
+    name: unified_spatial_model
+    sources: [all_spatially_registered_modalities]
+    data_types: [graph, transforms, hierarchical_entities]
+    minimum: [cross_scale_links, spatial_uncertainty]
+  - id: 31
+    name: cross_scale_navigation
+    sources: [unified_spatial_model]
+    data_types: [entity_links, spatial_queries]
+    minimum: [stable_entity_ids, transforms]
+  - id: 32
+    name: state_estimation
+    sources: [multimodal_evidence]
+    data_types: [state_vector, posterior_or_score]
+    minimum: [source_trace, uncertainty]
+  - id: 33
+    name: uncertainty
+    sources: [measurement_qc, registration, model]
+    data_types: [intervals, distributions, confidence]
+    minimum: [uncertainty_method, calibration_status]
+  - id: 34
+    name: what_if_simulation
+    sources: [validated_models]
+    data_types: [scenario, simulated_state]
+    minimum: [model_version, assumptions, uncertainty]
+  - id: 35
+    name: risk_assessment
+    sources: [validated_cohort, validated_models]
+    data_types: [risk_score, evidence]
+    minimum: [outcome_definition, calibration, validation_set]
+  - id: 36
+    name: intervention_support
+    sources: [validated_risk_and_state_models]
+    data_types: [decision_support_output]
+    minimum: [evidence_trace, contraindication_rules, human_review]
+  - id: 37
+    name: validation
+    sources: [independent_test_cohort, external_cohort]
+    data_types: [metrics, error_analysis]
+    minimum: [locked_test_set, subgroup_analysis, drift_monitoring]
+  - id: 38
+    name: clinical_regulatory
+    sources: [clinical_validation, quality_system]
+    data_types: [audit_records, validation_reports]
+    minimum: [intended_use, safety_controls, traceability]
+
+acquisition_priority:
+  phase_1: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+  phase_2: [11, 12, 13, 14, 15, 16]
+  phase_3: [17, 18, 19, 20]
+  phase_4: [21, 22, 23, 24, 25]
+  phase_5: [26, 27, 28, 29, 30, 31, 32, 33]
+  phase_6: [34, 35, 36, 37, 38]
