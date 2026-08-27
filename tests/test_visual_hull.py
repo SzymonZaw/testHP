@@ -29,6 +29,6 @@ def test_visual_hull_requires_two_views():
 
 def test_visual_hull_generates_mesh():
     mesh = build_visual_hull([_record('front'), _record('back')], resolution=12)
-    assert mesh['method'] == 'silhouette-envelope-v1'
+    assert mesh['method'] == 'silhouette-envelope-v2'
     assert len(mesh['vertices']) > 0
     assert len(mesh['faces']) > 0
