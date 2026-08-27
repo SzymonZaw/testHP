@@ -115,6 +115,11 @@ class HistologyRegion:
     confidence: float | None = None
     provenance: Provenance = field(default_factory=Provenance)
 
+    def validate(self) -> None:
+        if self.confidence is not None and not 0 <= self.confidence <= 1:
+            raise ValueError("confidence must be between 0 and 1")
+        self.spatial_reference.validate()
+
 
 @dataclass(frozen=True)
 class CellObject:
