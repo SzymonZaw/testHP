@@ -13,6 +13,7 @@ from .anatomy_foundation import (
 )
 from .biological_state import BiologicalAgeEstimate, BiologicalStateAssessment
 from .biological_age import BiologicalAgeEngine
+from .canonical_cell_state import CanonicalCellState, build_canonical_cell_state
 from .cell_assessment import CellAssessmentEngine
 from .database import connect, ensure_schema
 from .multiscale_chain import MultiscaleChain, build_multiscale_chain
@@ -128,6 +129,26 @@ class MultiscaleRegistry:
             raise ValueError("biological age estimate and cell must share subject/hand/timepoint")
         self.biological_age_estimates[value.estimate_id] = value
 
+    def canonical_cell_state(self, cell_id: str) -> CanonicalCellState:
+        """Return the single canonical read model for a registered cell."""
+        cell = self.cells.get(cell_id)
+        if cell is None:
+            raise KeyError(f"unknown cell: {cell_id}")
+        states = [x for x in self.biological_state_assessments.values()
+                  if x.target_object_id == cell_id and self._same_context(x, cell)]
+        legacy_states = [x for x in self.cell_state_assessments.values()
+                         if x.cell_id == cell_id and self._same_context(x, cell)]
+        if states and legacy_states:
+            raise ValueError(f"cell {cell_id} has conflicting state assessment representations")
+        if len(states) > 1 or len(legacy_states) > 1:
+            raise ValueError(f"cell {cell_id} has multiple state assessments")
+        ages = [x for x in self.biological_age_estimates.values()
+                if x.target_object_id == cell_id and self._same_context(x, cell)]
+        if len(ages) > 1:
+            raise ValueError(f"cell {cell_id} has multiple biological age estimates")
+        assessment = states[0] if states else (legacy_states[0] if legacy_states else None)
+        return build_canonical_cell_state(cell, state_assessment=assessment, age_estimate=ages[0] if ages else None)
+
     def assess_and_register_cell(self, cell_id: str, *, observations: dict[str, Any], age_observations: dict[str, Any], source_data_ids: tuple[str, ...], assessed_at: str, state_engine: CellAssessmentEngine | None = None, age_engine: BiologicalAgeEngine | None = None) -> CellAssessmentBundle:
         """Run the research baselines and register their outputs for one cell."""
         cell = self.cells.get(cell_id)
@@ -146,12 +167,7 @@ class MultiscaleRegistry:
         return CellAssessmentBundle(state_result.assessment, age_result.estimate)
 
     def chain_for_cell(self, cell_id: str) -> MultiscaleChain:
-        """Return the validated local hierarchy rooted at ``cell_id``.
-
-        Optional histology, state and age records are selected only when they
-        target the exact tissue/cell and context. Ambiguous multiple records
-        are rejected rather than silently choosing one.
-        """
+        """Return the validated local hierarchy rooted at ``cell_id``."""
         cell = self.cells.get(cell_id)
         if cell is None:
             raise KeyError(f"unknown cell: {cell_id}")
@@ -172,14 +188,8 @@ class MultiscaleRegistry:
         if len(ages) > 1:
             raise ValueError(f"cell {cell_id} has multiple matching biological age estimates")
 
-        return build_multiscale_chain(
-            anatomy,
-            tissue,
-            histology=histologies[0] if histologies else None,
-            cell=cell,
-            state_assessment=states[0] if states else None,
-            age_estimate=ages[0] if ages else None,
-        )
+        return build_multiscale_chain(anatomy, tissue, histology=histologies[0] if histologies else None,
+            cell=cell, state_assessment=states[0] if states else None, age_estimate=ages[0] if ages else None)
 
     def validate_integrity(self) -> None:
         for tissue in self.tissues.values():
@@ -225,101 +235,3 @@ class MultiscaleRegistry:
             ("biological_state_assessments", self.biological_state_assessments),
             ("biological_age_estimates", self.biological_age_estimates),
         )}
-
-
-def _register_tissue_conn(conn, tissue: TissueRegion) -> None:
-    conn.execute(
-        """INSERT INTO tissue_regions
-           (tissue_id, anatomical_structure_id, subject_id, hand_id, timepoint_id,
-            tissue_type, geometry, source_data_ids, spatial_reference, confidence, provenance)
-           VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
-           ON CONFLICT (tissue_id) DO UPDATE SET
-             anatomical_structure_id=EXCLUDED.anatomical_structure_id,
-             tissue_type=EXCLUDED.tissue_type, geometry=EXCLUDED.geometry,
-             source_data_ids=EXCLUDED.source_data_ids, spatial_reference=EXCLUDED.spatial_reference,
-             confidence=EXCLUDED.confidence, provenance=EXCLUDED.provenance""",
-        (tissue.tissue_id, tissue.anatomical_structure_id, tissue.subject_id, tissue.hand_id,
-         tissue.timepoint_id, tissue.tissue_type, _json(tissue.geometry), _json(list(tissue.source_data_ids)),
-         _json(tissue.spatial_reference), tissue.confidence, _json(tissue.provenance)),
-    )
-
-
-def register_tissue(tissue: TissueRegion) -> TissueRegion:
-    tissue.validate(); ensure_schema()
-    with connect() as conn:
-        _register_tissue_conn(conn, tissue)
-    return tissue
-
-
-def _register_cell_conn(conn, cell: CellObject) -> None:
-    conn.execute(
-        """INSERT INTO cells
-           (cell_id, tissue_id, subject_id, hand_id, timepoint_id, position, cell_type,
-            morphology, size, nucleus, neighbors, source_data_ids, spatial_reference, confidence, provenance)
-           VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
-           ON CONFLICT (cell_id) DO UPDATE SET tissue_id=EXCLUDED.tissue_id,
-             position=EXCLUDED.position, cell_type=EXCLUDED.cell_type, morphology=EXCLUDED.morphology,
-             size=EXCLUDED.size, nucleus=EXCLUDED.nucleus, neighbors=EXCLUDED.neighbors,
-             source_data_ids=EXCLUDED.source_data_ids, spatial_reference=EXCLUDED.spatial_reference,
-             confidence=EXCLUDED.confidence, provenance=EXCLUDED.provenance""",
-        (cell.cell_id, cell.tissue_id, cell.subject_id, cell.hand_id, cell.timepoint_id,
-         _json(cell.position), cell.cell_type, _json(cell.morphology), _json(cell.size), _json(cell.nucleus),
-         _json(list(cell.neighbors)), _json(list(cell.source_data_ids)), _json(cell.spatial_reference),
-         cell.confidence, _json(cell.provenance)),
-    )
-
-
-def register_cell(cell: CellObject) -> CellObject:
-    cell.validate(); ensure_schema()
-    with connect() as conn:
-        _register_cell_conn(conn, cell)
-    return cell
-
-
-def _register_biological_state_conn(conn, assessment: BiologicalStateAssessment) -> None:
-    conn.execute(
-        """INSERT INTO biological_state_assessments
-           (assessment_id, subject_id, hand_id, timepoint_id, target_object_id, state, confidence,
-            evidence, uncertainty, provenance, assessed_at, model_id, model_version, metadata)
-           VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
-           ON CONFLICT (assessment_id) DO UPDATE SET state=EXCLUDED.state,
-             confidence=EXCLUDED.confidence, evidence=EXCLUDED.evidence, uncertainty=EXCLUDED.uncertainty,
-             provenance=EXCLUDED.provenance, assessed_at=EXCLUDED.assessed_at,
-             model_id=EXCLUDED.model_id, model_version=EXCLUDED.model_version, metadata=EXCLUDED.metadata""",
-        (assessment.assessment_id, assessment.subject_id, assessment.hand_id, assessment.timepoint_id,
-         assessment.target_object_id, assessment.state, assessment.confidence,
-         _json([_json_value(x) for x in assessment.evidence]), _json(assessment.uncertainty),
-         _json(assessment.provenance), assessment.assessed_at, assessment.model_id,
-         assessment.model_version, _json(assessment.metadata)),
-    )
-
-
-def register_biological_state(assessment: BiologicalStateAssessment) -> BiologicalStateAssessment:
-    assessment.validate(); ensure_schema()
-    with connect() as conn:
-        _register_biological_state_conn(conn, assessment)
-    return assessment
-
-
-def _register_biological_age_conn(conn, estimate: BiologicalAgeEstimate) -> None:
-    conn.execute(
-        """INSERT INTO biological_age_estimates
-           (estimate_id, subject_id, hand_id, timepoint_id, target_object_id, estimated_age_years,
-            uncertainty, evidence, provenance, assessed_at, model_id, model_version, metadata)
-           VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
-           ON CONFLICT (estimate_id) DO UPDATE SET estimated_age_years=EXCLUDED.estimated_age_years,
-             uncertainty=EXCLUDED.uncertainty, evidence=EXCLUDED.evidence, provenance=EXCLUDED.provenance,
-             assessed_at=EXCLUDED.assessed_at, model_id=EXCLUDED.model_id,
-             model_version=EXCLUDED.model_version, metadata=EXCLUDED.metadata""",
-        (estimate.estimate_id, estimate.subject_id, estimate.hand_id, estimate.timepoint_id,
-         estimate.target_object_id, estimate.estimated_age_years, _json(estimate.uncertainty),
-         _json([_json_value(x) for x in estimate.evidence]), _json(estimate.provenance),
-         estimate.assessed_at, estimate.model_id, estimate.model_version, _json(estimate.metadata)),
-    )
-
-
-def register_biological_age(estimate: BiologicalAgeEstimate) -> BiologicalAgeEstimate:
-    estimate.validate(); ensure_schema()
-    with connect() as conn:
-        _register_biological_age_conn(conn, estimate)
-    return estimate
