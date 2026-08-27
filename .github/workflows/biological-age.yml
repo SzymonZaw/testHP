@@ -24,5 +24,8 @@ jobs:
       - name: Run biological age tests
         run: python -m pytest tests/test_biological_age_chain.py -q
 
+      - name: Validate DigitalTwin integration imports
+        run: python -c "from digital_twin.twin import DigitalTwin; from digital_twin.aging_deviation_map import build_deviation_map; from digital_twin.temporal_aging_map import build_temporal_aging_map; print('DigitalTwin integration imports: OK')"
+
       - name: Compile digital twin package
         run: python -m compileall -q digital_twin
