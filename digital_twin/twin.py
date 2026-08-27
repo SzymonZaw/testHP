@@ -21,6 +21,7 @@ from .intervention_map import InterventionItem, build_intervention_map
 from .assessment_pipeline import build_assessment_view
 from .observation import Observation
 from .evidence import Evidence
+from .cell_inference import CellInference, infer_cell
 
 
 @dataclass
@@ -64,6 +65,10 @@ class DigitalTwin:
 
     def get_cell_evidence(self, cell_id: str) -> List[Evidence]:
         return [item for item in self.evidence.values() if self.observations.get(item.evidence_id, None) and self.observations[item.evidence_id].cell_id == cell_id]
+
+    def infer_cell(self, cell_id: str) -> CellInference:
+        """Infer a conservative cell state from its currently registered evidence."""
+        return infer_cell(self.get_cell_evidence(cell_id))
 
     def add_cell_state(self, state: IndividualCellState) -> None:
         self.cell_timeline.add(state)
