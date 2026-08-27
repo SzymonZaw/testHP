@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 from .tissue_state import TissueState
 from .cell_state import CellState
@@ -19,6 +19,8 @@ from .hierarchical_assessment import aggregate_assessments
 from .assessment_trends import AssessmentTrend, compare_cell_assessments
 from .intervention_map import InterventionItem, build_intervention_map
 from .assessment_pipeline import build_assessment_view
+from .observation import Observation
+from .evidence import Evidence
 
 
 @dataclass
@@ -33,6 +35,8 @@ class DigitalTwin:
     spatial_model: HandSpatialModel = field(default_factory=HandSpatialModel)
     cell_timeline: CellTimeline = field(default_factory=CellTimeline)
     cell_assessments: Dict[str, CellAssessment] = field(default_factory=dict)
+    observations: Dict[str, Observation] = field(default_factory=dict)
+    evidence: Dict[str, Evidence] = field(default_factory=dict)
     metadata: Dict[str, Any] = field(default_factory=dict)
     created_at: str = field(default_factory=lambda: datetime.utcnow().isoformat())
     updated_at: str = field(default_factory=lambda: datetime.utcnow().isoformat())
@@ -43,6 +47,23 @@ class DigitalTwin:
     def update(self, observation: Dict[str, Any], timepoint: Optional[str] = None) -> None:
         self.updater.update_from_observation(observation, timepoint=timepoint)
         self.updated_at = datetime.utcnow().isoformat()
+
+    def add_observation(self, observation: Observation, confidence: Optional[float] = None) -> Evidence:
+        """Register a raw observation and expose its traceable evidence."""
+        if observation.subject_id != self.subject_id:
+            raise ValueError("Observation subject_id must match the DigitalTwin subject_id")
+        evidence = observation.to_evidence(confidence=confidence)
+        self.observations[observation.observation_id] = observation
+        self.evidence[observation.observation_id] = evidence
+        self.metadata.setdefault("evidence_by_cell", {}).setdefault(observation.cell_id, []).append(observation.observation_id)
+        self.updated_at = datetime.utcnow().isoformat()
+        return evidence
+
+    def get_cell_observations(self, cell_id: str) -> List[Observation]:
+        return [item for item in self.observations.values() if item.cell_id == cell_id]
+
+    def get_cell_evidence(self, cell_id: str) -> List[Evidence]:
+        return [item for item in self.evidence.values() if self.observations.get(item.evidence_id, None) and self.observations[item.evidence_id].cell_id == cell_id]
 
     def add_cell_state(self, state: IndividualCellState) -> None:
         self.cell_timeline.add(state)
@@ -112,7 +133,6 @@ class DigitalTwin:
                     "cell": {"id": cell_id, "level": "cell", "cell_type": location.cell_type},
                     "structure": {"id": structure_id, "level": "structure", "name": structure.name} if structure else None,
                 }
-        return None
 
     def snapshot(self) -> Dict[str, Any]:
         return {
@@ -125,6 +145,8 @@ class DigitalTwin:
             "spatial_model": self.spatial_model.to_dict(),
             "cell_timeline": self.cell_timeline.to_dict(),
             "cell_assessments": {cell_id: assessment.to_dict() for cell_id, assessment in self.cell_assessments.items()},
+            "observations": {observation_id: observation.to_dict() for observation_id, observation in self.observations.items()},
+            "evidence": {evidence_id: evidence.to_dict() for evidence_id, evidence in self.evidence.items()},
             "metadata": self.metadata,
             "created_at": self.created_at,
             "updated_at": self.updated_at,
