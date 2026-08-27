@@ -76,6 +76,71 @@ CREATE TABLE IF NOT EXISTS stage_records (
     confidence DOUBLE PRECISION CHECK (confidence IS NULL OR (confidence >= 0 AND confidence <= 1))
 );
 
+CREATE TABLE IF NOT EXISTS tissue_regions (
+    tissue_id TEXT PRIMARY KEY,
+    anatomical_structure_id TEXT NOT NULL,
+    subject_id TEXT NOT NULL REFERENCES subjects(subject_id) ON DELETE CASCADE,
+    hand_id TEXT NOT NULL REFERENCES hands(hand_id) ON DELETE CASCADE,
+    timepoint_id TEXT NOT NULL,
+    tissue_type TEXT NOT NULL,
+    geometry JSONB NOT NULL DEFAULT '{}'::jsonb,
+    source_data_ids JSONB NOT NULL DEFAULT '[]'::jsonb,
+    spatial_reference JSONB NOT NULL DEFAULT '{}'::jsonb,
+    confidence DOUBLE PRECISION CHECK (confidence IS NULL OR (confidence >= 0 AND confidence <= 1)),
+    provenance JSONB NOT NULL DEFAULT '{}'::jsonb
+);
+
+CREATE TABLE IF NOT EXISTS cells (
+    cell_id TEXT PRIMARY KEY,
+    tissue_id TEXT NOT NULL REFERENCES tissue_regions(tissue_id) ON DELETE CASCADE,
+    subject_id TEXT NOT NULL REFERENCES subjects(subject_id) ON DELETE CASCADE,
+    hand_id TEXT NOT NULL REFERENCES hands(hand_id) ON DELETE CASCADE,
+    timepoint_id TEXT NOT NULL,
+    position JSONB NOT NULL DEFAULT '{}'::jsonb,
+    cell_type TEXT,
+    morphology JSONB NOT NULL DEFAULT '{}'::jsonb,
+    size JSONB NOT NULL DEFAULT '{}'::jsonb,
+    nucleus JSONB NOT NULL DEFAULT '{}'::jsonb,
+    neighbors JSONB NOT NULL DEFAULT '[]'::jsonb,
+    source_data_ids JSONB NOT NULL DEFAULT '[]'::jsonb,
+    spatial_reference JSONB NOT NULL DEFAULT '{}'::jsonb,
+    confidence DOUBLE PRECISION CHECK (confidence IS NULL OR (confidence >= 0 AND confidence <= 1)),
+    provenance JSONB NOT NULL DEFAULT '{}'::jsonb
+);
+
+CREATE TABLE IF NOT EXISTS biological_state_assessments (
+    assessment_id TEXT PRIMARY KEY,
+    subject_id TEXT NOT NULL REFERENCES subjects(subject_id) ON DELETE CASCADE,
+    hand_id TEXT NOT NULL REFERENCES hands(hand_id) ON DELETE CASCADE,
+    timepoint_id TEXT NOT NULL,
+    target_object_id TEXT NOT NULL,
+    state TEXT NOT NULL,
+    confidence DOUBLE PRECISION CHECK (confidence IS NULL OR (confidence >= 0 AND confidence <= 1)),
+    evidence JSONB NOT NULL DEFAULT '[]'::jsonb,
+    uncertainty JSONB NOT NULL DEFAULT '{}'::jsonb,
+    provenance JSONB NOT NULL DEFAULT '{}'::jsonb,
+    assessed_at TIMESTAMPTZ NOT NULL,
+    model_id TEXT,
+    model_version TEXT,
+    metadata JSONB NOT NULL DEFAULT '{}'::jsonb
+);
+
+CREATE TABLE IF NOT EXISTS biological_age_estimates (
+    estimate_id TEXT PRIMARY KEY,
+    subject_id TEXT NOT NULL REFERENCES subjects(subject_id) ON DELETE CASCADE,
+    hand_id TEXT NOT NULL REFERENCES hands(hand_id) ON DELETE CASCADE,
+    timepoint_id TEXT NOT NULL,
+    target_object_id TEXT NOT NULL,
+    estimated_age_years DOUBLE PRECISION NOT NULL CHECK (estimated_age_years >= 0),
+    uncertainty JSONB NOT NULL DEFAULT '{}'::jsonb,
+    evidence JSONB NOT NULL DEFAULT '[]'::jsonb,
+    provenance JSONB NOT NULL DEFAULT '{}'::jsonb,
+    assessed_at TIMESTAMPTZ NOT NULL,
+    model_id TEXT,
+    model_version TEXT,
+    metadata JSONB NOT NULL DEFAULT '{}'::jsonb
+);
+
 CREATE INDEX IF NOT EXISTS idx_hands_subject ON hands(subject_id);
 CREATE INDEX IF NOT EXISTS idx_timepoints_subject ON timepoints(subject_id);
 CREATE INDEX IF NOT EXISTS idx_datasets_subject_timepoint ON datasets(subject_id, timepoint_id);
@@ -83,3 +148,8 @@ CREATE INDEX IF NOT EXISTS idx_observations_subject_timepoint ON observations(su
 CREATE INDEX IF NOT EXISTS idx_observations_geometry ON observations USING GIST(geometry);
 CREATE INDEX IF NOT EXISTS idx_stage_records_subject_timepoint ON stage_records(subject_id, timepoint_id);
 CREATE INDEX IF NOT EXISTS idx_stage_records_stage ON stage_records(stage);
+CREATE INDEX IF NOT EXISTS idx_tissue_regions_subject_timepoint ON tissue_regions(subject_id, timepoint_id);
+CREATE INDEX IF NOT EXISTS idx_cells_tissue ON cells(tissue_id);
+CREATE INDEX IF NOT EXISTS idx_cells_subject_timepoint ON cells(subject_id, timepoint_id);
+CREATE INDEX IF NOT EXISTS idx_bio_state_target ON biological_state_assessments(target_object_id);
+CREATE INDEX IF NOT EXISTS idx_bio_age_target ON biological_age_estimates(target_object_id);
