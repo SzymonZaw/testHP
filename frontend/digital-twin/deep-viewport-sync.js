@@ -3,23 +3,35 @@
   // Three.js scene and now owns both macro and deep spatial layers.
   // This module deliberately creates no second renderer, overlay, polling
   // loop, or independent deep scene.
-  function loadArchitecture() {
-    if (window.testhpHandSurfaceArchitecture) return Promise.resolve(window.testhpHandSurfaceArchitecture);
-    if (window.__testhpHandSurfaceArchitectureLoad) return window.__testhpHandSurfaceArchitectureLoad;
-    window.__testhpHandSurfaceArchitectureLoad = new Promise(resolve => {
-      const existing = document.getElementById('hand-surface-architecture-v1');
-      if (existing) {
-        existing.addEventListener('load', () => resolve(window.testhpHandSurfaceArchitecture || null), {once:true});
-        return;
-      }
+  function loadScript(id, src) {
+    const existing = document.getElementById(id);
+    if (existing) return Promise.resolve(existing);
+    return new Promise(resolve => {
       const script = document.createElement('script');
-      script.id = 'hand-surface-architecture-v1';
-      script.src = '/digital-twin/hand-surface-architecture-v1.js?v=architecture-1';
-      script.onload = () => resolve(window.testhpHandSurfaceArchitecture || null);
+      script.id = id;
+      script.src = src;
+      script.onload = () => resolve(script);
       script.onerror = () => resolve(null);
       document.head.appendChild(script);
     });
+  }
+
+  function loadArchitecture() {
+    if (window.testhpHandSurfaceArchitecture) return Promise.resolve(window.testhpHandSurfaceArchitecture);
+    if (window.__testhpHandSurfaceArchitectureLoad) return window.__testhpHandSurfaceArchitectureLoad;
+    window.__testhpHandSurfaceArchitectureLoad = loadScript(
+      'hand-surface-architecture-v1',
+      '/digital-twin/hand-surface-architecture-v1.js?v=architecture-1'
+    ).then(() => window.testhpHandSurfaceArchitecture || null);
     return window.__testhpHandSurfaceArchitectureLoad;
+  }
+
+  function loadModeBridge() {
+    if (window.testhpHandSurfaceArchitectureModeBridge) return Promise.resolve(window.testhpHandSurfaceArchitectureModeBridge);
+    return loadScript(
+      'hand-surface-architecture-mode-bridge',
+      '/digital-twin/hand-surface-architecture-mode-bridge.js?v=architecture-mode-1'
+    ).then(() => window.testhpHandSurfaceArchitectureModeBridge || null);
   }
 
   function markProjectionOwnership() {
@@ -58,8 +70,8 @@
     }));
   }
 
-  loadArchitecture().then(() => sync());
-  window.addEventListener('testhp:viewport-manager-ready', () => { loadArchitecture().then(sync); });
+  Promise.all([loadArchitecture(), loadModeBridge()]).then(sync);
+  window.addEventListener('testhp:viewport-manager-ready', () => { Promise.all([loadArchitecture(), loadModeBridge()]).then(sync); });
   window.addEventListener('testhp:spatial-layer-changed', sync);
   window.addEventListener('testhp:hand-surface-ready', sync);
 })();
