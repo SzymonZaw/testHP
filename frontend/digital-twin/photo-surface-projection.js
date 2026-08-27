@@ -110,8 +110,10 @@
     let plan = read(PLAN_KEY);
     if (!plan || normalize(plan.target) !== normalize(s.spatial_id) || plan.views?.length !== s.registered_count) {
       const r = await fetch(`${API}/build`, { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({subject_id:'own_cohort',timepoint:'T0',spatial_id:s.spatial_id,min_views:1}) });
-      const built = await r.json();
-      if (!r.ok) throw new Error(built.detail || 'Nie udało się utworzyć powierzchni.');
+      let built;
+      try { built = await r.json(); }
+      catch { throw new Error(`Nie udało się utworzyć powierzchni (HTTP ${r.status}).`); }
+      if (!r.ok) throw new Error(built.detail || `Nie udało się utworzyć powierzchni (HTTP ${r.status}).`);
       plan = savePlan(built);
     }
     return { state: s, plan };
@@ -194,9 +196,6 @@
     window.__testhpSpatialProjectionDiagnostics.appliedViews = applied; window.__testhpSpatialProjectionDiagnostics.reason = 'applied';
     renderStatus(surface, ctx.plan);
     try { manager.render?.(); } catch {}
-    // Notify observers that the model overlay is ready. Do not feed this event
-    // back into sync(): doing so would make applyOverlay -> ready -> sync ->
-    // applyOverlay an endless loop.
     window.dispatchEvent(new CustomEvent('testhp:hand-surface-ready', { detail: { applied: true, views: applied, target: spatialTarget } }));
     return true;
   }
@@ -217,8 +216,6 @@
   window.addEventListener('testhp:spatial-contract-changed', () => setTimeout(sync, 150));
   window.addEventListener('testhp:viewport-manager-ready', () => setTimeout(sync, 150));
   window.addEventListener('testhp:spatial-target-changed', () => setTimeout(sync, 150));
-  // Intentionally no sync listener for testhp:hand-surface-ready: that event
-  // is emitted by applyOverlay itself and must remain an output, not an input.
   window.addEventListener('testhp:hand-surface-ready', () => setTimeout(() => { const p=read(PLAN_KEY), s=read(SURFACE_KEY); if(p) renderStatus(s,p); }, 0));
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', () => setTimeout(sync, 600), { once:true }); else setTimeout(sync, 600);
 })();

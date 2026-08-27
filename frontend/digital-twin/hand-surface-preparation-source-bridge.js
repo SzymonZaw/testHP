@@ -35,24 +35,110 @@
     const active = document.querySelector('#hand-surface-studio .hss-tabs button.active')?.dataset.tab;
     const select = document.getElementById('hs-prep-source');
     if (active !== 'prepare' || !select?.value) return;
+
+    const run = document.getElementById('hs-prep-run');
+    const status = document.getElementById('hs-prep-status');
+    const option = select.selectedOptions?.[0];
+    const unassigned = /widok nieprzypisany|unassigned/i.test(option?.textContent || '');
+
     try {
       const r = await fetch(`${API}/state?subject_id=own_cohort&timepoint=T0`, {cache:'no-store'});
       if (!r.ok) return;
       const state = await r.json();
       const item = (state.inputs || state.evidence || []).find(x => x?.asset_id === select.value || x?.id === select.value || x?.sourceAssetId === select.value);
-      if (!item?.prepared || !item.prepared_asset_id) return;
-      const result = document.getElementById('hs-prep-result');
-      const preview = document.getElementById('hs-prep-preview');
-      const run = document.getElementById('hs-prep-run');
-      const save = document.getElementById('hs-prep-save');
-      const status = document.getElementById('hs-prep-status');
-      if (preview) preview.innerHTML = `<div class="hs-prep-pair"><figure><img src="${API}/file/source/${encodeURIComponent(select.value)}" alt="Oryginał"><figcaption>Oryginał</figcaption></figure><figure><img src="${API}/file/prepared/${encodeURIComponent(item.prepared_asset_id)}" alt="Przygotowane"><figcaption>Po przygotowaniu</figcaption></figure></div>`;
-      if (result) result.innerHTML = `<span class="hs-prep-good">✓ Przygotowane</span><br>Identyfikator przygotowanego pliku: <code>${clean(item.prepared_asset_id)}</code>`;
-      if (run) run.disabled = true;
-      if (save) { save.disabled = false; save.dataset.id = item.prepared_asset_id; save.dataset.source = select.value; }
-      if (status) { status.textContent = '✓ Zdjęcie jest już przygotowane.'; status.className = 'hs-prep-status hs-prep-good'; }
+      if (item?.prepared && item.prepared_asset_id) {
+        const result = document.getElementById('hs-prep-result');
+        const preview = document.getElementById('hs-prep-preview');
+        const save = document.getElementById('hs-prep-save');
+        if (preview) preview.innerHTML = `<div class="hs-prep-pair"><figure><img src="${API}/file/source/${encodeURIComponent(select.value)}" alt="Oryginał"><figcaption>Oryginał</figcaption></figure><figure><img src="${API}/file/prepared/${encodeURIComponent(item.prepared_asset_id)}" alt="Przygotowane"><figcaption>Po przygotowaniu</figcaption></figure></div>`;
+        if (result) result.innerHTML = `<span class="hs-prep-good">✓ Przygotowane</span><br>Identyfikator przygotowanego pliku: <code>${clean(item.prepared_asset_id)}</code>`;
+        if (run) run.disabled = true;
+        if (save) { save.disabled = false; save.dataset.id = item.prepared_asset_id; save.dataset.source = select.value; }
+        if (status) { status.textContent = unassigned ? '✓ Zdjęcie jest już przygotowane. Przypisz widok przed rejestracją.' : '✓ Zdjęcie jest już przygotowane.'; status.className = 'hs-prep-status hs-prep-good'; }
+        return;
+      }
+
+      // Preparation itself does not require a view. View assignment is a
+      // separate prerequisite for registration, so an unassigned source must
+      // remain actionable instead of being left behind a disabled button.
+      if (unassigned && run) {
+        run.disabled = false;
+        if (status) {
+          status.textContent = 'Widok nieprzypisany — można przygotować zdjęcie; widok przypisz przed rejestracją.';
+          status.className = 'hs-prep-status hs-prep-warn';
+        }
+      }
     } catch {}
   }
+
+  // Allow preparation of an unassigned-view source. The backend preparation
+  // contract explicitly permits this (it stores the result as `unassigned`),
+  // while view assignment remains a separate step required before registration.
+  let unassignedPreparationBusy = false;
+  const prepareUnassigned = async event => {
+    const run = event.target?.closest?.('#hs-prep-run');
+    if (!run || unassignedPreparationBusy) return;
+    const select = document.getElementById('hs-prep-source');
+    const option = select?.selectedOptions?.[0];
+    const assetId = select?.value;
+    const label = option?.textContent || '';
+    const unassigned = /widok nieprzypisany|unassigned/i.test(label);
+    if (!assetId || !unassigned) return;
+
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    unassignedPreparationBusy = true;
+    run.disabled = true;
+
+    const status = document.getElementById('hs-prep-status');
+    const result = document.getElementById('hs-prep-result');
+    if (status) {
+      status.textContent = 'Przygotowywanie… (widok można przypisać później)';
+      status.className = 'hs-prep-status';
+    }
+
+    try {
+      const response = await fetch(`${API}/prepare/${encodeURIComponent(assetId)}`, {method:'POST'});
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(body.detail || `Request failed (${response.status})`);
+      const prepared = body.prepared_asset || body;
+      const preparedId = body.prepared_asset_id || prepared.prepared_asset_id;
+      if (!preparedId) throw new Error('Brak identyfikatora przygotowanego pliku.');
+
+      const preview = document.getElementById('hs-prep-preview');
+      const save = document.getElementById('hs-prep-save');
+      if (preview) {
+        preview.innerHTML = `<div class="hs-prep-pair"><figure><img src="${API}/file/source/${encodeURIComponent(assetId)}" alt="Oryginał"><figcaption>Oryginał</figcaption></figure><figure><img src="${API}/file/prepared/${encodeURIComponent(preparedId)}" alt="Przygotowane"><figcaption>Po przygotowaniu</figcaption></figure></div>`;
+      }
+      if (result) {
+        result.innerHTML = `<span class="hs-prep-good">✓ Przygotowane</span><br>${prepared.prepared_width || prepared.width || '?'} × ${prepared.prepared_height || prepared.height || '?'} px · widok nieprzypisany`;
+      }
+      if (save) {
+        save.disabled = false;
+        save.dataset.id = preparedId;
+        save.dataset.source = assetId;
+        save.dataset.serverPrepared = '1';
+      }
+      if (status) {
+        status.textContent = '✓ Zdjęcie przygotowane. Przypisz widok przed rejestracją.';
+        status.className = 'hs-prep-status hs-prep-good';
+      }
+      window.dispatchEvent(new CustomEvent('testhp:evidence-attached'));
+    } catch (error) {
+      if (status) {
+        status.textContent = error?.message || 'Przygotowanie nie powiodło się.';
+        status.className = 'hs-prep-status hs-prep-warn';
+      }
+      run.disabled = false;
+    } finally {
+      unassignedPreparationBusy = false;
+    }
+  };
+
+  // Capture phase prevents the canonical bubble handler from immediately
+  // rejecting an unassigned source. Assigned-view sources keep the canonical
+  // workflow unchanged.
+  document.addEventListener('click', prepareUnassigned, true);
 
   // Do not schedule from every DOM mutation. The previous body-wide observer
   // created a new 100 ms timeout for essentially every render mutation,
@@ -81,6 +167,27 @@
   new MutationObserver(mutations => {
     if (mutations.some(m => [...m.addedNodes, ...m.removedNodes].some(isPrepSourceNode))) schedule();
   }).observe(document.body, {childList:true, subtree:true});
+
+  // Canonical UI may recreate/update the prepare button after this bridge has
+  // enabled it. Observe only the prepare button's disabled attribute and
+  // restore the actionable state for an unassigned source. This avoids a
+  // body-wide feedback loop while closing the race between the canonical
+  // renderer and this compatibility bridge.
+  const prepButtonObserver = new MutationObserver(() => {
+    const select = document.getElementById('hs-prep-source');
+    const run = document.getElementById('hs-prep-run');
+    const option = select?.selectedOptions?.[0];
+    if (!select?.value || !run || !/widok nieprzypisany|unassigned/i.test(option?.textContent || '')) return;
+    if (run.disabled && !unassignedPreparationBusy) {
+      run.disabled = false;
+      const status = document.getElementById('hs-prep-status');
+      if (status && !/przygotowane|Przygotowywanie/i.test(status.textContent || '')) {
+        status.textContent = 'Widok nieprzypisany — można przygotować zdjęcie; widok przypisz przed rejestracją.';
+        status.className = 'hs-prep-status hs-prep-warn';
+      }
+    }
+  });
+  prepButtonObserver.observe(document.body, {attributes:true, attributeFilter:['disabled'], subtree:true});
 
   // Geometry is a first-class part of the unified surface workflow. Load the
   // canonical bridge here because this source bridge is already injected by
