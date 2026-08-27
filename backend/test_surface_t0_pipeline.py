@@ -7,7 +7,7 @@ CI can verify orchestration without pretending synthetic images are clinical
 or real-world reconstruction evidence.
 """
 
-from surface_t0_pipeline import build_surface_t0, photo_quality_from_metrics
+from backend.surface_t0_pipeline import build_surface_t0, photo_quality_from_metrics
 
 
 GOOD_CALIBRATION = {
