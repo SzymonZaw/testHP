@@ -19,3 +19,18 @@ def test_attention_map_does_not_make_diagnostic_claims():
     assert result[0]["status"] == "attention"
     assert "diagnosis" not in result[0]
     assert "treatment" not in result[0]
+
+
+def test_attention_map_preserves_cell_provenance_at_any_scale():
+    result = build_attention_map([
+        {
+            "zone_id": "h1",
+            "level": "hand",
+            "metric": "biological_age_years",
+            "cell_count": 2,
+            "changed_cells": 1,
+            "mean_delta": 1.0,
+            "source_cell_ids": ("c2", "c1"),
+        },
+    ])
+    assert result[0]["source_cell_ids"] == ("c1", "c2")
