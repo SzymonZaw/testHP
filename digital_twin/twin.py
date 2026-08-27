@@ -18,6 +18,7 @@ from .cell_assessment import CellAssessment
 from .hierarchical_assessment import aggregate_assessments
 from .hierarchical_inference import aggregate_inference, HierarchicalInference
 from .inference_intervention import InferenceAttention, build_inference_attention
+from .forecast import Forecast, forecast_cell
 from .assessment_trends import AssessmentTrend, compare_cell_assessments
 from .intervention_map import InterventionItem, build_intervention_map
 from .assessment_pipeline import build_assessment_view
@@ -84,6 +85,15 @@ class DigitalTwin:
     def cell_inference_trend(self, cell_id: str) -> Optional[InferenceTrend]:
         return self.inference_history.trend(cell_id)
 
+    def cell_forecast(self, cell_id: str) -> Optional[Forecast]:
+        """Return a conservative forward trajectory for a cell with inference history."""
+        snapshots = self.inference_history.get(cell_id)
+        if not snapshots:
+            return None
+        inference = snapshots[-1].inference
+        trend = self.inference_history.trend(cell_id) if len(snapshots) > 1 else None
+        return forecast_cell(cell_id, inference, trend)
+
     def hierarchical_inference(self) -> Dict[str, Dict[str, HierarchicalInference]]:
         """Aggregate latest cell inferences through tissue, region and hand."""
         latest = {}
@@ -99,6 +109,32 @@ class DigitalTwin:
         """Rank hand hierarchy nodes for further observation, not treatment."""
         return build_inference_attention(self.hierarchical_inference())
 
+    def hierarchical_forecast(self) -> Dict[str, Dict[str, Dict[str, Any]]]:
+        """Aggregate cell forecasts through tissue, region and hand."""
+        forecasts = [forecast for cell_id in self.inference_history._items for forecast in [self.cell_forecast(cell_id)] if forecast]
+        result: Dict[str, Dict[str, Dict[str, Any]]] = {"cell": {}, "tissue": {}, "region": {}, "hand": {}}
+        for forecast in forecasts:
+            result["cell"][forecast.cell_id] = forecast.to_dict()
+        for level in ("tissue", "region"):
+            groups = {}
+            for identifier in self.hierarchical_inference().get(level, {}):
+                values = []
+                for region in self.spatial_model.regions.values():
+                    for tissue in region.tissues.values():
+                        if level == "region" and region.region_id != identifier:
+                            continue
+                        if level == "tissue" and tissue.tissue_id != identifier:
+                            continue
+                        for cell_id in tissue.cells:
+                            if cell_id in result["cell"]:
+                                values.append(result["cell"][cell_id])
+                ages = [v["age_180d"] for v in values if v["age_180d"] is not None]
+                result[level][identifier] = {"forecast_cells": len(values), "mean_age_180d": sum(ages) / len(ages) if ages else None}
+        values = list(result["cell"].values())
+        ages = [v["age_180d"] for v in values if v["age_180d"] is not None]
+        result["hand"]["hand"] = {"forecast_cells": len(values), "mean_age_180d": sum(ages) / len(ages) if ages else None}
+        return result
+
     def summary(self) -> Dict[str, Any]:
         """Return a unified, evidence-aware snapshot for API/UI consumers."""
         assessment = self.hierarchical_assessment()
@@ -112,15 +148,19 @@ class DigitalTwin:
             "hand": {
                 "assessment": hand_assessment.to_dict() if hand_assessment else None,
                 "inference": hand_inference.to_dict() if hand_inference else None,
+                "forecast": self.hierarchical_forecast().get("hand", {}).get("hand"),
             },
             "regions": {k: v.to_dict() for k, v in assessment.get("region", {}).items()},
             "tissues": {k: v.to_dict() for k, v in assessment.get("tissue", {}).items()},
             "inference_regions": {k: v.to_dict() for k, v in inference.get("region", {}).items()},
             "inference_tissues": {k: v.to_dict() for k, v in inference.get("tissue", {}).items()},
+            "forecast_regions": self.hierarchical_forecast().get("region", {}),
+            "forecast_tissues": self.hierarchical_forecast().get("tissue", {}),
             "attention": [item.to_dict() for item in attention],
             "coverage": {
                 "assessed_cells": hand_assessment.assessed_cells if hand_assessment else 0,
                 "inferred_cells": hand_inference.cells if hand_inference else 0,
+                "forecast_cells": self.hierarchical_forecast().get("hand", {}).get("hand", {}).get("forecast_cells", 0),
             },
         }
 
