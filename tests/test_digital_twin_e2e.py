@@ -6,7 +6,7 @@ aggregation, not biological or clinical validity.
 
 from datetime import datetime, timedelta
 
-from digital_twin.assessment_trends import AssessmentTrend, compare_cell_assessments
+from digital_twin.assessment_trends import compare_cell_assessments
 from digital_twin.cell_assessment import CellAssessment
 from digital_twin.intervention_map import build_intervention_map
 from digital_twin.spatial import CellLocation, HandRegion, HandSpatialModel, SpatialPoint, TissueRegion
@@ -44,6 +44,19 @@ def _state(cell_id, observed_at, age, abnormality):
     )
 
 
+def _assessment(cell_id, observed_at, health_state, health_score, age, abnormality):
+    return CellAssessment(
+        cell_id=cell_id,
+        observed_at=observed_at,
+        health_state=health_state,
+        health_score=health_score,
+        biological_age=age,
+        age_confidence=0.9,
+        abnormality_score=abnormality,
+        uncertainty=0.1,
+    )
+
+
 def test_synthetic_hand_end_to_end():
     twin, cell_ids = _build_twin()
     t0 = datetime(2026, 1, 1)
@@ -68,9 +81,15 @@ def test_synthetic_hand_end_to_end():
             twin.add_cell_state(_state(cell_id, observed_at, age, abnormality))
 
         assessments = [
-            CellAssessment(cell_id, t0, "healthy", .90, 30, .10, .90, .10),
-            CellAssessment(cell_id, t1, "healthy", .85, values[1][0], values[1][1], .90, .10),
-            CellAssessment(cell_id, t2, "abnormal" if group == 17 else "healthy", .70 if group == 17 else .85, values[2][0], values[2][1], .90, .10),
+            _assessment(cell_id, t0, "healthy", .90, *values[0]),
+            _assessment(cell_id, t1, "healthy", .85, *values[1]),
+            _assessment(
+                cell_id,
+                t2,
+                "abnormal" if group == 17 else "healthy",
+                .70 if group == 17 else .85,
+                *values[2],
+            ),
         ]
         previous_assessments[cell_id] = assessments[0]
         twin.add_cell_assessment(assessments[-1])
