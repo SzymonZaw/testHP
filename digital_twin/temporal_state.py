@@ -155,8 +155,6 @@ class TemporalState:
     def get_region_trend_evidence(self, region_id: str) -> Dict[str, Any]:
         """Return auditable measurements supporting a region trend classification."""
         analysis = self.analyze_region_trend(region_id)
-        trajectory = self.get_region_trajectory(region_id, "biological_age")
-        abnormal_trajectory = self.get_region_trajectory(region_id, "abnormal_fraction")
         return {
             "region_id": region_id,
             "trend": analysis["trend"],
@@ -164,9 +162,64 @@ class TemporalState:
             "observation_count": analysis["observation_count"],
             "evidence": analysis["evidence"],
             "measurements": {
-                "biological_age": trajectory,
-                "abnormal_fraction": abnormal_trajectory,
+                "biological_age": self.get_region_trajectory(region_id, "biological_age"),
+                "abnormal_fraction": self.get_region_trajectory(region_id, "abnormal_fraction"),
             },
+        }
+
+    def assess_region_data_quality(self, region_id: str) -> Dict[str, Any]:
+        """Assess completeness and consistency of longitudinal region data.
+
+        This is a data-quality signal only; it does not imply health or disease.
+        """
+        observations = []
+        for point in self.timepoints:
+            region = point.region_state.get(region_id, {})
+            if region:
+                observations.append(region)
+
+        if not observations:
+            return {"region_id": region_id, "quality_level": "low", "quality_score": 0.0,
+                    "observation_count": 0, "missing_fraction": 1.0, "consistency": 0.0}
+
+        required = ("biological_age", "abnormal_fraction")
+        present = sum(1 for region in observations for key in required if isinstance(region.get(key), (int, float)))
+        expected = len(observations) * len(required)
+        completeness = present / expected if expected else 0.0
+
+        confidences = [float(region["confidence"]) for region in observations if isinstance(region.get("confidence"), (int, float))]
+        mean_confidence = sum(confidences) / len(confidences) if confidences else 0.0
+        missing_fraction = 1.0 - completeness
+
+        series = []
+        for key in required:
+            values = [float(region[key]) for region in observations if isinstance(region.get(key), (int, float))]
+            if len(values) >= 2:
+                series.append(values)
+        consistency_scores = []
+        for values in series:
+            if len(values) < 3:
+                consistency_scores.append(0.75)
+                continue
+            steps = [b - a for a, b in zip(values, values[1:])]
+            non_mixed = sum(1 for a, b in zip(steps, steps[1:]) if a == 0 or b == 0 or (a > 0) == (b > 0))
+            consistency_scores.append(non_mixed / max(1, len(steps) - 1))
+        consistency = sum(consistency_scores) / len(consistency_scores) if consistency_scores else 0.0
+        quality_score = round(0.5 * completeness + 0.3 * mean_confidence + 0.2 * consistency, 3)
+        if quality_score >= 0.8:
+            quality_level = "high"
+        elif quality_score >= 0.55:
+            quality_level = "medium"
+        else:
+            quality_level = "low"
+        return {
+            "region_id": region_id,
+            "quality_level": quality_level,
+            "quality_score": quality_score,
+            "observation_count": len(observations),
+            "missing_fraction": round(missing_fraction, 3),
+            "mean_confidence": round(mean_confidence, 3),
+            "consistency": round(consistency, 3),
         }
 
     def to_dict(self) -> Dict[str, Any]:
