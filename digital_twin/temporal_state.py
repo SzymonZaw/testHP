@@ -168,29 +168,19 @@ class TemporalState:
         }
 
     def assess_region_data_quality(self, region_id: str) -> Dict[str, Any]:
-        """Assess completeness and consistency of longitudinal region data.
-
-        This is a data-quality signal only; it does not imply health or disease.
-        """
-        observations = []
-        for point in self.timepoints:
-            region = point.region_state.get(region_id, {})
-            if region:
-                observations.append(region)
-
+        """Assess completeness and consistency of longitudinal region data."""
+        observations = [point.region_state.get(region_id, {}) for point in self.timepoints]
+        observations = [region for region in observations if region]
         if not observations:
             return {"region_id": region_id, "quality_level": "low", "quality_score": 0.0,
                     "observation_count": 0, "missing_fraction": 1.0, "consistency": 0.0}
-
         required = ("biological_age", "abnormal_fraction")
         present = sum(1 for region in observations for key in required if isinstance(region.get(key), (int, float)))
         expected = len(observations) * len(required)
         completeness = present / expected if expected else 0.0
-
         confidences = [float(region["confidence"]) for region in observations if isinstance(region.get("confidence"), (int, float))]
         mean_confidence = sum(confidences) / len(confidences) if confidences else 0.0
         missing_fraction = 1.0 - completeness
-
         series = []
         for key in required:
             values = [float(region[key]) for region in observations if isinstance(region.get(key), (int, float))]
@@ -206,21 +196,39 @@ class TemporalState:
             consistency_scores.append(non_mixed / max(1, len(steps) - 1))
         consistency = sum(consistency_scores) / len(consistency_scores) if consistency_scores else 0.0
         quality_score = round(0.5 * completeness + 0.3 * mean_confidence + 0.2 * consistency, 3)
-        if quality_score >= 0.8:
-            quality_level = "high"
-        elif quality_score >= 0.55:
-            quality_level = "medium"
+        quality_level = "high" if quality_score >= 0.8 else "medium" if quality_score >= 0.55 else "low"
+        return {"region_id": region_id, "quality_level": quality_level, "quality_score": quality_score,
+                "observation_count": len(observations), "missing_fraction": round(missing_fraction, 3),
+                "mean_confidence": round(mean_confidence, 3), "consistency": round(consistency, 3)}
+
+    def assess_region_risk_signal(self, region_id: str) -> Dict[str, Any]:
+        """Generate an explainable risk signal, not a medical diagnosis."""
+        trend = self.analyze_region_trend(region_id)
+        quality = self.assess_region_data_quality(region_id)
+        evidence = list(trend["evidence"])
+        quality_level = quality["quality_level"]
+        if quality_level == "low":
+            return {"region_id": region_id, "signal": "insufficient_data", "severity": "unknown",
+                    "confidence": min(trend["confidence"], quality["quality_score"]),
+                    "evidence": evidence, "requires_review": False, "data_quality": quality}
+        if trend["trend"] == "accelerated_aging":
+            signal, severity = "accelerated_change", "moderate"
+            evidence.append("longitudinal_acceleration")
+        elif trend["trend"] == "aging":
+            signal, severity = "aging_change", "mild"
+        elif trend["trend"] == "deteriorating":
+            signal, severity = "deteriorating_change", "moderate"
+        elif trend["trend"] == "improving":
+            signal, severity = "improving_change", "informational"
+        elif trend["trend"] == "stable":
+            signal, severity = "stable", "informational"
         else:
-            quality_level = "low"
-        return {
-            "region_id": region_id,
-            "quality_level": quality_level,
-            "quality_score": quality_score,
-            "observation_count": len(observations),
-            "missing_fraction": round(missing_fraction, 3),
-            "mean_confidence": round(mean_confidence, 3),
-            "consistency": round(consistency, 3),
-        }
+            signal, severity = "uncertain_change", "unknown"
+        confidence = round(min(trend["confidence"], quality["quality_score"]), 3)
+        return {"region_id": region_id, "signal": signal, "severity": severity,
+                "confidence": confidence, "evidence": evidence,
+                "requires_review": severity in {"moderate", "high"} and confidence >= 0.6,
+                "data_quality": quality}
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert temporal state to dictionary."""
