@@ -36,29 +36,15 @@ class TemporalState:
     current_timepoint: Optional[str] = None
     metadata: Dict[str, Any] = field(default_factory=dict)
 
-    def add_timepoint(
-        self,
-        name: str,
-        biological_age: Optional[float] = None,
-        overall_risk: Optional[float] = None,
-        tissue_state: Optional[Dict[str, Any]] = None,
-        cell_state: Optional[Dict[str, Any]] = None,
-        region_state: Optional[Dict[str, Dict[str, Any]]] = None,
-        timestamp: Optional[str] = None,
-        metadata: Optional[Dict[str, Any]] = None,
-    ) -> None:
+    def add_timepoint(self, name: str, biological_age: Optional[float] = None, overall_risk: Optional[float] = None,
+                      tissue_state: Optional[Dict[str, Any]] = None, cell_state: Optional[Dict[str, Any]] = None,
+                      region_state: Optional[Dict[str, Dict[str, Any]]] = None, timestamp: Optional[str] = None,
+                      metadata: Optional[Dict[str, Any]] = None) -> None:
         """Add or replace a longitudinal timepoint."""
         existing = self.get_timepoint(name)
-        point = TimePoint(
-            name=name,
-            timestamp=timestamp or datetime.utcnow().isoformat(),
-            biological_age=biological_age,
-            overall_risk=overall_risk,
-            tissue_state=tissue_state or {},
-            cell_state=cell_state or {},
-            region_state=region_state or {},
-            metadata=metadata or {},
-        )
+        point = TimePoint(name=name, timestamp=timestamp or datetime.utcnow().isoformat(), biological_age=biological_age,
+                          overall_risk=overall_risk, tissue_state=tissue_state or {}, cell_state=cell_state or {},
+                          region_state=region_state or {}, metadata=metadata or {})
         if existing is not None:
             self.timepoints[self.timepoints.index(existing)] = point
         else:
@@ -74,21 +60,13 @@ class TemporalState:
 
     def get_trajectory(self, attribute: str) -> List[Dict[str, Any]]:
         """Extract a longitudinal trajectory for a top-level attribute."""
-        return [
-            {"timepoint": point.name, "value": getattr(point, attribute, None), "timestamp": point.timestamp}
-            for point in self.timepoints
-        ]
+        return [{"timepoint": point.name, "value": getattr(point, attribute, None), "timestamp": point.timestamp}
+                for point in self.timepoints]
 
     def get_region_trajectory(self, region_id: str, attribute: str) -> List[Dict[str, Any]]:
         """Extract one region's measurements across all timepoints."""
-        return [
-            {
-                "timepoint": point.name,
-                "value": point.region_state.get(region_id, {}).get(attribute),
-                "timestamp": point.timestamp,
-            }
-            for point in self.timepoints
-        ]
+        return [{"timepoint": point.name, "value": point.region_state.get(region_id, {}).get(attribute),
+                 "timestamp": point.timestamp} for point in self.timepoints]
 
     def calculate_change(self, attribute: str) -> Optional[float]:
         """Calculate change between first and last valid top-level observations."""
@@ -100,10 +78,7 @@ class TemporalState:
 
     def calculate_region_change(self, region_id: str, attribute: str) -> Optional[float]:
         """Calculate first-to-last change for one region."""
-        values = [
-            point.region_state.get(region_id, {}).get(attribute)
-            for point in self.timepoints
-        ]
+        values = [point.region_state.get(region_id, {}).get(attribute) for point in self.timepoints]
         values = [value for value in values if value is not None]
         if len(values) < 2:
             return None
@@ -115,28 +90,17 @@ class TemporalState:
         end = self.get_timepoint(last)
         if start is None or end is None:
             raise ValueError("both timepoints must exist")
-
         region_ids = set(start.region_state) | set(end.region_state)
         result: Dict[str, Dict[str, Any]] = {}
-        numeric_fields = (
-            "biological_age",
-            "abnormal_fraction",
-            "unknown_fraction",
-            "confidence",
-            "heterogeneity",
-        )
+        numeric_fields = ("biological_age", "abnormal_fraction", "unknown_fraction", "confidence", "heterogeneity")
         for region_id in sorted(region_ids):
-            before = start.region_state.get(region_id, {})
-            after = end.region_state.get(region_id, {})
+            before, after = start.region_state.get(region_id, {}), end.region_state.get(region_id, {})
             deltas: Dict[str, float] = {}
             for field_name in numeric_fields:
-                old = before.get(field_name)
-                new = after.get(field_name)
+                old, new = before.get(field_name), after.get(field_name)
                 if isinstance(old, (int, float)) and isinstance(new, (int, float)):
                     deltas[field_name] = float(new - old)
-
-            age_delta = deltas.get("biological_age")
-            abnormal_delta = deltas.get("abnormal_fraction")
+            age_delta, abnormal_delta = deltas.get("biological_age"), deltas.get("abnormal_fraction")
             if age_delta is None and abnormal_delta is None:
                 direction = "uncertain"
             elif (age_delta is not None and age_delta > 0) or (abnormal_delta is not None and abnormal_delta > 0):
@@ -153,20 +117,12 @@ class TemporalState:
         observations = []
         for point in self.timepoints:
             region = point.region_state.get(region_id, {})
-            age = region.get("biological_age")
-            abnormal = region.get("abnormal_fraction")
+            age, abnormal = region.get("biological_age"), region.get("abnormal_fraction")
             if isinstance(age, (int, float)) or isinstance(abnormal, (int, float)):
                 observations.append((point, age, abnormal))
-
         if len(observations) < 3:
-            return {
-                "region_id": region_id,
-                "trend": "uncertain",
-                "confidence": 0.0,
-                "observation_count": len(observations),
-                "evidence": [],
-            }
-
+            return {"region_id": region_id, "trend": "uncertain", "confidence": 0.0,
+                    "observation_count": len(observations), "evidence": []}
         age_values = [float(age) for _, age, _ in observations if isinstance(age, (int, float))]
         abnormal_values = [float(value) for _, _, value in observations if isinstance(value, (int, float))]
         evidence: List[str] = []
@@ -174,49 +130,43 @@ class TemporalState:
         def direction(values: List[float]) -> Optional[str]:
             if len(values) < 3:
                 return None
-            first = values[1] - values[0]
-            last = values[-1] - values[-2]
-            if first > 0 and last > 0:
-                return "up"
-            if first < 0 and last < 0:
-                return "down"
-            if last == 0 and first == 0:
-                return "flat"
+            first, last = values[1] - values[0], values[-1] - values[-2]
+            if first > 0 and last > 0: return "up"
+            if first < 0 and last < 0: return "down"
+            if last == 0 and first == 0: return "flat"
             return "mixed"
 
-        age_direction = direction(age_values)
-        abnormal_direction = direction(abnormal_values)
-        if age_direction == "up":
-            evidence.append("biological_age_increasing")
-        if abnormal_direction == "up":
-            evidence.append("abnormal_fraction_increasing")
-        if age_direction == "down":
-            evidence.append("biological_age_decreasing")
-        if abnormal_direction == "down":
-            evidence.append("abnormal_fraction_decreasing")
-
-        if age_direction == "up" and abnormal_direction == "up":
-            trend = "accelerated_aging"
-        elif age_direction == "up" or abnormal_direction == "up":
-            trend = "aging"
-        elif age_direction == "down" and abnormal_direction == "down":
-            trend = "improving"
-        elif age_direction == "flat" and abnormal_direction == "flat":
-            trend = "stable"
-        else:
-            trend = "uncertain"
-
+        age_direction, abnormal_direction = direction(age_values), direction(abnormal_values)
+        if age_direction == "up": evidence.append("biological_age_increasing")
+        if abnormal_direction == "up": evidence.append("abnormal_fraction_increasing")
+        if age_direction == "down": evidence.append("biological_age_decreasing")
+        if abnormal_direction == "down": evidence.append("abnormal_fraction_decreasing")
+        if age_direction == "up" and abnormal_direction == "up": trend = "accelerated_aging"
+        elif age_direction == "up" or abnormal_direction == "up": trend = "aging"
+        elif age_direction == "down" and abnormal_direction == "down": trend = "improving"
+        elif age_direction == "flat" and abnormal_direction == "flat": trend = "stable"
+        else: trend = "uncertain"
         completeness = min(len(age_values), len(abnormal_values)) / len(observations)
         confidence = round(min(1.0, 0.5 + 0.1 * min(len(observations), 5)) * completeness, 3)
-        if trend == "uncertain":
-            confidence = round(confidence * 0.5, 3)
+        if trend == "uncertain": confidence = round(confidence * 0.5, 3)
+        return {"region_id": region_id, "trend": trend, "confidence": confidence,
+                "observation_count": len(observations), "evidence": evidence}
 
+    def get_region_trend_evidence(self, region_id: str) -> Dict[str, Any]:
+        """Return auditable measurements supporting a region trend classification."""
+        analysis = self.analyze_region_trend(region_id)
+        trajectory = self.get_region_trajectory(region_id, "biological_age")
+        abnormal_trajectory = self.get_region_trajectory(region_id, "abnormal_fraction")
         return {
             "region_id": region_id,
-            "trend": trend,
-            "confidence": confidence,
-            "observation_count": len(observations),
-            "evidence": evidence,
+            "trend": analysis["trend"],
+            "confidence": analysis["confidence"],
+            "observation_count": analysis["observation_count"],
+            "evidence": analysis["evidence"],
+            "measurements": {
+                "biological_age": trajectory,
+                "abnormal_fraction": abnormal_trajectory,
+            },
         }
 
     def to_dict(self) -> Dict[str, Any]:
@@ -226,10 +176,5 @@ class TemporalState:
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "TemporalState":
         """Reconstruct TemporalState."""
-        raw_points = data.get("timepoints", [])
-        points = [TimePoint(**point) for point in raw_points]
-        return cls(
-            timepoints=points,
-            current_timepoint=data.get("current_timepoint"),
-            metadata=data.get("metadata", {}),
-        )
+        points = [TimePoint(**point) for point in data.get("timepoints", [])]
+        return cls(timepoints=points, current_timepoint=data.get("current_timepoint"), metadata=data.get("metadata", {}))
