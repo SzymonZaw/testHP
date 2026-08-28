@@ -25,6 +25,23 @@ class CellPopulation:
     function_score_mean: float | None = None
     confidence: float = 0.0
     evidence: tuple[dict[str, Any], ...] = field(default_factory=tuple)
+    health_distribution: dict[str, int] = field(default_factory=dict)
+    functional_distribution: dict[str, int] = field(default_factory=dict)
+
+    @property
+    def mean_biological_age(self) -> float | None:
+        return self.biological_age_mean
+
+    @property
+    def mean_confidence(self) -> float:
+        return self.confidence
+
+    @property
+    def heterogeneity(self) -> float:
+        if self.cell_count <= 1:
+            return 0.0
+        dominant = max(self.health_distribution.values(), default=0)
+        return 1.0 - dominant / self.cell_count
 
     def validate(self) -> None:
         if not self.population_id:
@@ -41,6 +58,12 @@ class CellPopulation:
             value = getattr(self, name)
             if value is not None and not 0.0 <= value <= 1.0:
                 raise ValueError(f"{name} must be between 0 and 1")
+        for distribution_name in ("health_distribution", "functional_distribution"):
+            distribution = getattr(self, distribution_name)
+            if any(count < 0 for count in distribution.values()):
+                raise ValueError(f"{distribution_name} cannot contain negative counts")
+            if distribution and sum(distribution.values()) != self.cell_count:
+                raise ValueError(f"{distribution_name} must sum to cell_count")
         if self.biological_age_min is not None and self.biological_age_max is not None:
             if self.biological_age_min > self.biological_age_max:
                 raise ValueError("biological age minimum cannot exceed maximum")
@@ -56,33 +79,32 @@ def build_cell_population(
     *,
     cell_type: str | None = None,
 ) -> CellPopulation:
-    """Aggregate the latest available cell-level state while preserving provenance."""
+    """Aggregate latest cell-level state while preserving provenance."""
     items = tuple(trajectories)
     if not items:
         raise ValueError("at least one trajectory is required")
 
     source_ids = tuple(sorted(trajectory.cell_id for trajectory in items))
-    ages = [
-        point.biological_age_years
+    if len(source_ids) != len(set(source_ids)):
+        raise ValueError("trajectories must contain unique cell ids")
+
+    latest_points = tuple(
+        trajectory.points[-1]
         for trajectory in items
-        for point in trajectory.points[-1:]
-        if point.biological_age_years is not None
-    ]
-    states = [
-        point.state
-        for trajectory in items
-        for point in trajectory.points[-1:]
-        if point.state is not None
-    ]
-    healthy = [state == "healthy" for state in states]
-    abnormal = [state in {"abnormal", "deteriorating", "diseased"} for state in states]
-    senescent = [state == "senescent" for state in states]
-    confidence_values = [
-        point.state_confidence
-        for trajectory in items
-        for point in trajectory.points[-1:]
-        if point.state_confidence is not None
-    ]
+        if trajectory.points
+    )
+    ages = [point.biological_age_years for point in latest_points if point.biological_age_years is not None]
+    states = [point.state for point in latest_points if point.state is not None]
+    state_counts: dict[str, int] = {}
+    for state in states:
+        state_counts[state] = state_counts.get(state, 0) + 1
+
+    abnormal_states = {"abnormal", "deteriorating", "diseased"}
+    healthy_count = state_counts.get("healthy", 0)
+    abnormal_count = sum(state_counts.get(state, 0) for state in abnormal_states)
+    senescent_count = state_counts.get("senescent", 0)
+    confidence_values = [point.state_confidence for point in latest_points if point.state_confidence is not None]
+
     evidence = tuple(
         {
             "source": "cell_trajectory",
@@ -91,7 +113,8 @@ def build_cell_population(
         }
         for trajectory in items
     )
-    return CellPopulation(
+
+    population = CellPopulation(
         population_id=population_id,
         cell_type=cell_type,
         cell_count=len(source_ids),
@@ -99,9 +122,12 @@ def build_cell_population(
         biological_age_mean=mean(ages) if ages else None,
         biological_age_min=min(ages) if ages else None,
         biological_age_max=max(ages) if ages else None,
-        healthy_fraction=(sum(healthy) / len(healthy)) if healthy else None,
-        abnormal_fraction=(sum(abnormal) / len(abnormal)) if abnormal else None,
-        senescent_fraction=(sum(senescent) / len(senescent)) if senescent else None,
+        healthy_fraction=healthy_count / len(states) if states else None,
+        abnormal_fraction=abnormal_count / len(states) if states else None,
+        senescent_fraction=senescent_count / len(states) if states else None,
         confidence=min(confidence_values) if confidence_values else 0.0,
         evidence=evidence,
+        health_distribution=state_counts,
     )
+    population.validate()
+    return population
