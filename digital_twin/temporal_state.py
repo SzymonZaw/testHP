@@ -149,12 +149,7 @@ class TemporalState:
         return result
 
     def analyze_region_trend(self, region_id: str) -> Dict[str, Any]:
-        """Classify a region's longitudinal trend without making a diagnosis.
-
-        At least three valid observations are required to distinguish a trend
-        from a simple two-point change. Missing values reduce confidence and
-        may produce an ``uncertain`` result.
-        """
+        """Classify a region's longitudinal trend without making a diagnosis."""
         observations = []
         for point in self.timepoints:
             region = point.region_state.get(region_id, {})
@@ -172,7 +167,6 @@ class TemporalState:
                 "evidence": [],
             }
 
-        age_deltas = [float(b - a) for _, a, b in []]  # kept empty; age uses paired values below
         age_values = [float(age) for _, age, _ in observations if isinstance(age, (int, float))]
         abnormal_values = [float(value) for _, _, value in observations if isinstance(value, (int, float))]
         evidence: List[str] = []
@@ -215,12 +209,12 @@ class TemporalState:
         completeness = min(len(age_values), len(abnormal_values)) / len(observations)
         confidence = round(min(1.0, 0.5 + 0.1 * min(len(observations), 5)) * completeness, 3)
         if trend == "uncertain":
-            confidence *= 0.5
+            confidence = round(confidence * 0.5, 3)
 
         return {
             "region_id": region_id,
             "trend": trend,
-            "confidence": round(confidence, 3),
+            "confidence": confidence,
             "observation_count": len(observations),
             "evidence": evidence,
         }
