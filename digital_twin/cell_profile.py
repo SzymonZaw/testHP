@@ -7,6 +7,7 @@ from typing import Any, Dict, Mapping, Optional
 from .anatomical_location import AnatomicalLocation
 from .cell_function import CellFunctionState, classify_cell_function
 from .cell_health import CellHealthState, classify_cell_health
+from .cell_state import CellState
 
 
 @dataclass(frozen=True)
@@ -37,6 +38,21 @@ class CellProfile:
             "location": self.location.to_dict() if self.location else None,
             "metadata": dict(self.metadata),
         }
+
+    def to_cell_state(self) -> CellState:
+        """Project the profile into the canonical cellular-state representation."""
+        health_state = self.health.state if self.health else "unknown"
+        functional_state = self.function.state if self.function else "unknown"
+        return CellState(
+            cell_id=self.cell_id,
+            cell_type=self.cell_type,
+            biological_age=self.biological_age,
+            health_state=health_state,
+            functional_state=functional_state,
+            confidence=self.confidence,
+            timestamp=self.observed_at or "",
+            metadata={"tissue_id": self.tissue_id, **self.metadata},
+        )
 
 
 def build_cell_profile(
