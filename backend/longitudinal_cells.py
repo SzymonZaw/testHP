@@ -71,6 +71,36 @@ class CellTrajectory:
         values = [point.identity_confidence for point in self.points if point.identity_confidence is not None]
         return min(values) if values else None
 
+    def assess_identity_quality(self) -> dict[str, Any]:
+        """Assess confidence that trajectory points refer to the same cell."""
+        values = [point.identity_confidence for point in self.points if point.identity_confidence is not None]
+        missing = [point.timepoint_id for point in self.points if point.identity_confidence is None]
+        if not values:
+            level = "insufficient"
+            reasons = ["no_identity_confidence"]
+            score = 0.0
+        else:
+            score = min(values)
+            reasons = []
+            if missing:
+                reasons.append("missing_identity_confidence")
+            if score >= 0.9 and not missing:
+                level = "high"
+            elif score >= 0.7:
+                level = "medium"
+            elif score >= 0.5:
+                level = "low"
+            else:
+                level = "insufficient"
+                reasons.append("low_identity_confidence")
+        return {
+            "level": level,
+            "score": round(float(score), 3),
+            "observation_count": len(self.points),
+            "missing_timepoints": tuple(missing),
+            "reasons": tuple(reasons),
+        }
+
 
 def build_cell_trajectory(records: list[CellTimepointRecord] | tuple[CellTimepointRecord, ...]) -> CellTrajectory:
     if not records:
@@ -103,6 +133,7 @@ def build_cell_trajectory(records: list[CellTimepointRecord] | tuple[CellTimepoi
 def trajectory_summary(trajectory: CellTrajectory) -> dict[str, Any]:
     if not trajectory.points:
         raise ValueError("trajectory must contain points")
+    identity_quality = trajectory.assess_identity_quality()
     return {
         "cell_id": trajectory.cell_id,
         "subject_id": trajectory.subject_id,
@@ -111,6 +142,7 @@ def trajectory_summary(trajectory: CellTrajectory) -> dict[str, Any]:
         "state_sequence": trajectory.state_sequence,
         "biological_age_delta_years": trajectory.biological_age_delta,
         "identity_confidence": trajectory.identity_confidence,
+        "identity_quality": identity_quality,
         "observation_ids": tuple(point.observation_id for point in trajectory.points),
         "interpretation": "longitudinal_observed_assessments_only",
     }
