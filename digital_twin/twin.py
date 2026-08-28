@@ -30,6 +30,8 @@ from .observation import Observation
 from .evidence import Evidence
 from .cell_inference import CellInference, infer_cell
 from .cell_inference_history import CellInferenceHistory, InferenceTrend
+from .hand_state import HandState, aggregate_hand_state
+from .region_state import RegionState
 
 
 @dataclass
@@ -90,43 +92,23 @@ class DigitalTwin:
     def cell_inference_quality(self, cell_id: str) -> InferenceQuality:
         return assess_inference_quality(self.inference_history.get(cell_id))
 
-    def biological_age_estimate(
-        self,
-        markers: List[float],
-        chronological_age: Optional[float] = None,
-        confidence: float = 0.0,
-        aging_rate: Optional[float] = None,
-    ) -> BiologicalAgeEstimate:
-        """Estimate biological age from supplied marker-derived estimates."""
+    def biological_age_estimate(self, markers: List[float], chronological_age: Optional[float] = None, confidence: float = 0.0, aging_rate: Optional[float] = None) -> BiologicalAgeEstimate:
         chronological_age = chronological_age if chronological_age is not None else self.biological_age.chronological_age
-        estimate = estimate_biological_age(
-            chronological_age,
-            markers,
-            confidence=confidence,
-            aging_rate=aging_rate,
-        )
-        self.biological_age.update(
-            biological_age=estimate.biological_age,
-            chronological_age=estimate.chronological_age,
-            confidence=estimate.confidence,
-        )
+        estimate = estimate_biological_age(chronological_age, markers, confidence=confidence, aging_rate=aging_rate)
+        self.biological_age.update(biological_age=estimate.biological_age, chronological_age=estimate.chronological_age, confidence=estimate.confidence)
         self.metadata["biological_age_estimate"] = estimate.to_dict()
         self.updated_at = datetime.utcnow().isoformat()
         return estimate
 
     def aging_deviation_map(self, nodes: Optional[List[Dict[str, Any]]] = None) -> Dict[str, Any]:
-        """Build an observational map of regional/tissue age deviations."""
         if nodes is None:
             nodes = self.metadata.get("biological_age_nodes", [])
-        baseline = self.biological_age.biological_age
-        return build_deviation_map(baseline, nodes)
+        return build_deviation_map(self.biological_age.biological_age, nodes)
 
     def rank_aging_deviations(self, nodes: Optional[List[Dict[str, Any]]] = None) -> List[Dict[str, Any]]:
-        """Return reliable deviations ordered by strongest signal."""
         return self.aging_deviation_map(nodes).get("reliable_items", [])
 
     def temporal_aging_deviation_map(self, nodes: Optional[List[Dict[str, Any]]] = None) -> Dict[str, Any]:
-        """Build a longitudinal map of regional/tissue aging deviations."""
         if nodes is None:
             nodes = self.metadata.get("temporal_biological_age_nodes", [])
         return build_temporal_aging_map(nodes)
@@ -176,6 +158,36 @@ class DigitalTwin:
         result["hand"]["hand"] = {"forecast_cells": len(values), "mean_age_180d": sum(ages) / len(ages) if ages else None}
         return result
 
+    def longitudinal_hand_state(self, regions: List[RegionState], timepoint: str, timestamp: Optional[str] = None, confidence: Optional[float] = None) -> HandState:
+        """Aggregate regions into a hand state and store that state as a timepoint."""
+        hand_state = aggregate_hand_state(self.subject_id, regions, confidence=confidence)
+        self.temporal_state.add_timepoint(
+            name=timepoint,
+            timestamp=timestamp,
+            biological_age=hand_state.biological_age,
+            tissue_state={"regions": [region.to_dict() for region in regions]},
+            metadata={"hand_state": hand_state.to_dict()},
+        )
+        self.metadata.setdefault("hand_states", {})[timepoint] = hand_state.to_dict()
+        self.updated_at = datetime.utcnow().isoformat()
+        return hand_state
+
+    def hand_state_history(self) -> List[Dict[str, Any]]:
+        """Return stored hand states ordered by their temporal observations."""
+        return [
+            {"timepoint": point.name, "timestamp": point.timestamp, **point.metadata.get("hand_state", {})}
+            for point in self.temporal_state.timepoints
+            if point.metadata.get("hand_state") is not None
+        ]
+
+    def hand_state_change(self, attribute: str) -> Optional[float]:
+        """Calculate first-to-last change for a hand-level scalar attribute."""
+        states = self.hand_state_history()
+        values = [state.get(attribute) for state in states if state.get(attribute) is not None]
+        if len(values) < 2:
+            return None
+        return float(values[-1] - values[0])
+
     def summary(self) -> Dict[str, Any]:
         assessment = self.hierarchical_assessment()
         inference = self.hierarchical_inference()
@@ -189,12 +201,7 @@ class DigitalTwin:
         return {
             "subject_id": self.subject_id,
             "updated_at": self.updated_at,
-            "hand": {
-                "assessment": hand_assessment.to_dict() if hand_assessment else None,
-                "inference": hand_inference.to_dict() if hand_inference else None,
-                "forecast": forecasts.get("hand", {}).get("hand"),
-                "biological_age": self.biological_age.summary(),
-            },
+            "hand": {"assessment": hand_assessment.to_dict() if hand_assessment else None, "inference": hand_inference.to_dict() if hand_inference else None, "forecast": forecasts.get("hand", {}).get("hand"), "biological_age": self.biological_age.summary()},
             "regions": {k: v.to_dict() for k, v in assessment.get("region", {}).items()},
             "tissues": {k: v.to_dict() for k, v in assessment.get("tissue", {}).items()},
             "inference_regions": {k: v.to_dict() for k, v in inference.get("region", {}).items()},
@@ -205,11 +212,8 @@ class DigitalTwin:
             "aging_deviations": deviation_map,
             "temporal_aging_deviations": temporal_deviation_map,
             "attention": [item.to_dict() for item in attention],
-            "coverage": {
-                "assessed_cells": hand_assessment.assessed_cells if hand_assessment else 0,
-                "inferred_cells": hand_inference.cells if hand_inference else 0,
-                "forecast_cells": forecasts.get("hand", {}).get("hand", {}).get("forecast_cells", 0),
-            },
+            "hand_state_history": self.hand_state_history(),
+            "coverage": {"assessed_cells": hand_assessment.assessed_cells if hand_assessment else 0, "inferred_cells": hand_inference.cells if hand_inference else 0, "forecast_cells": forecasts.get("hand", {}).get("hand", {}).get("forecast_cells", 0)},
         }
 
     def add_cell_state(self, state: IndividualCellState) -> None:
@@ -271,29 +275,7 @@ class DigitalTwin:
                     continue
                 structure_id = location.structure_id
                 structure = tissue.structures.get(structure_id) if structure_id else None
-                return {
-                    "hand": {"id": "hand", "level": "hand"},
-                    "region": {"id": region_id, "level": "region", "name": region.name},
-                    "tissue": {"id": tissue_id, "level": "tissue", "name": tissue.name or tissue.tissue_type},
-                    "cell": {"id": cell_id, "level": "cell", "cell_type": location.cell_type},
-                    "structure": {"id": structure_id, "level": "structure", "name": structure.name} if structure else None,
-                }
+                return {"hand": {"id": "hand", "level": "hand"}, "region": {"id": region_id, "level": "region", "name": region.name}, "tissue": {"id": tissue_id, "level": "tissue", "name": tissue.name or tissue.tissue_type}, "cell": {"id": cell_id, "level": "cell", "cell_type": location.cell_type}, "structure": {"id": structure_id, "level": "structure", "name": structure.name} if structure else None}
 
     def snapshot(self) -> Dict[str, Any]:
-        return {
-            "subject_id": self.subject_id,
-            "tissue_state": self.tissue_state.to_dict(),
-            "cell_state": self.cell_state.to_dict(),
-            "biological_age": self.biological_age.to_dict(),
-            "risk_state": self.risk_state.to_dict(),
-            "temporal_state": self.temporal_state.to_dict(),
-            "spatial_model": self.spatial_model.to_dict(),
-            "cell_timeline": self.cell_timeline.to_dict(),
-            "cell_assessments": {cell_id: assessment.to_dict() for cell_id, assessment in self.cell_assessments.items()},
-            "observations": {observation_id: observation.to_dict() for observation_id, observation in self.observations.items()},
-            "evidence": {evidence_id: evidence.to_dict() for evidence_id, evidence in self.evidence.items()},
-            "inference_history": self.inference_history.to_dict(),
-            "metadata": self.metadata,
-            "created_at": self.created_at,
-            "updated_at": self.updated_at,
-        }
+        return {"subject_id": self.subject_id, "tissue_state": self.tissue_state.to_dict(), "cell_state": self.cell_state.to_dict(), "biological_age": self.biological_age.to_dict(), "risk_state": self.risk_state.to_dict(), "temporal_state": self.temporal_state.to_dict(), "spatial_model": self.spatial_model.to_dict(), "cell_timeline": self.cell_timeline.to_dict(), "cell_assessments": {cell_id: assessment.to_dict() for cell_id, assessment in self.cell_assessments.items()}, "observations": {observation_id: observation.to_dict() for observation_id, observation in self.observations.items()}, "evidence": {evidence_id: evidence.to_dict() for evidence_id, evidence in self.evidence.items()}, "inference_history": self.inference_history.to_dict(), "metadata": self.metadata, "created_at": self.created_at, "updated_at": self.updated_at}
