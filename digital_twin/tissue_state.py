@@ -93,9 +93,9 @@ class TissueState:
         source_ids = []
         for population in population_list:
             population.validate()
-            for state, count in population.health_distribution.items() if hasattr(population, "health_distribution") else ():
+            for state, count in population.health_distribution.items():
                 self.health_distribution[state] = self.health_distribution.get(state, 0) + count
-            for state, count in population.functional_distribution.items() if hasattr(population, "functional_distribution") else ():
+            for state, count in population.functional_distribution.items():
                 self.function_distribution[state] = self.function_distribution.get(state, 0) + count
             source_ids.extend(population.source_cell_ids)
         if len(source_ids) != len(set(source_ids)):
