@@ -1,4 +1,4 @@
-"""Normalize external observations into digital-twin structures."""
+"""Normalize and validate external observations into digital-twin structures."""
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -7,6 +7,7 @@ from typing import Any, Dict, Iterable, List, Mapping, Optional
 from .anatomical_location import AnatomicalLocation
 from .cell_profile import CellProfile, build_cell_profile
 from .hand_observation import HandObservation
+from .observation_validation import ValidationResult, validate_cell_records
 
 
 @dataclass
@@ -14,6 +15,7 @@ class ObservationIngestionResult:
     cells: List[CellProfile] = field(default_factory=list)
     provenance: Dict[str, Any] = field(default_factory=dict)
     warnings: List[str] = field(default_factory=list)
+    validation: Optional[ValidationResult] = None
 
 
 class ObservationIngestion:
@@ -25,14 +27,19 @@ class ObservationIngestion:
         *,
         source: str,
     ) -> ObservationIngestionResult:
-        result = ObservationIngestionResult(provenance={"source": source})
+        rows = list(records)
+        validation = validate_cell_records(rows)
+        result = ObservationIngestionResult(
+            provenance={"source": source},
+            warnings=list(validation.warnings),
+            validation=validation,
+        )
+        if not validation.valid:
+            result.warnings.append("ingestion skipped because validation failed")
+            return result
 
-        for record in records:
+        for record in rows:
             cell_id = record.get("cell_id")
-            if not cell_id:
-                result.warnings.append("missing cell_id")
-                continue
-
             location = None
             if any(k in record for k in ("hand_side", "region_id", "tissue_id")):
                 location = AnatomicalLocation(
