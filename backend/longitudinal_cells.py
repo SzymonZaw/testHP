@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from .biological_state import BiologicalAgeEstimate, BiologicalStateAssessment
+from .cell_evidence import CellEvidence
 
 
 @dataclass(frozen=True)
@@ -19,12 +20,19 @@ class CellTimepointRecord:
     metadata: dict[str, Any] = field(default_factory=dict)
     observation_id: str | None = None
     identity_confidence: float | None = None
+    evidence: tuple[CellEvidence, ...] = ()
 
     def validate(self) -> None:
         if not self.cell_id or not self.subject_id or not self.hand_id or not self.timepoint_id:
             raise ValueError("cell timepoint identity is required")
         if self.identity_confidence is not None and not 0.0 <= self.identity_confidence <= 1.0:
             raise ValueError("identity confidence must be between 0 and 1")
+        for item in self.evidence:
+            item.validate()
+            if item.timepoint_id is not None and item.timepoint_id != self.timepoint_id:
+                raise ValueError("evidence timepoint must match cell timepoint")
+            if self.observation_id is not None and item.observation_id is not None and item.observation_id != self.observation_id:
+                raise ValueError("evidence observation must match cell observation")
         if self.assessment is not None:
             self.assessment.validate()
             if self.assessment.target_object_id != self.cell_id:
@@ -48,6 +56,7 @@ class CellTrajectoryPoint:
     age_interval: tuple[float, float] | None
     observation_id: str | None = None
     identity_confidence: float | None = None
+    evidence: tuple[CellEvidence, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -101,6 +110,20 @@ class CellTrajectory:
             "reasons": tuple(reasons),
         }
 
+    def get_evidence_for_observation(self, observation_id: str) -> tuple[CellEvidence, ...]:
+        """Return all evidence attached to one observation in this trajectory."""
+        return tuple(
+            item
+            for point in self.points
+            if point.observation_id == observation_id
+            for item in point.evidence
+        )
+
+    @property
+    def evidence(self) -> tuple[CellEvidence, ...]:
+        """Return evidence in longitudinal order."""
+        return tuple(item for point in self.points for item in point.evidence)
+
 
 def build_cell_trajectory(records: list[CellTimepointRecord] | tuple[CellTimepointRecord, ...]) -> CellTrajectory:
     if not records:
@@ -124,6 +147,7 @@ def build_cell_trajectory(records: list[CellTimepointRecord] | tuple[CellTimepoi
             record.biological_age.uncertainty.interval if record.biological_age else None,
             record.observation_id,
             record.identity_confidence,
+            record.evidence,
         )
         for record in ordered
     )
@@ -144,5 +168,6 @@ def trajectory_summary(trajectory: CellTrajectory) -> dict[str, Any]:
         "identity_confidence": trajectory.identity_confidence,
         "identity_quality": identity_quality,
         "observation_ids": tuple(point.observation_id for point in trajectory.points),
+        "evidence_count": len(trajectory.evidence),
         "interpretation": "longitudinal_observed_assessments_only",
     }
