@@ -56,12 +56,14 @@ class HandAssessment:
         affected = tuple(
             sorted({trajectory.region_id for trajectory in regions if _region_changed(trajectory)})
         )
+        latest_confidence = hand.points[-1].confidence if hand.points else 0.0
         evidence = {
             "age_delta": hand.age_delta,
             "ageing_rate": ageing_rate,
             "health_change_magnitude": health_magnitude,
             "function_change_magnitude": function_magnitude,
             "region_count": len(regions),
+            "confidence": latest_confidence,
         }
         return cls(
             overall_status=overall,
