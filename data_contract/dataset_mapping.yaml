@@ -1,0 +1,79 @@
+version: 1
+purpose: "Reference/training/validation resources; never interpreted as user input."
+
+modalities:
+  hand_geometry:
+    level: macro
+    role: [training, validation]
+    datasets:
+      - id: interhand2.6m
+        name: InterHand2.6M
+        source: https://moversees.github.io/InterHand2.6M/
+        notes: "3D hand pose and image reference; not a health ground truth."
+
+  skin_imaging:
+    level: macro
+    role: [training, validation]
+    datasets:
+      - id: isic
+        name: ISIC Archive
+        source: https://challenge.isic-archive.com/data/
+        notes: "Skin-lesion imaging; pathology-specific and not a whole-hand health ground truth."
+
+  skin_single_cell:
+    level: cellular
+    role: [reference, training, validation]
+    datasets:
+      - id: GSE281449
+        name: "Single-cell RNA sequencing of epidermal cells across age"
+        source: https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE281449
+        notes: "Age-associated epidermal single-cell reference; tissue/site/population differences must be tracked."
+
+  cell_reference:
+    level: cellular
+    role: [reference]
+    datasets:
+      - id: human-cell-atlas
+        name: "Human Cell Atlas"
+        source: https://www.humancellatlas.org/
+        notes: "Reference atlas for cell identity/state; not a patient-specific ground truth."
+
+  skin_reference:
+    level: tissue
+    role: [reference]
+    datasets:
+      - id: human-skin-atlas
+        name: "Human Skin Atlas"
+        source: https://www.humanskinatlas.org/
+        notes: "Reference for skin cell/tissue states where applicable. Verify current access and licensing before automated download."
+
+  gene_expression:
+    level: molecular
+    role: [reference, training, validation]
+    datasets:
+      - id: geo
+        name: "NCBI Gene Expression Omnibus"
+        source: https://www.ncbi.nlm.nih.gov/geo/
+        notes: "Repository/adapter target; individual studies must be curated and licensed/attributed."
+
+  pathology:
+    level: molecular
+    role: [reference, validation]
+    datasets:
+      - id: tcga
+        name: "The Cancer Genome Atlas"
+        source: https://www.cancer.gov/tcga
+        notes: "Cancer reference only; never a generic healthy/hand reference."
+
+user_input:
+  - subject_metadata
+  - timepoint_metadata
+  - hand_images
+  - hand_video
+  - hand_3d
+  - tissue_wsi
+  - microscopy
+  - single_cell_rna
+  - spatial_transcriptomics
+  - genomics
+  - proteomics
