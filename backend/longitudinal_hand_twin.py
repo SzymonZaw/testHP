@@ -18,7 +18,11 @@ class HandObservation:
 
 @dataclass
 class LongitudinalHandTwin:
-    """Stores hand observations over time without replacing prior states."""
+    """Canonical longitudinal container for one hand's digital-twin state.
+
+    The twin stores observations rather than replacing history. Derived health
+    and aging trajectories are exposed from the same canonical timeline.
+    """
 
     twin_id: str
     hand_id: str
@@ -45,6 +49,12 @@ class LongitudinalHandTwin:
         """Return the most recent observation, if one exists."""
         return self.observations[-1] if self.observations else None
 
+    @property
+    def latest_state(self) -> HandState | None:
+        """Return the latest hand state, if one exists."""
+        observation = self.latest
+        return observation.state if observation else None
+
     def biological_age_trend(self) -> list[tuple[str, float]]:
         """Return observations that contain a biological-age estimate."""
         return [
@@ -52,6 +62,39 @@ class LongitudinalHandTwin:
             for observation in self.observations
             if observation.state.biological_age is not None
         ]
+
+    def health_trajectory(self):
+        """Build the health trajectory from this canonical timeline."""
+        from .health_trajectory import HealthTrajectory
+        return HealthTrajectory.from_twin(self)
+
+    def aging_profile(self):
+        """Build an aging profile from the latest regional aging signals."""
+        from .hand_aging_profile import build_hand_aging_profile
+
+        state = self.latest_state
+        if state is None:
+            return None
+        regions = tuple(state.metadata.get("multiscale_aging_deviations", ()))
+        if not regions:
+            return None
+        return build_hand_aging_profile(
+            self.hand_id,
+            regions,
+            biological_age=state.biological_age,
+        )
+
+    def evidence_summary(self) -> dict[str, Any]:
+        """Return auditable source, confidence and uncertainty metadata."""
+        state = self.latest_state
+        if state is None:
+            return {"evidence_ids": (), "provenance": (), "confidence": None, "uncertainty": None}
+        return {
+            "evidence_ids": tuple(state.metadata.get("evidence_ids", ())),
+            "provenance": tuple(state.metadata.get("provenance", ())),
+            "confidence": state.confidence,
+            "uncertainty": state.metadata.get("uncertainty"),
+        }
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
