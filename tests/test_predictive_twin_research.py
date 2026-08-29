@@ -3,59 +3,96 @@ from research.predictive_twin import (
     CellHealthModel,
     CellState,
     ClinicalValidationPlan,
+    LongevityScenarioModel,
     LongHorizonPredictor,
     MechanisticSimulator,
     MechanisticState,
+    MolecularState,
+    OrganState,
+    OrganismState,
     RejuvenationPlanner,
+    TissueState,
     WholeBodyTwin,
 )
 
 
 def test_cell_health_is_explicitly_research_only():
-    state = CellState("c1", {"morphology": 0.9, "viability": 0.8}, confidence=0.9)
+    state = CellState("cell-1", health_signals={"morphology": 0.9, "viability": 0.8}, confidence=0.9)
     result = CellHealthModel().assess(state)
     assert result.status == "research_favorable"
     assert result.validated is False
 
 
-def test_cell_age_requires_all_calibration_signals():
-    model = CellAgeModel({"clock_a": 40.0, "clock_b": 20.0})
-    state = CellState("c1", age_signals={"clock_a": 1.0}, confidence=0.8)
-    result = model.estimate(state)
+def test_cell_age_requires_all_calibrated_signals():
+    model = CellAgeModel({"methylation": 10.0, "expression": 5.0}, intercept=20.0)
+    result = model.estimate(CellState("cell-1", age_signals={"methylation": 0.2}, confidence=0.8))
     assert result.biological_age is None
-    assert result.missing_signals == ("clock_b",)
+    assert result.missing_signals == ("expression",)
 
 
-def test_mechanistic_simulation_preserves_bounds():
-    initial = MechanisticState(function=0.9, damage=0.1, repair=0.8, senescence=0.05)
-    result = MechanisticSimulator().step(initial, 10)
-    assert all(0.0 <= x <= 1.0 for x in (result.function, result.damage, result.repair, result.senescence))
+def test_multiscale_state_aggregates_bottom_up():
+    cells = (
+        CellState("c1", function=0.9, damage=0.1, confidence=0.8),
+        CellState("c2", function=0.7, damage=0.3, confidence=0.6),
+    )
+    tissue = TissueState.from_cells("t1", cells)
+    organ = OrganState.from_tissues("o1", (tissue,))
+    organism = OrganismState.from_organs("person-1", (organ,))
+    assert tissue.function == 0.8
+    assert organ.function == 0.8
+    assert organism.global_function == 0.8
 
 
-def test_long_horizon_prediction_is_marked_unvalidated():
-    initial = MechanisticState(0.9, 0.1, 0.8, 0.05)
-    prediction = LongHorizonPredictor(MechanisticSimulator()).predict(initial, 100)
-    assert prediction.horizon_years == 100
-    assert prediction.validated is False
+def test_mechanistic_simulator_produces_multiscale_trace():
+    traces = MechanisticSimulator().simulate_multiscale(
+        MolecularState(dna_integrity=0.95),
+        MechanisticState(function=0.9, damage=0.1, repair=0.8, senescence=0.05),
+        years=3,
+        tissue_context=0.9,
+        organ_context=0.95,
+        organism_context=0.98,
+    )
+    assert len(traces) == 3
+    assert traces[-1].organism_function <= 1.0
 
 
-def test_rejuvenation_planner_ranks_without_prescribing():
+def test_long_horizon_prediction_exposes_uncertainty():
+    predictor = LongHorizonPredictor(MechanisticSimulator())
+    results = predictor.forecast_standard_horizons(
+        MechanisticState(0.9, 0.1, 0.8, 0.05)
+    )
+    assert [r.horizon_years for r in results] == [5.0, 20.0, 50.0, 100.0]
+    assert results[-1].uncertainty > results[0].uncertainty
+    assert all(not r.validated for r in results)
+
+
+def test_longevity_scenario_is_not_a_lifespan_claim():
+    model = LongevityScenarioModel(LongHorizonPredictor(MechanisticSimulator()))
+    result = model.scenario(MechanisticState(0.9, 0.1, 0.8, 0.05), 100)
+    assert result.interpretation == "research_scenario_only"
+    assert result.target_years == 100
+
+
+def test_rejuvenation_planner_withholds_action_when_evidence_is_weak():
     ranked = RejuvenationPlanner().rank([
-        {"node_id": "tissue-a", "priority": 0.4, "confidence": 0.8, "action": "monitor"},
-        {"node_id": "cell-b", "priority": 0.9, "confidence": 0.7, "action": "research_candidate"},
+        {"node_id": "region-a", "priority": 0.9, "confidence": 0.4, "evidence": 0.8, "action": "rejuvenate"},
     ])
-    assert [x.node_id for x in ranked] == ["cell-b", "tissue-a"]
+    assert ranked[0].action == "insufficient_evidence"
 
 
-def test_whole_body_twin_supports_hierarchy():
+def test_whole_body_twin_supports_bidirectional_hierarchy():
     twin = WholeBodyTwin()
-    twin.add_node("body", level="organism")
-    twin.add_node("hand-r", parent_id="body", level="organ")
-    twin.add_node("cell-1", parent_id="hand-r", level="cell")
-    assert twin.descendants("body") == ("hand-r", "cell-1")
+    twin.add_node("person", level="organism")
+    twin.add_node("hand", parent_id="person", level="organ")
+    twin.add_node("tissue", parent_id="hand", level="tissue")
+    twin.add_node("cell", parent_id="tissue", level="cell")
+    assert twin.descendants("person") == ("hand", "tissue", "cell")
+    assert twin.ancestors("cell") == ("tissue", "hand", "person")
 
 
-def test_validation_plan_is_staged():
+def test_clinical_validation_has_explicit_gates():
     plan = ClinicalValidationPlan()
-    assert plan.next_phase([]) == "analytical_validation"
-    assert plan.next_phase(plan.phases[:3]) == "prospective_validation"
+    assert plan.next_phase(()) == "unit_and_deterministic_validation"
+    assert plan.next_phase(plan.phases[:-1]) == "safety_and_regulatory_review"
+    assert not plan.is_clinically_ready(plan.phases[:-1])
+    assert plan.is_clinically_ready(plan.phases)
