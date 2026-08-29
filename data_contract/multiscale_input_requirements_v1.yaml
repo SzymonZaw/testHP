@@ -1,0 +1,294 @@
+version: 1
+status: specification
+purpose: >-
+  Define the canonical user-data requirements and processing contract from hand
+  acquisition through cells, tissues, molecular state, biological age, and
+  health/disease assessment. This file specifies interfaces; it does not claim
+  that every downstream scientific model is clinically validated.
+
+principles:
+  - User uploads are modality-specific and may be partial.
+  - Every input carries provenance, acquisition metadata, and a checksum when available.
+  - Missing modalities must produce an explicit unavailable result, never an invented value.
+  - Raw observations, derived features, predictions, labels, and ground truth remain distinguishable.
+  - Biological age and health/disease outputs must include uncertainty and model provenance.
+
+modalities:
+  hand_images:
+    required:
+      - at least one image
+      - laterality
+      - anatomical_site
+      - acquisition_time
+    recommended:
+      views: [dorsal, palmar, thumb_side, little_finger_side]
+      resolution_min_px_long_edge: 2000
+      color_space: sRGB
+      file_formats: [jpg, jpeg, png, tiff]
+      scale_reference: physical ruler or calibration object visible in at least one reference image
+      lighting: diffuse, even, neutral white balance; no strong shadows or reflections
+      background: uniform, non-reflective
+      pose: fingers naturally extended, hand fully visible, no occlusion
+      camera_metadata: [make, model, focal_length_mm, distance_mm, exposure, white_balance]
+    quality_gates:
+      - hand_detectable
+      - all relevant anatomy visible
+      - no severe blur
+      - no clipping of major regions
+      - sufficient resolution for intended task
+    output_interface:
+      - hand_geometry_features
+      - anatomical_landmarks
+      - image_quality
+      - uncertainty
+
+  hand_video:
+    required:
+      - video_file
+      - laterality
+      - acquisition_time
+    recommended:
+      fps_min: 24
+      resolution_min: 1920x1080
+      duration_seconds: 3-15
+      stable_camera: true
+      calibration_reference: recommended
+    output_interface:
+      - temporal_hand_geometry
+      - motion_features
+      - landmarks
+      - uncertainty
+
+  hand_3d:
+    required:
+      - 3d_asset
+      - coordinate_system
+      - laterality
+      - acquisition_time
+    recommended:
+      formats: [ply, obj, glb, gltf]
+      metric_scale: true
+      scale_unit: mm
+      reconstruction_method: [multi_view_stereo, structured_light, depth_sensor, other]
+      calibration: camera_intrinsics_and_extrinsics_when_available
+      registration: anatomical_landmark_alignment
+    output_interface:
+      - metric_hand_geometry
+      - landmarks
+      - surface_quality
+      - uncertainty
+
+  tissue_wsi:
+    required:
+      - whole_slide_image
+      - tissue_type
+      - specimen_id
+      - acquisition_metadata
+    recommended:
+      formats: [svs, ndpi, ome_tiff]
+      stain: explicit
+      magnification_or_mpp: explicit
+      scanner_metadata: explicit
+      region_annotation: recommended
+    pipeline:
+      - wsi_quality_control
+      - tissue_detection
+      - stain_normalization_when_required
+      - cell_nuclei_or_cell_segmentation
+      - cell_instance_generation
+      - cell_type_assignment
+      - spatial_localization
+      - neighborhood_and_microenvironment_features
+      - tissue_region_aggregation
+      - anatomical_registration_to_hand_region
+    output_interface:
+      - cell_instances
+      - cell_types_with_confidence
+      - cell_coordinates
+      - neighborhood_features
+      - tissue_regions
+      - uncertainty
+
+  single_cell_rna:
+    required:
+      - expression_matrix_or_standard_single_cell_container
+      - gene_identifier_namespace
+      - sample_id
+    recommended:
+      formats: [h5ad, mtx_bundle, loom]
+      raw_or_normalized: explicit
+      genome_build: explicit_when_relevant
+      cell_annotations: recommended
+      tissue_region: recommended
+    pipeline:
+      - input_validation
+      - cell_qc
+      - normalization
+      - batch_effect_assessment
+      - cell_type_annotation
+      - state_feature_extraction
+      - biological_state_model
+    output_interface:
+      - cell_state_features
+      - cell_type
+      - pathway_features
+      - uncertainty
+
+  bulk_rna:
+    required:
+      - expression_matrix
+      - sample_id
+      - gene_identifier_namespace
+    recommended:
+      formats: [tsv, csv, h5ad]
+      normalization_status: explicit
+      tissue_type: explicit
+    pipeline: [qc, normalization, feature_extraction, pathway_scoring, biological_state_model]
+    output_interface: [tissue_expression_features, pathway_features, uncertainty]
+
+  genomics:
+    required:
+      - genomic_data
+      - sample_id
+      - genome_build
+    recommended:
+      formats: [vcf, bcf, gvcf]
+      sequencing_or_array_platform: explicit
+      coverage_or_qc_metrics: recommended
+    pipeline:
+      - variant_qc
+      - variant_normalization
+      - annotation
+      - functional_feature_extraction
+      - biological_risk_or_trait_features
+    output_interface:
+      - genomic_features
+      - functional_annotations
+      - uncertainty
+
+  proteomics:
+    required:
+      - protein_abundance_data
+      - sample_id
+      - protein_identifier_namespace
+    recommended:
+      formats: [tsv, csv, mzml, mzidentml]
+      assay_platform: explicit
+      normalization_status: explicit
+    pipeline: [qc, normalization, protein_mapping, pathway_scoring, biological_state_model]
+    output_interface: [protein_features, pathway_features, biological_state_features, uncertainty]
+
+  epigenetics:
+    required:
+      - epigenetic_data
+      - sample_id
+      - assay_type
+    recommended:
+      assay_types: [dna_methylation, chromatin_accessibility, histone_marks, other]
+      formats: [idat, bed, bedgraph, bigwig, tsv]
+      genome_build: explicit_when_applicable
+    pipeline: [qc, normalization, feature_extraction, epigenetic_age_or_state_model]
+    output_interface: [epigenetic_features, epigenetic_age_features, uncertainty]
+
+  clinical_context:
+    required:
+      - structured_metadata
+    recommended:
+      fields: [chronological_age, sex_if_relevant_and_permitted, diagnoses, medications_if_relevant, sampling_context]
+    output_interface: [context_features]
+
+  ground_truth:
+    required:
+      - label
+      - label_definition
+      - label_source
+      - reference_timepoint
+    recommended:
+      labels: [healthy, disease, disease_subtype, cell_type, tissue_region, pathology_grade]
+      adjudication: expert_or_consensus_when_available
+      evidence: [pathology, clinical_diagnosis, molecular_assay, longitudinal_outcome]
+    output_interface:
+      - reference_label
+      - label_confidence
+      - provenance
+
+biological_age:
+  rule: no universal clinically valid cell-level or hand-level biological-age estimator is assumed by this contract.
+  required_for_model_training:
+    - chronological_age
+    - tissue_or_cell_context
+    - standardized_features
+    - independent_validation_cohort
+  outputs:
+    - estimated_age_years
+    - uncertainty_interval
+    - model_id
+    - model_version
+    - calibration_metrics
+  levels: [cell, tissue, anatomical_region, hand]
+
+health_disease:
+  rule: prediction must be separated from ground truth.
+  outputs:
+    - state_label
+    - probability_or_score
+    - uncertainty
+    - model_id
+    - model_version
+    - evidence_features
+  required_validation:
+    - held_out_subjects
+    - external_validation_when_available
+    - sensitivity_specificity_or_task_appropriate_metrics
+    - calibration
+
+multiscale_linking:
+  entities:
+    - subject
+    - hand
+    - timepoint
+    - anatomical_region
+    - tissue
+    - cell
+    - molecular_sample
+  relationships:
+    - subject_has_hand
+    - hand_has_timepoint
+    - timepoint_has_anatomical_region
+    - anatomical_region_contains_tissue
+    - tissue_contains_cells
+    - cell_has_molecular_profile
+    - tissue_has_molecular_profile
+  final_graph:
+    - anatomy
+    - imaging
+    - geometry
+    - tissue
+    - cells
+    - transcriptomics
+    - proteomics
+    - epigenetics
+    - genomics
+    - biological_state
+    - biological_age
+    - health_disease
+  missing_data_policy: >-
+    A missing modality reduces available evidence and may reduce confidence or
+    make a result unavailable. The system must never silently substitute or
+    fabricate a measurement.
+
+package_metadata:
+  every_input:
+    - input_id
+    - kind
+    - uri
+    - format
+    - provenance.source_type
+  recommended:
+    - checksum
+    - source_id
+    - license
+    - sample_id
+    - tissue_id
+    - cell_id
+    - acquisition_metadata
