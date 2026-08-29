@@ -9,6 +9,7 @@ from dataclasses import dataclass, field
 from typing import Any, Literal
 
 Level = Literal["hand", "region", "structure", "tissue", "cell_population", "cell", "molecular"]
+_LEVEL_ORDER = ("hand", "region", "structure", "tissue", "cell_population", "cell", "molecular")
 
 
 @dataclass(frozen=True)
@@ -42,26 +43,10 @@ class BiologicalNode:
     def add_child(self, child_id: str) -> "BiologicalNode":
         if child_id in self.child_ids:
             return self
-        return BiologicalNode(
-            node_id=self.node_id,
-            level=self.level,
-            label=self.label,
-            parent_id=self.parent_id,
-            child_ids=self.child_ids + (child_id,),
-            observations=self.observations,
-            metadata=self.metadata,
-        )
+        return BiologicalNode(self.node_id, self.level, self.label, self.parent_id, self.child_ids + (child_id,), self.observations, self.metadata)
 
     def with_observation(self, observation: BiologicalObservation) -> "BiologicalNode":
-        return BiologicalNode(
-            node_id=self.node_id,
-            level=self.level,
-            label=self.label,
-            parent_id=self.parent_id,
-            child_ids=self.child_ids,
-            observations=self.observations + (observation,),
-            metadata=self.metadata,
-        )
+        return BiologicalNode(self.node_id, self.level, self.label, self.parent_id, self.child_ids, self.observations + (observation,), self.metadata)
 
 
 @dataclass(frozen=True)
@@ -73,33 +58,50 @@ class BiologicalHierarchy:
 
     @classmethod
     def create_hand(cls, node_id: str, label: str = "hand") -> "BiologicalHierarchy":
-        return cls(
-            root_id=node_id,
-            nodes={node_id: BiologicalNode(node_id, "hand", label)},
-        )
+        return cls(node_id, {node_id: BiologicalNode(node_id, "hand", label)})
 
-    def add_node(
-        self,
-        node_id: str,
-        level: Level,
-        label: str,
-        parent_id: str,
-        metadata: dict[str, Any] | None = None,
-    ) -> "BiologicalHierarchy":
+    def add_node(self, node_id: str, level: Level, label: str, parent_id: str, metadata: dict[str, Any] | None = None) -> "BiologicalHierarchy":
         if node_id in self.nodes:
             raise ValueError(f"node already exists: {node_id}")
         parent = self.nodes.get(parent_id)
         if parent is None:
             raise ValueError(f"parent node does not exist: {parent_id}")
-        node = BiologicalNode(node_id, level, label, parent_id=parent_id, metadata=metadata or {})
         nodes = dict(self.nodes)
         nodes[parent_id] = parent.add_child(node_id)
-        nodes[node_id] = node
+        nodes[node_id] = BiologicalNode(node_id, level, label, parent_id=parent_id, metadata=metadata or {})
+        return BiologicalHierarchy(self.root_id, nodes)
+
+    def with_observation(self, node_id: str, observation: BiologicalObservation) -> "BiologicalHierarchy":
+        node = self.nodes.get(node_id)
+        if node is None:
+            raise ValueError(f"node does not exist: {node_id}")
+        nodes = dict(self.nodes)
+        nodes[node_id] = node.with_observation(observation)
         return BiologicalHierarchy(self.root_id, nodes)
 
     def levels(self) -> tuple[Level, ...]:
-        order = ("hand", "region", "structure", "tissue", "cell_population", "cell", "molecular")
-        return tuple(level for level in order if any(n.level == level for n in self.nodes.values()))
+        return tuple(level for level in _LEVEL_ORDER if any(n.level == level for n in self.nodes.values()))
+
+    def descendants(self, node_id: str) -> tuple[BiologicalNode, ...]:
+        node = self.nodes.get(node_id)
+        if node is None:
+            raise ValueError(f"node does not exist: {node_id}")
+        result: list[BiologicalNode] = []
+        for child_id in node.child_ids:
+            child = self.nodes[child_id]
+            result.append(child)
+            result.extend(self.descendants(child_id))
+        return tuple(result)
+
+    def aggregate_observations(self, node_id: str) -> tuple[BiologicalObservation, ...]:
+        """Return direct and descendant observations without inventing measurements."""
+        node = self.nodes.get(node_id)
+        if node is None:
+            raise ValueError(f"node does not exist: {node_id}")
+        observations = list(node.observations)
+        for descendant in self.descendants(node_id):
+            observations.extend(descendant.observations)
+        return tuple(observations)
 
     def to_dict(self) -> dict[str, Any]:
         return {
