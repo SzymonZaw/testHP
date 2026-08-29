@@ -1,0 +1,86 @@
+{
+  "contract_version": "1.0",
+  "subject": {
+    "subject_id": "user-0001",
+    "sex": "unknown",
+    "birth_year": null,
+    "metadata": {}
+  },
+  "acquisition": {
+    "timepoint_id": "T0",
+    "acquisition_time": "2026-08-29T10:00:00Z",
+    "laterality": "bilateral",
+    "operator_id": null,
+    "site_id": null,
+    "metadata": {
+      "protocol_version": "hand-surface-v1"
+    }
+  },
+  "inputs": [
+    {
+      "input_id": "hand-front-left",
+      "kind": "hand_images",
+      "uri": "data/hand_images/front_left.jpg",
+      "format": "jpeg",
+      "provenance": {
+        "source_type": "user",
+        "source_id": null,
+        "license": null,
+        "checksum_sha256": null
+      },
+      "metadata": {
+        "view": "front",
+        "laterality": "left",
+        "resolution_px": [4000, 3000],
+        "scale_reference": "present",
+        "lighting": "controlled",
+        "calibration": "documented"
+      },
+      "quality": {
+        "focus": "pass",
+        "exposure": "pass"
+      },
+      "ground_truth": null
+    },
+    {
+      "input_id": "skin-wsi-001",
+      "kind": "tissue_wsi",
+      "uri": "data/tissue_wsi/skin_slide.svs",
+      "format": "svs",
+      "provenance": {
+        "source_type": "clinical",
+        "source_id": null,
+        "license": null,
+        "checksum_sha256": null
+      },
+      "metadata": {
+        "stain": "H&E",
+        "pixel_size_um": null,
+        "anatomical_region": "hand_skin",
+        "slide_id": "slide-001"
+      },
+      "quality": {},
+      "ground_truth": null
+    },
+    {
+      "input_id": "rna-001",
+      "kind": "single_cell_rna",
+      "uri": "data/single_cell_rna/matrix.h5ad",
+      "format": "h5ad",
+      "provenance": {
+        "source_type": "clinical",
+        "source_id": null,
+        "license": null,
+        "checksum_sha256": null
+      },
+      "metadata": {
+        "genome_build": "GRCh38",
+        "gene_id_system": "Ensembl",
+        "preprocessing": "documented",
+        "sample_id": "sample-001"
+      },
+      "quality": {},
+      "ground_truth": null
+    }
+  ]
+}
