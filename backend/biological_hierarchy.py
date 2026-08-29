@@ -1,8 +1,4 @@
-"""Multiscale biological hierarchy for the digital hand twin.
-
-This module defines representation contracts only. It does not diagnose disease,
-estimate human lifespan, or prescribe treatment.
-"""
+"""Multiscale biological hierarchy for the digital hand twin."""
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -47,6 +43,10 @@ class BiologicalNode:
 
     def with_observation(self, observation: BiologicalObservation) -> "BiologicalNode":
         return BiologicalNode(self.node_id, self.level, self.label, self.parent_id, self.child_ids, self.observations + (observation,), self.metadata)
+
+    def timeline(self):
+        from .biological_timeline import BiologicalTimeline
+        return BiologicalTimeline(self.observations)
 
 
 @dataclass(frozen=True)
@@ -102,6 +102,14 @@ class BiologicalHierarchy:
         for descendant in self.descendants(node_id):
             observations.extend(descendant.observations)
         return tuple(observations)
+
+    def timeline(self, node_id: str, include_descendants: bool = False):
+        """Build a timeline for a node, optionally including descendant evidence."""
+        from .biological_timeline import BiologicalTimeline
+        observations = self.aggregate_observations(node_id) if include_descendants else self.nodes.get(node_id).observations
+        if observations is None:
+            raise ValueError(f"node does not exist: {node_id}")
+        return BiologicalTimeline(observations)
 
     def to_dict(self) -> dict[str, Any]:
         return {
