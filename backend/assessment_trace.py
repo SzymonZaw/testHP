@@ -13,6 +13,7 @@ class AssessmentTrace:
     level: str
     node_id: str
     source_ids: tuple[str, ...] = ()
+    parent_assessment_ids: tuple[str, ...] = ()
     evidence_ids: tuple[str, ...] = ()
     provenance: tuple[str, ...] = ()
     confidence: float | None = None
@@ -29,6 +30,10 @@ class AssessmentTrace:
             raise ValueError("confidence must be between 0 and 1")
         if self.uncertainty is not None and not 0.0 <= self.uncertainty <= 1.0:
             raise ValueError("uncertainty must be between 0 and 1")
+        if self.assessment_id in self.parent_assessment_ids:
+            raise ValueError("assessment cannot be its own parent")
+        if len(set(self.parent_assessment_ids)) != len(self.parent_assessment_ids):
+            raise ValueError("parent_assessment_ids must be unique")
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -36,6 +41,7 @@ class AssessmentTrace:
             "level": self.level,
             "node_id": self.node_id,
             "source_ids": self.source_ids,
+            "parent_assessment_ids": self.parent_assessment_ids,
             "evidence_ids": self.evidence_ids,
             "provenance": self.provenance,
             "confidence": self.confidence,
@@ -49,8 +55,23 @@ class AssessmentTrace:
             level=str(value["level"]),
             node_id=str(value["node_id"]),
             source_ids=tuple(value.get("source_ids", ())),
+            parent_assessment_ids=tuple(value.get("parent_assessment_ids", ())),
             evidence_ids=tuple(value.get("evidence_ids", ())),
             provenance=tuple(value.get("provenance", ())),
             confidence=value.get("confidence"),
             uncertainty=value.get("uncertainty"),
         )
+
+    def explain(self) -> dict[str, Any]:
+        """Return a compact, machine-readable explanation of this assessment."""
+        return {
+            "assessment_id": self.assessment_id,
+            "level": self.level,
+            "node_id": self.node_id,
+            "parents": self.parent_assessment_ids,
+            "sources": self.source_ids,
+            "evidence": self.evidence_ids,
+            "provenance": self.provenance,
+            "confidence": self.confidence,
+            "uncertainty": self.uncertainty,
+        }
