@@ -29,3 +29,24 @@ def test_observation_rejects_invalid_confidence():
         assert "confidence" in str(exc)
     else:
         raise AssertionError("invalid confidence should be rejected")
+
+
+def test_hierarchy_exposes_trajectory_for_node_and_descendants():
+    hierarchy = BiologicalHierarchy.create_hand("hand-1")
+    hierarchy = hierarchy.add_node("region-1", "region", "palm", "hand-1")
+    hierarchy = hierarchy.add_node("cell-1", "cell", "cell", "region-1")
+    hierarchy = hierarchy.with_observation(
+        "cell-1", BiologicalObservation("obs-1", "imaging", "2026-01-01", {"marker": 0.8})
+    )
+    hierarchy = hierarchy.with_observation(
+        "cell-1", BiologicalObservation("obs-2", "imaging", "2027-01-01", {"marker": 0.6})
+    )
+
+    trajectory = hierarchy.trajectory("cell-1", "marker")
+    aggregate_trajectory = hierarchy.trajectory("hand-1", "marker", include_descendants=True)
+
+    assert trajectory.observation_count == 2
+    assert trajectory.total_delta == -0.2
+    assert trajectory.direction == "decreasing"
+    assert aggregate_trajectory.observation_count == 2
+    assert aggregate_trajectory.direction == "decreasing"
