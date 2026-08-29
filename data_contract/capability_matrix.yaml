@@ -1,0 +1,191 @@
+version: 1
+purpose: >-
+  Define what a user must provide, what the pipeline can legitimately infer,
+  and which public/reference datasets support development and validation.
+  Missing modalities must produce an explicit unavailable result, never a
+  healthy/normal conclusion.
+
+principles:
+  - id: observed_vs_inferred
+    rule: User artifacts are evidence of acquisition only; clinical or biological conclusions require a validated model.
+  - id: partial_observation
+    rule: The twin may be constructed from partial data and must expose missing biological levels.
+  - id: no_ground_truth_substitution
+    rule: Public datasets are training/reference/validation resources and are not substitutes for patient-specific ground truth.
+  - id: longitudinal_preferred
+    rule: Repeated measurements are preferred for trajectory and change detection, but a single timepoint is valid for baseline construction.
+
+input_tiers:
+  baseline:
+    required:
+      - subject_id
+      - acquisition_time
+      - hand_side
+      - at_least_one_hand_image
+    recommended:
+      - chronological_age_years
+      - image_scale_or_calibration
+      - multiple_standardized_views
+    enables:
+      - macro_hand_observation
+      - longitudinal_baseline_if_repeated
+    does_not_enable:
+      - cell_health_assessment
+      - molecular_biological_age
+      - tissue_diagnosis_without_tissue_evidence
+
+  macro_enhanced:
+    required:
+      - baseline
+    recommended:
+      - standardized_hand_video
+      - 3d_hand_scan_or_depth
+      - anatomical_landmarks
+    enables:
+      - macro_geometry
+      - pose_and_motion_features
+      - change_detection
+    reference_datasets:
+      - interhand2.6m
+
+  tissue:
+    required:
+      - tissue_sample_or_wsi
+    recommended:
+      - biopsy_site
+      - tissue_type
+      - pathology_annotation
+      - specimen_metadata
+    enables:
+      - tissue_morphology
+      - tissue_state_features
+      - pathology_specific_assessment_when_model_is_validated
+    reference_datasets:
+      - human-skin-atlas
+    limitation: Tissue input is invasive and cannot be inferred from a normal photograph.
+
+  cellular:
+    required:
+      - microscopy_or_single_cell_assay
+    recommended:
+      - single_cell_rna
+      - cell_segmentation
+      - cell_type_annotation
+      - sample_site
+    enables:
+      - cell_type_identification
+      - cell_state_features
+      - cell_population_age_association
+    reference_datasets:
+      - GSE281449
+      - human-cell-atlas
+    limitation: Cellular age/health is assay- and tissue-specific and must not be presented as a universal cell-age score.
+
+  molecular:
+    required:
+      - molecular_assay
+    recommended:
+      - transcriptomics
+      - genomics
+      - proteomics
+      - spatial_transcriptomics
+    enables:
+      - molecular_state_features
+      - pathway_or_biomarker_assessment
+      - molecular_age_features_when_validated
+    reference_datasets:
+      - geo
+      - hubmap
+    limitation: A molecular result is only interpretable for the assay, tissue, population and model domain in which it was validated.
+
+modality_contract:
+  hand_images:
+    status: required_for_baseline
+    accepted_examples: [jpg, jpeg, png, dng, tiff]
+    metadata: [hand_side, view, acquisition_time, scale_mm_or_calibration]
+  hand_video:
+    status: optional
+    accepted_examples: [mp4, mov]
+    metadata: [hand_side, acquisition_time, fps_if_known]
+  hand_3d:
+    status: optional
+    accepted_examples: [ply, obj, glb, stl, depth_map]
+    metadata: [coordinate_system, units, scale, acquisition_time]
+  tissue_wsi:
+    status: optional
+    accepted_examples: [svs, ndpi, tif, tiff, ome_tiff]
+    metadata: [tissue_type, anatomical_site, stain, magnification]
+  microscopy:
+    status: optional
+    accepted_examples: [tif, tiff, ome_tiff, czi, nd2]
+    metadata: [sample_site, modality, magnification, channel_metadata]
+  single_cell_rna:
+    status: optional
+    accepted_examples: [h5ad, h5, mtx_bundle, csv, tsv]
+    metadata: [assay, organism, tissue, sample_id, gene_identifier_system]
+  spatial_transcriptomics:
+    status: optional
+    accepted_examples: [h5ad, h5, visium_bundle, matrix_bundle]
+    metadata: [platform, tissue, spatial_coordinates, image_reference]
+  genomics:
+    status: optional
+    accepted_examples: [vcf, gvcf, bam, cram]
+    metadata: [assay, reference_genome, build, sample_id]
+  proteomics:
+    status: optional
+    accepted_examples: [mzml, mzidentml, csv, tsv]
+    metadata: [platform, sample_id, protein_identifier_system]
+
+result_levels:
+  macro:
+    minimum_input: hand_images
+    outputs: [hand_observation, geometry_features, quality_flags]
+  tissue:
+    minimum_input: tissue_wsi_or_equivalent
+    outputs: [tissue_observation, morphology_features, pathology_features_if_validated]
+  cellular:
+    minimum_input: microscopy_or_single_cell_rna
+    outputs: [cell_population_observation, cell_state_features, cell_age_association_if_validated]
+  molecular:
+    minimum_input: molecular_assay
+    outputs: [molecular_observation, biomarker_features, molecular_age_association_if_validated]
+
+reference_dataset_roles:
+  interhand2.6m:
+    supports: [hand_pose, hand_geometry, macro_model_validation]
+    does_not_support: [health_ground_truth, aging_ground_truth]
+    source: https://moversees.github.io/InterHand2.6M/
+  isic:
+    supports: [skin_lesion_detection, lesion_segmentation, lesion_classification]
+    does_not_support: [whole_hand_health, generic_skin_age]
+    source: https://challenge.isic-archive.com/data/
+  GSE281449:
+    supports: [age_associated_epidermal_single_cell_reference]
+    does_not_support: [patient_specific_ground_truth, universal_cell_age]
+    source: https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE281449
+  human-cell-atlas:
+    supports: [cell_identity_reference, cell_state_reference]
+    does_not_support: [patient_specific_ground_truth]
+    source: https://www.humancellatlas.org/
+  human-skin-atlas:
+    supports: [skin_cell_and_tissue_reference]
+    does_not_support: [patient_specific_ground_truth]
+    source: https://www.humanskinatlas.org/
+  hubmap:
+    supports: [spatial_single_cell_reference, tissue_cell_atlas_reference]
+    does_not_support: [patient_specific_ground_truth]
+    source: https://hubmapconsortium.org/hubmap-data/
+  geo:
+    supports: [study_specific_gene_expression_reference]
+    does_not_support: [generic_health_ground_truth]
+    source: https://www.ncbi.nlm.nih.gov/geo/
+
+implementation_order:
+  - baseline_upload_and_validation
+  - macro_quality_and_geometry
+  - tissue_ingestion
+  - cellular_ingestion
+  - molecular_ingestion
+  - longitudinal_trajectory
+  - calibrated_health_and_biological_age_models
+  - intervention_simulation
