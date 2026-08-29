@@ -1,0 +1,209 @@
+version: 1
+status: implementation_contract
+purpose: >-
+  Canonical readiness contract for the eight multiscale capabilities of the
+  TestHP hand digital twin. This file separates what the software can ingest
+  from what can be scientifically concluded.
+
+rules:
+  - id: no_fabricated_measurements
+    rule: Missing modalities produce unavailable outputs; they are never inferred as observed measurements.
+  - id: observed_vs_predicted
+    rule: Raw observations, derived features, model predictions, and ground truth are separate evidence classes.
+  - id: model_provenance_required
+    rule: Biological-age and health/disease predictions require model_id, model_version, uncertainty, and validation metadata.
+  - id: public_data_role
+    rule: Public datasets are reference/training/validation resources and never patient-specific ground truth.
+
+capabilities:
+  hand_standard:
+    status: specified
+    input_contract: data_contract/user_input_spec_v1.json
+    requirements: data_contract/multiscale_input_requirements_v1.yaml
+    required:
+      - at_least_one_hand_image
+      - laterality
+      - anatomical_site
+      - acquisition_time
+    recommended:
+      views: [dorsal, palmar, thumb_side, little_finger_side]
+      resolution_min_px_long_edge: 2000
+      scale_reference: physical_ruler_or_calibration_object
+      lighting: diffuse_even_neutral_white_balance
+      background: uniform_non_reflective
+      pose: fully_visible_naturally_extended_hand
+      calibration: camera_metadata_when_available
+      3d_formats: [ply, obj, glb, gltf]
+      3d_units: mm
+    outputs: [image_quality, landmarks, hand_geometry, uncertainty]
+
+  wsi_to_tissue:
+    status: specified_pipeline
+    input: tissue_wsi
+    pipeline:
+      - wsi_quality_control
+      - tissue_detection
+      - stain_normalization_when_required
+      - cell_or_nuclei_segmentation
+      - cell_instance_generation
+      - cell_type_assignment
+      - spatial_localization
+      - neighborhood_and_microenvironment
+      - tissue_region_aggregation
+      - anatomical_registration_to_hand_region
+    outputs: [cell_instances, cell_types, cell_coordinates, microenvironment, tissue_regions, uncertainty]
+    reference_data: [human-skin-atlas, hubmap]
+
+  genomics_to_biology:
+    status: specified_pipeline
+    input: genomics
+    pipeline:
+      - variant_qc
+      - variant_normalization
+      - genome_build_normalization
+      - functional_annotation
+      - functional_feature_extraction
+      - biological_trait_or_risk_features
+    outputs: [genomic_features, functional_annotations, biological_features, uncertainty]
+    accepted_formats: [vcf, bcf, gvcf]
+
+  proteomics_to_biology:
+    status: specified_pipeline
+    input: proteomics
+    pipeline:
+      - assay_qc
+      - normalization
+      - protein_identifier_mapping
+      - pathway_scoring
+      - biological_state_model
+    outputs: [protein_features, pathway_features, biological_state_features, uncertainty]
+    accepted_formats: [tsv, csv, mzml, mzidentml]
+
+  epigenetics_to_biology:
+    status: specified_pipeline
+    input: epigenetics
+    pipeline:
+      - assay_qc
+      - normalization
+      - feature_extraction
+      - epigenetic_state_features
+      - epigenetic_age_model_when_validated
+    outputs: [epigenetic_features, epigenetic_age_features, biological_state_features, uncertainty]
+    accepted_assays: [dna_methylation, chromatin_accessibility, histone_marks, other]
+    accepted_formats: [idat, bed, bedgraph, bigwig, tsv]
+
+  biological_age:
+    status: model_required
+    levels: [cell, tissue, anatomical_region, hand]
+    input_requirements:
+      - chronological_age_for_training_or_calibration
+      - standardized_features
+      - tissue_or_cell_context
+      - independent_validation_cohort
+    output_contract:
+      - estimated_age_years
+      - uncertainty_interval
+      - model_id
+      - model_version
+      - calibration_metrics
+    scientific_constraint: >-
+      No universal clinically validated cell-level or hand-level biological-age
+      estimator is assumed. Each model must declare tissue, assay, population,
+      training cohort, validation cohort, and domain of applicability.
+
+  health_disease_ground_truth:
+    status: label_contract_required
+    input: ground_truth
+    required:
+      - label
+      - label_definition
+      - label_source
+      - reference_timepoint
+    supported_labels: [healthy, disease, disease_subtype, cell_type, tissue_region, pathology_grade]
+    preferred_evidence: [pathology, clinical_diagnosis, molecular_assay, longitudinal_outcome]
+    output_contract:
+      - reference_label
+      - label_confidence
+      - provenance
+    validation_requirements:
+      - held_out_subjects
+      - external_validation_when_available
+      - sensitivity_specificity_or_task_appropriate_metrics
+      - calibration
+
+  whole_hand_multiscale_model:
+    status: architecture_defined
+    graph:
+      - subject
+      - hand
+      - timepoint
+      - anatomical_region
+      - tissue
+      - cell
+      - molecular_sample
+    relationships:
+      - subject_has_hand
+      - hand_has_timepoint
+      - timepoint_has_anatomical_region
+      - anatomical_region_contains_tissue
+      - tissue_contains_cells
+      - cell_has_molecular_profile
+      - tissue_has_molecular_profile
+    evidence_layers:
+      - anatomy
+      - imaging
+      - geometry
+      - tissue
+      - cells
+      - transcriptomics
+      - proteomics
+      - epigenetics
+      - genomics
+      - biological_state
+      - biological_age
+      - health_disease
+    final_output: >-
+      A multiscale hand state graph with explicit evidence, uncertainty,
+      provenance, and unavailable levels. Intervention priority is a future
+      decision layer and must not be presented as a clinical recommendation
+      until separately validated.
+
+public_reference_datasets:
+  hand_geometry:
+    name: InterHand2.6M
+    role: hand_pose_and_geometry
+    url: https://moversees.github.io/InterHand2.6M/
+  skin_lesions:
+    name: ISIC Archive
+    role: lesion_classification_and_segmentation
+    url: https://challenge.isic-archive.com/data/
+  single_cell_skin_aging:
+    name: GSE281449
+    role: age_associated_epidermal_single_cell_reference
+    url: https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE281449
+  human_cell_atlas:
+    name: Human Cell Atlas
+    role: cell_identity_and_state_reference
+    url: https://www.humancellatlas.org/
+  human_skin_atlas:
+    name: Human Skin Atlas
+    role: skin_cell_and_tissue_reference
+    url: https://www.humanskinatlas.org/
+  hubmap:
+    name: HuBMAP
+    role: spatial_single_cell_and_tissue_reference
+    url: https://hubmapconsortium.org/hubmap-data/
+  geo:
+    name: NCBI GEO
+    role: study_specific_expression_reference
+    url: https://www.ncbi.nlm.nih.gov/geo/
+
+implementation_sequence:
+  - finalize_hand_capture_validator
+  - implement_wsi_cell_tissue_pipeline
+  - implement_genomics_feature_pipeline
+  - implement_proteomics_feature_pipeline
+  - implement_epigenetics_feature_pipeline
+  - establish_age_model_registry_and_validation_protocol
+  - establish_ground_truth_registry_and_label_quality_rules
+  - integrate_all_evidence_into_multiscale_hand_graph
