@@ -1,9 +1,4 @@
-"""End-user upload endpoint that turns uploaded evidence into user_input_v1.
-
-User uploads are stored separately from data/raw research datasets. The endpoint
-creates canonical user-input metadata and returns a capability plan; it does not
-manufacture missing evidence or biological results.
-"""
+"""End-user upload endpoint: validate, plan, and execute available analyses."""
 
 from __future__ import annotations
 
@@ -19,6 +14,8 @@ from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 
 from core.input_validation import validate_user_input_package
 from core.user_capabilities import build_user_analysis_plan
+from backend.macro_analysis import analyze_image
+from backend.video_analysis import inspect_video
 
 ROOT = Path(__file__).resolve().parents[1]
 USER_UPLOAD_ROOT = ROOT / "data" / "user_uploads"
@@ -39,7 +36,7 @@ ALLOWED_EXTENSIONS = {
     "hand": {".jpg", ".jpeg", ".png", ".webp", ".tif", ".tiff", ".bmp"},
     "images": {".jpg", ".jpeg", ".png", ".webp", ".tif", ".tiff", ".bmp"},
     "video": {".mp4", ".mov", ".m4v", ".avi", ".mkv"},
-    "wsi": {".dcm", ".svs", ".ndpi", ".mrxs", ".tif", ".tiff"},
+    "wsi": {".dcm", ".svs", ".ndpi", ".mrxs", ".tif", ".tiff", ".ome.tif", ".ome.tiff"},
     "rna": {".csv", ".tsv", ".txt", ".mtx", ".gz", ".h5", ".h5ad", ".tar"},
     "metadata": {".json", ".yaml", ".yml", ".csv", ".tsv"},
 }
@@ -108,7 +105,14 @@ def _save_index(items: list[dict[str, Any]]) -> None:
     tmp.replace(USER_UPLOAD_INDEX)
 
 
-async def _store_upload(file: UploadFile, subject_id: str, timepoint: str, modality: str, subtype: str | None, view: str | None) -> UserUploadAsset:
+async def _store_upload(
+    file: UploadFile,
+    subject_id: str,
+    timepoint: str,
+    modality: str,
+    subtype: str | None,
+    view: str | None,
+) -> UserUploadAsset:
     if modality not in ALLOWED_EXTENSIONS:
         raise HTTPException(status_code=400, detail=f"unsupported upload modality: {modality}")
     filename = _safe(file.filename or "upload.bin", "upload.bin")
@@ -124,7 +128,19 @@ async def _store_upload(file: UploadFile, subject_id: str, timepoint: str, modal
     content = await file.read()
     target.write_bytes(content)
 
-    asset = UserUploadAsset(asset_id, subject, tp, modality, subtype, view, target.relative_to(ROOT).as_posix(), filename, len(content), "available" if content else "unavailable", datetime.now(timezone.utc).isoformat())
+    asset = UserUploadAsset(
+        asset_id,
+        subject,
+        tp,
+        modality,
+        subtype,
+        view,
+        target.relative_to(ROOT).as_posix(),
+        filename,
+        len(content),
+        "available" if content else "unavailable",
+        datetime.now(timezone.utc).isoformat(),
+    )
     index = _load_index()
     index.append(asset.to_dict())
     _save_index(index)
@@ -135,20 +151,77 @@ def _package(asset: UserUploadAsset, laterality: str, kind: str) -> dict[str, An
     return {
         "schema_version": "user_input_v1",
         "subject": {"subject_id": asset.subject_id},
-        "acquisition": {"timepoint_id": asset.timepoint, "acquisition_time": asset.created_at, "laterality": laterality},
+        "acquisition": {
+            "timepoint_id": asset.timepoint,
+            "acquisition_time": asset.created_at,
+            "laterality": laterality,
+        },
         "inputs": [{
             "input_id": asset.asset_id,
             "kind": kind,
             "uri": f"upload://{asset.asset_id}",
             "format": "application/octet-stream",
             "provenance": {"source_type": "user"},
-            "metadata": {"filename": asset.filename, "size_bytes": asset.size_bytes},
+            "metadata": {
+                "filename": asset.filename,
+                "size_bytes": asset.size_bytes,
+                "modality": asset.modality,
+                "subtype": asset.subtype,
+                "view": asset.view,
+            },
         }],
     }
 
 
+def _execute_available_analysis(asset: UserUploadAsset) -> dict[str, Any]:
+    """Run only analyses that are already implemented and directly match the upload."""
+    if asset.status != "available":
+        return {"status": "skipped", "reason": "upload is empty or unavailable"}
+
+    path = ROOT / asset.path
+    if not path.is_file():
+        return {"status": "skipped", "reason": "uploaded file is no longer available"}
+
+    try:
+        if asset.modality in {"hand", "images"}:
+            result = analyze_image(path)
+            return {
+                "status": "completed",
+                "analysis_id": "macro_image_analysis",
+                "analysis_level": "macro",
+                "biological_inference": "not_established",
+                "result": result,
+            }
+
+        if asset.modality == "video":
+            result = inspect_video(path)
+            return {
+                "status": "completed",
+                "analysis_id": "hand_video_inspection",
+                "analysis_level": "macro",
+                "biological_inference": "not_established",
+                "result": result,
+            }
+
+        return {
+            "status": "not_implemented",
+            "analysis_id": None,
+            "analysis_level": None,
+            "biological_inference": "not_established",
+            "reason": f"No executable end-user adapter is registered yet for {asset.modality}.",
+        }
+    except Exception as exc:
+        return {
+            "status": "failed",
+            "analysis_id": None,
+            "analysis_level": None,
+            "biological_inference": "not_established",
+            "reason": f"analysis failed: {type(exc).__name__}: {exc}",
+        }
+
+
 @router.post("/analyze")
-async def upload_and_plan(
+async def upload_and_analyze(
     file: UploadFile = File(...),
     modality: str = Form(...),
     subject_id: str = Form("user_subject"),
@@ -157,7 +230,7 @@ async def upload_and_plan(
     view: str | None = Form(None),
     laterality: str = Form("unknown"),
 ) -> dict[str, Any]:
-    """Upload one user object and immediately return its evidence/capability plan."""
+    """Upload one user object, validate it, plan capabilities, then execute available analysis."""
     if laterality not in {"left", "right", "bilateral", "unknown"}:
         raise HTTPException(status_code=400, detail="laterality must be left, right, bilateral, or unknown")
 
@@ -165,9 +238,13 @@ async def upload_and_plan(
     package = _package(asset, laterality, _kind(modality, subtype))
     report = validate_user_input_package(package)
     plan = build_user_analysis_plan(report)
+    execution = _execute_available_analysis(asset) if report.valid else {
+        "status": "skipped",
+        "reason": "input package failed validation",
+    }
 
     return {
-        "status": "ready" if report.valid else "invalid",
+        "status": "ready" if report.valid and execution["status"] in {"completed", "not_implemented"} else "invalid",
         "asset": asset.to_dict(),
         "user_input_package": package,
         "validation": {
@@ -178,10 +255,12 @@ async def upload_and_plan(
             "issues": [{"path": x.path, "message": x.message} for x in report.issues],
         },
         "analysis_plan": plan,
+        "execution": execution,
         "policy": {
             "training_data_used_as_user_input": False,
             "research_data_raw_registry_used_for_user_package": False,
             "missing_data_fabricated": False,
             "biological_diagnosis_claimed": False,
+            "unsupported_biological_age_claimed": False,
         },
     }
