@@ -65,3 +65,39 @@ def analyze_hand_trajectory(
         evidence_fraction=evidence_fraction,
         signal=signal,
     )
+
+
+def analyze_longitudinal_twin(
+    twin: "LongitudinalHandTwin",
+    *,
+    subject_id: str | None = None,
+    expected_timepoints: int | None = None,
+) -> HandTrajectory:
+    """Adapt a ``LongitudinalHandTwin`` into the existing trajectory analyzer.
+
+    The adapter exposes stable observational signals (biological age, cell
+    count, and confidence) without changing the meaning of the underlying
+    trajectory engine or introducing treatment recommendations.
+    """
+    from backend.longitudinal_hand_twin import LongitudinalHandTwin
+
+    if not isinstance(twin, LongitudinalHandTwin):
+        raise TypeError("twin must be a LongitudinalHandTwin")
+
+    observations = []
+    for observation in twin.observations:
+        state = observation.state
+        values: dict[str, float] = {
+            "cell_count": float(state.cell_count),
+            "confidence": float(state.confidence),
+        }
+        if state.biological_age is not None:
+            values["biological_age"] = float(state.biological_age)
+        observations.append((observation.observed_at, float(observation.timestamp_value), values))
+
+    return analyze_hand_trajectory(
+        subject_id or str(twin.metadata.get("subject_id", twin.hand_id)),
+        twin.hand_id,
+        observations,
+        expected_timepoints=expected_timepoints,
+    )
