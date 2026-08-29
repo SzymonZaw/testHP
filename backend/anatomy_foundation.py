@@ -1,10 +1,6 @@
 from __future__ import annotations
 
-"""Phase B: multimodal anatomy, spatial registration, tissue and cell domain.
-
-These are provenance-first data objects. They describe evidence and derived
-representations; they do not make clinical diagnoses or treatment decisions.
-"""
+"""Canonical provenance-first multiscale anatomy for the digital hand twin."""
 
 from dataclasses import asdict, dataclass, field
 from typing import Any, Literal
@@ -13,7 +9,6 @@ from .data_foundation import Quality, SpatialReference, Uncertainty, Provenance
 
 AnatomyKind = Literal["skin", "fat", "tendon", "muscle", "nerve", "vessel", "bone", "other"]
 GeometryKind = Literal["point", "curve", "surface", "volume", "mesh", "segmentation"]
-Modality = Literal["photo", "3d_scan", "mri", "ultrasound", "ct", "other"]
 CellState = Literal["normal", "stressed", "senescent", "apoptotic", "proliferating", "inflammatory", "pathological", "unknown"]
 
 @dataclass(frozen=True)
@@ -150,6 +145,41 @@ class CellStateAssessment:
     assessed_at: str
     def validate(self) -> None:
         if self.confidence is not None and not 0 <= self.confidence <= 1: raise ValueError("confidence must be between 0 and 1")
+
+@dataclass(frozen=True)
+class MultiscaleHierarchy:
+    """Canonical containment graph: hand -> structure -> tissue -> cell."""
+    hand_id: str
+    structures: tuple[AnatomicalStructure, ...] = ()
+    tissues: tuple[TissueRegion, ...] = ()
+    histology_regions: tuple[HistologyRegion, ...] = ()
+    cells: tuple[CellObject, ...] = ()
+
+    def validate(self) -> None:
+        structure_ids = {item.structure_id for item in self.structures}
+        tissue_ids = {item.tissue_id for item in self.tissues}
+        for item in self.structures:
+            item.validate()
+            if item.hand_id != self.hand_id: raise ValueError("structure belongs to a different hand")
+        for item in self.tissues:
+            item.validate()
+            if item.anatomical_structure_id not in structure_ids: raise ValueError("tissue references unknown anatomical structure")
+            if item.hand_id != self.hand_id: raise ValueError("tissue belongs to a different hand")
+        for item in self.histology_regions:
+            item.validate()
+            if item.tissue_id not in tissue_ids: raise ValueError("histology region references unknown tissue")
+        for item in self.cells:
+            item.validate()
+            if item.tissue_id not in tissue_ids: raise ValueError("cell references unknown tissue")
+            if item.hand_id != self.hand_id: raise ValueError("cell belongs to a different hand")
+
+    def cells_for_tissue(self, tissue_id: str) -> tuple[CellObject, ...]:
+        self.validate()
+        return tuple(cell for cell in self.cells if cell.tissue_id == tissue_id)
+
+    def tissues_for_structure(self, structure_id: str) -> tuple[TissueRegion, ...]:
+        self.validate()
+        return tuple(tissue for tissue in self.tissues if tissue.anatomical_structure_id == structure_id)
 
 def to_dict(value: Any) -> dict[str, Any]:
     if hasattr(value, "validate"): value.validate()
