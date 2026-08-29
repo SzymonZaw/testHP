@@ -11,33 +11,18 @@ from typing import Any, Literal
 ObjectType = Literal["hand", "generic"]
 
 CANONICAL_SPATIAL_IDS = {
-    "hand": "hand",
-    "palm": "hand/palm",
-    "hand/palm": "hand/palm",
-    "śródręcze": "hand/palm",
-    "srodrecze": "hand/palm",
-    "thenar": "hand/palm/thenar",
-    "hand/palm/thenar": "hand/palm/thenar",
-    "kłąb kciuka": "hand/palm/thenar",
-    "klab kciuka": "hand/palm/thenar",
-    "hypothenar": "hand/palm/hypothenar",
-    "hand/palm/hypothenar": "hand/palm/hypothenar",
-    "kłębik dłoni": "hand/palm/hypothenar",
-    "klebik dloni": "hand/palm/hypothenar",
-    "central-palm": "hand/palm/central-palm",
-    "hand/palm/central-palm": "hand/palm/central-palm",
-    "centralna część dłoni": "hand/palm/central-palm",
-    "centralna czesc dloni": "hand/palm/central-palm",
+    "hand": "hand", "palm": "hand/palm", "hand/palm": "hand/palm",
+    "śródręcze": "hand/palm", "srodrecze": "hand/palm",
+    "thenar": "hand/palm/thenar", "hand/palm/thenar": "hand/palm/thenar",
+    "kłąb kciuka": "hand/palm/thenar", "klab kciuka": "hand/palm/thenar",
+    "hypothenar": "hand/palm/hypothenar", "hand/palm/hypothenar": "hand/palm/hypothenar",
+    "kłębik dłoni": "hand/palm/hypothenar", "klebik dloni": "hand/palm/hypothenar",
+    "central-palm": "hand/palm/central-palm", "hand/palm/central-palm": "hand/palm/central-palm",
+    "centralna część dłoni": "hand/palm/central-palm", "centralna czesc dloni": "hand/palm/central-palm",
 }
 
 
 def canonical_spatial_id(value: str | None, *, fallback: str = "hand") -> str:
-    """Return the one spatial identifier shared by all surface modules.
-
-    Display labels such as ``Palm`` or ``Śródręcze`` are aliases only. Unknown
-    path-like values are retained so the contract does not silently move
-    evidence to a different target.
-    """
     raw = str(value or "").strip().replace("\\", "/").strip("/")
     if not raw:
         return fallback
@@ -45,8 +30,18 @@ def canonical_spatial_id(value: str | None, *, fallback: str = "hand") -> str:
     return CANONICAL_SPATIAL_IDS.get(key, raw)
 
 
+def normalize_spatial_id(value: str | None) -> str:
+    """Backend alias for the canonical spatial-id resolver used by all layers."""
+    return canonical_spatial_id(value)
+
+
 def same_spatial_target(a: str | None, b: str | None) -> bool:
     return canonical_spatial_id(a) == canonical_spatial_id(b)
+
+
+def is_descendant(spatial_id: str, ancestor_id: str) -> bool:
+    child, ancestor = canonical_spatial_id(spatial_id), canonical_spatial_id(ancestor_id)
+    return child == ancestor or child.startswith(ancestor + "/")
 
 
 @dataclass(frozen=True)
@@ -63,8 +58,7 @@ class SpatialObject:
     provenance: dict[str, Any] = field(default_factory=dict)
     metadata: dict[str, Any] = field(default_factory=dict)
 
-    def to_dict(self) -> dict[str, Any]:
-        return asdict(self)
+    def to_dict(self) -> dict[str, Any]: return asdict(self)
 
 
 @dataclass(frozen=True)
@@ -85,8 +79,7 @@ class ReconstructionAsset:
     provenance: dict[str, Any] = field(default_factory=dict)
     status: str = "created"
 
-    def to_dict(self) -> dict[str, Any]:
-        return asdict(self)
+    def to_dict(self) -> dict[str, Any]: return asdict(self)
 
 
 def make_spatial_object_id(subject_id: str, reconstruction_id: str) -> str:
@@ -97,30 +90,13 @@ def make_reconstruction_id(subject_id: str, timepoint_id: str, nonce: str) -> st
     return f"reconstruction:{subject_id}:{timepoint_id}:{nonce}"
 
 
-def make_photo_asset_id(asset_id: str) -> str:
-    return f"photo:{asset_id}"
-
-
-def make_prepared_photo_asset_id(asset_id: str) -> str:
-    return f"prepared-photo:{asset_id}"
-
-
-def make_registered_view_id(prepared_photo_id: str, view: str) -> str:
-    return f"registered-view:{prepared_photo_id}:{view}"
-
-
-def observation_id(photo_asset_id: str) -> str:
-    return f"observation:{photo_asset_id}"
+def make_photo_asset_id(asset_id: str) -> str: return f"photo:{asset_id}"
+def make_prepared_photo_asset_id(asset_id: str) -> str: return f"prepared-photo:{asset_id}"
+def make_registered_view_id(prepared_photo_id: str, view: str) -> str: return f"registered-view:{prepared_photo_id}:{view}"
+def observation_id(photo_asset_id: str) -> str: return f"observation:{photo_asset_id}"
 
 
 def lifecycle(status: str) -> str:
-    aliases = {
-        "uploaded": "created",
-        "prepared": "prepared",
-        "needs-registration-review": "needs_review",
-        "registered": "registered",
-        "reconstructed": "reconstructed",
-        "ready": "published",
-        "failed": "failed",
-    }
-    return aliases.get(status, status)
+    return {"uploaded": "created", "prepared": "prepared", "needs-registration-review": "needs_review",
+            "registered": "registered", "reconstructed": "reconstructed", "ready": "published",
+            "failed": "failed"}.get(status, status)
