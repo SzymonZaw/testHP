@@ -24,7 +24,7 @@ from .digital_twin_layers import (
     FutureStateModel,
     InterventionSimulator,
 )
-from .ml_contracts import ModelInput, ModelOutput
+from .ml_contracts import ModelInput
 from .ml_inference import CellInferenceService, InferenceResult
 from .ml_data_pipeline import (
     BaselinePreprocessor,
@@ -87,13 +87,14 @@ class DigitalTwinPipeline:
         images: Sequence[ImageInput] = (),
         omics: Sequence[OmicsInput] = (),
     ) -> tuple[CellPipelineResult, ...]:
-        """Run real-data preprocessing and registered cell inference."""
+        """Run preprocessing, feature extraction and registered cell inference."""
         results: list[CellPipelineResult] = []
         for observation in observations:
             processed = self.preprocessor.process(observation, images=images, omics=omics)
             model_input = self.feature_extractor.extract(processed)
-            inference = self.inference_service.predict(
+            inference = self.inference_service.predict_input(
                 observation,
+                model_input,
                 model_id=model_id,
                 model_version=model_version,
             )
@@ -118,11 +119,7 @@ class DigitalTwinPipeline:
         scenario: InterventionScenario | None = None,
         evidence_ids: Sequence[str] = (),
     ) -> DigitalTwinPipelineResult:
-        """Execute the available pipeline layers in dependency order.
-
-        Optional higher-level stages are skipped when their corresponding
-        objects/inputs are absent, which allows incremental deployment.
-        """
+        """Execute the available pipeline layers in dependency order."""
         cells = self.assess_cells(
             observations,
             model_id=model_id,
@@ -164,8 +161,6 @@ class DigitalTwinPipeline:
 
         decision = None
         if twin is not None and future_state is not None:
-            # Import lazily to avoid forcing a decision-support dependency on
-            # callers that only need cell inference or simulation.
             from .digital_twin_layers import DecisionSupportEngine
 
             engine = DecisionSupportEngine()
