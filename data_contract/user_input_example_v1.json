@@ -1,23 +1,26 @@
 {
   "schema_version": "user_input_v1",
-  "subject_id": "user-7f2c",
-  "age_years": 42,
-  "hand_side": "right",
-  "acquisition_time": "2026-08-29T10:30:00Z",
+  "subject": {
+    "subject_id": "user-7f2c"
+  },
+  "acquisition": {
+    "timepoint_id": "session-2026-08-29",
+    "acquisition_time": "2026-08-29T10:30:00Z",
+    "laterality": "right"
+  },
   "inputs": [
     {
       "input_id": "handimg-001",
       "kind": "hand_images",
       "uri": "upload://handimg-001",
-      "acquired_at": "2026-08-29T10:30:00Z",
-      "hand_side": "right",
+      "format": "image/jpeg",
       "region_id": "hand",
       "metadata": {
         "view": "dorsal",
         "scale_marker": true
       },
       "provenance": {
-        "source": "user_upload"
+        "source_type": "user"
       }
     }
   ],
