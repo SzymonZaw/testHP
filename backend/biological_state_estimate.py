@@ -1,4 +1,4 @@
-"""Traceable state estimates derived from observed biological evidence."""
+"""Traceable state estimates and risk assessment contracts."""
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -7,6 +7,7 @@ from .biological_trajectory import BiologicalTrajectory
 
 
 HealthState = str
+RiskLevel = str
 
 
 @dataclass(frozen=True)
@@ -31,16 +32,7 @@ class BiologicalStateEstimate:
         confidence: float | None = None,
         evidence_ids: tuple[str, ...] = (),
     ) -> "BiologicalStateEstimate":
-        """Create an estimate while retaining the trajectory used as evidence context."""
-        return cls(
-            health_state=health_state,
-            biological_age=biological_age,
-            confidence=confidence,
-            evidence_ids=evidence_ids,
-            trajectory_key=trajectory.key,
-            trajectory_direction=trajectory.direction,
-            trajectory_delta=trajectory.total_delta if trajectory.changes else None,
-        )
+        return cls(health_state, biological_age, confidence, evidence_ids, trajectory.key, trajectory.direction, trajectory.total_delta if trajectory.changes else None)
 
     def __post_init__(self) -> None:
         if self.biological_age is not None and self.biological_age < 0:
@@ -63,4 +55,41 @@ class BiologicalStateEstimate:
             "trajectory_key": self.trajectory_key,
             "trajectory_direction": self.trajectory_direction,
             "trajectory_delta": self.trajectory_delta,
+        }
+
+
+@dataclass(frozen=True)
+class BiologicalRiskAssessment:
+    """Non-diagnostic risk signal attached to a state estimate."""
+
+    risk_level: RiskLevel
+    rationale: str
+    confidence: float | None = None
+    evidence_ids: tuple[str, ...] = ()
+
+    def __post_init__(self) -> None:
+        if self.confidence is not None and not 0 <= self.confidence <= 1:
+            raise ValueError("confidence must be between 0 and 1")
+        if not self.rationale.strip():
+            raise ValueError("rationale must not be empty")
+        if len(self.evidence_ids) != len(set(self.evidence_ids)):
+            raise ValueError("evidence_ids must be unique")
+
+    @classmethod
+    def from_estimate(
+        cls,
+        estimate: BiologicalStateEstimate,
+        *,
+        risk_level: RiskLevel,
+        rationale: str,
+        confidence: float | None = None,
+    ) -> "BiologicalRiskAssessment":
+        return cls(risk_level, rationale, confidence, estimate.evidence_ids)
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "risk_level": self.risk_level,
+            "rationale": self.rationale,
+            "confidence": self.confidence,
+            "evidence_ids": list(self.evidence_ids),
         }
