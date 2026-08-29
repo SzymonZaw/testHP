@@ -1,4 +1,10 @@
-"""Multiscale roll-up of cell assessments with conservative uncertainty handling."""
+"""Unified multiscale health and aging assessment.
+
+The existing health roll-up remains the source of truth for cell-state
+aggregation. Optional aging data is attached to the same assessment contract
+so health and aging can be consumed together without duplicating hierarchy
+logic. This module does not prescribe treatment.
+"""
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -6,6 +12,8 @@ from typing import Iterable
 
 from .anatomy_foundation import CellStateAssessment
 from .risk_signal import RiskSignal
+from .hand_aging_profile import HandAgingProfile
+from .aging_priority import AgingPriority
 
 
 @dataclass(frozen=True)
@@ -20,6 +28,8 @@ class MultiscaleAssessment:
     uncertainty: float | None
     evidence_ids: tuple[str, ...]
     source_cell_ids: tuple[str, ...]
+    aging_profile: HandAgingProfile | None = None
+    aging_priorities: tuple[AgingPriority, ...] = ()
 
     @property
     def health_state(self) -> str:
@@ -30,6 +40,40 @@ class MultiscaleAssessment:
         if self.healthy_count == self.cell_count:
             return "healthy_signal"
         return "mixed"
+
+    @property
+    def aging_priority_count(self) -> int:
+        return len(self.aging_priorities)
+
+    @property
+    def aging_priority_max(self) -> float | None:
+        scores = [item.priority_score for item in self.aging_priorities if item.priority_score is not None]
+        return max(scores) if scores else None
+
+    def with_aging(
+        self,
+        aging_profile: HandAgingProfile,
+        aging_priorities: Iterable[AgingPriority] = (),
+    ) -> "MultiscaleAssessment":
+        """Attach hand-level aging information to an existing assessment."""
+        if self.level != "hand":
+            raise ValueError("aging_profile can only be attached to a hand assessment")
+        if self.node_id != aging_profile.hand_id:
+            raise ValueError("aging_profile hand_id must match assessment node_id")
+        return MultiscaleAssessment(
+            level=self.level,
+            node_id=self.node_id,
+            cell_count=self.cell_count,
+            healthy_count=self.healthy_count,
+            diseased_count=self.diseased_count,
+            unknown_count=self.unknown_count,
+            confidence=self.confidence,
+            uncertainty=self.uncertainty,
+            evidence_ids=tuple(sorted(set(self.evidence_ids) | set(aging_profile.evidence_ids))),
+            source_cell_ids=self.source_cell_ids,
+            aging_profile=aging_profile,
+            aging_priorities=tuple(aging_priorities),
+        )
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -44,6 +88,10 @@ class MultiscaleAssessment:
             "uncertainty": self.uncertainty,
             "evidence_ids": self.evidence_ids,
             "source_cell_ids": self.source_cell_ids,
+            "aging_profile": self.aging_profile.to_dict() if self.aging_profile else None,
+            "aging_priorities": tuple(item.to_dict() for item in self.aging_priorities),
+            "aging_priority_count": self.aging_priority_count,
+            "aging_priority_max": self.aging_priority_max,
         }
 
     def to_risk_signal(self) -> RiskSignal:
@@ -66,6 +114,8 @@ class MultiscaleAssessment:
                 "uncertainty": self.uncertainty,
                 "evidence_ids": self.evidence_ids,
                 "source_cell_ids": self.source_cell_ids,
+                "aging_priority_count": self.aging_priority_count,
+                "aging_priority_max": self.aging_priority_max,
             },
         )
 
