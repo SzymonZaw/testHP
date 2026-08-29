@@ -1,0 +1,27 @@
+name: Validate dev/next-cleanup
+
+on:
+  push:
+    branches: ["dev/next-cleanup"]
+  pull_request:
+    branches: ["dev/next-cleanup"]
+
+jobs:
+  python-contracts:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install test dependency when declared
+        run: |
+          python -m pip install --upgrade pip
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+          if [ -f pyproject.toml ]; then pip install -e .; fi
+          if [ -f pytest.ini ] || [ -f pyproject.toml ] || [ -f setup.cfg ]; then pip install pytest; fi
+      - name: Compile backend
+        run: python -m compileall -q backend
+      - name: Run contract tests when pytest is configured
+        run: |
+          if [ -f pytest.ini ] || [ -f pyproject.toml ] || [ -f setup.cfg ]; then pytest -q; else echo "No pytest configuration; compile validation completed."; fi
