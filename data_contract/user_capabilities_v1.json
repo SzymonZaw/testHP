@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "testhp://data-contract/user-capabilities/v1",
+  "title": "TestHP User Analysis Capabilities v1",
+  "description": "Maps actually supplied and QC-accepted user evidence to research capabilities. It never treats missing evidence as a negative finding.",
+  "type": "object",
+  "required": ["capabilities", "evidence_coverage", "limitations"],
+  "properties": {
+    "capabilities": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["capability_id", "status", "required_kinds"],
+        "properties": {
+          "capability_id": {"type": "string"},
+          "status": {"enum": ["available", "partial", "unavailable", "blocked"]},
+          "required_kinds": {"type": "array", "items": {"type": "string"}},
+          "accepted_input_ids": {"type": "array", "items": {"type": "string"}},
+          "blocking_reasons": {"type": "array", "items": {"type": "string"}},
+          "output_domains": {"type": "array", "items": {"type": "string"}}
+        }
+      }
+    },
+    "evidence_coverage": {
+      "type": "object",
+      "properties": {
+        "macro": {"enum": ["available", "partial", "unavailable"]},
+        "tissue": {"enum": ["available", "partial", "unavailable"]},
+        "cellular": {"enum": ["available", "partial", "unavailable"]},
+        "molecular": {"enum": ["available", "partial", "unavailable"]}
+      }
+    },
+    "limitations": {"type": "array", "items": {"type": "string"}}
+  }
+}
