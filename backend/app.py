@@ -1,4 +1,4 @@
-from __future__ import annotations
+from __future__
 
 import io
 import mimetypes
@@ -34,6 +34,7 @@ from .hand_surface_photo import register_hand_surface_photo_routes
 from .stages_21_32 import register_stage_21_32_routes
 from .database_routes import router as database_router
 from .user_input_routes import router as user_input_router
+from .user_upload_routes import router as user_upload_router
 
 ROOT = Path(__file__).resolve().parents[1]
 RAW_ROOT = ROOT / "data" / "raw"
@@ -53,6 +54,7 @@ register_stage_21_32_routes(app)
 app.include_router(observation_router)
 app.include_router(database_router)
 app.include_router(user_input_router)
+app.include_router(user_upload_router)
 
 class PipelineRequest(BaseModel):
     datasets: list[str] = []
