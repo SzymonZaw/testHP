@@ -209,6 +209,168 @@ rather than an unsupported biological conclusion.
 
 ---
 
+## Cell Health State
+
+The intended cell-level representation is not a binary `healthy / unhealthy` label. A single cell should eventually be represented as a **multidimensional biological state**, combining observations, measured features, derived indicators, research-level inferences and explicit uncertainty.
+
+A proposed target model is:
+
+```text
+CELL
+│
+├── identity
+│   ├── cell type
+│   ├── subtype
+│   └── identity confidence
+│
+├── morphology
+│   ├── size
+│   ├── shape
+│   ├── nuclear features
+│   └── structural abnormalities
+│
+├── viability
+│   ├── viable / non-viable
+│   └── viability indicators
+│
+├── cellular stress
+│   ├── oxidative stress
+│   ├── ER stress
+│   └── general stress signals
+│
+├── senescence
+│   ├── senescence indicators
+│   ├── senescence-associated phenotype
+│   └── confidence
+│
+├── DNA / genome state
+│   ├── DNA damage indicators
+│   ├── genomic instability
+│   └── repair-related signals
+│
+├── mitochondrial state
+│   ├── mitochondrial morphology
+│   ├── activity
+│   └── dysfunction indicators
+│
+├── inflammatory state
+│   ├── inflammatory signals
+│   └── immune-related signals
+│
+├── metabolic state
+│   ├── metabolic activity
+│   └── metabolic abnormalities
+│
+├── proteostasis
+│   ├── protein homeostasis
+│   ├── aggregation indicators
+│   └── degradation / clearance signals
+│
+├── epigenetic state
+│   ├── epigenetic markers
+│   ├── methylation-related signals
+│   └── chromatin-related signals
+│
+├── proliferation / cell cycle
+│   ├── proliferation state
+│   ├── cell-cycle state
+│   └── abnormal proliferation indicators
+│
+├── differentiation
+│   ├── differentiation state
+│   └── dedifferentiation indicators
+│
+├── pathology signals
+│   ├── abnormal morphology
+│   ├── disease-associated signals
+│   └── other pathological indicators
+│
+├── biological age
+│   ├── age-related biomarkers
+│   ├── estimated biological age
+│   ├── deviation from reference
+│   └── age-estimation confidence
+│
+└── uncertainty
+    ├── measurement quality
+    ├── evidence coverage
+    ├── model confidence
+    └── unresolved / insufficient evidence
+```
+
+### Evidence semantics
+
+Not every cell will have every measurement. The system must distinguish between what was observed, measured, derived, inferred and simply unknown:
+
+```text
+OBSERVED
+   ↓
+MEASURED
+   ↓
+DERIVED
+   ↓
+INFERRED
+   ↓
+INSUFFICIENT EVIDENCE
+```
+
+For example, absence of a DNA-damage measurement must not be interpreted as absence of DNA damage:
+
+```text
+DNA damage
+    ↓
+no appropriate measurement available
+    ↓
+not equivalent to "no damage"
+    ↓
+INSUFFICIENT EVIDENCE
+```
+
+Likewise, biological age should be represented as an estimate tied to the biomarkers, model and uncertainty that produced it, rather than as an unexplained number.
+
+### Target Cell Health State
+
+The eventual research-level state can be organised into:
+
+```text
+CELL HEALTH STATE
+│
+├── structural state
+├── functional state
+├── stress state
+├── damage state
+├── repair state
+├── inflammatory state
+├── metabolic state
+├── senescence state
+├── proliferative state
+├── pathological signals
+├── biological-age-related signals
+└── confidence / uncertainty
+```
+
+Only after appropriate scientific validation should the system derive simplified categories such as:
+
+```text
+healthy
+stable
+stressed
+senescent-like
+damaged
+pathology-associated
+uncertain
+```
+
+These categories must not replace the underlying evidence profile.
+
+### Current status
+
+The repository contains foundations for this capability, including cellular-analysis components, multimodal ingestion, WSI/microscopy support, molecular-data support, provenance, uncertainty and hierarchical spatial representation. However, it does **not yet provide a scientifically validated, multimodal cell-level health assessment system**.
+
+In particular, the project does not yet establish that a specific cell can reliably be assigned a health state, pathology state or biological age from available evidence. That requires dedicated models, reference datasets, calibration, reproducibility testing and independent scientific validation.
+
+---
+
 ## Biological ageing
 
 Ageing is treated as a multidimensional research problem rather than one universal number:
