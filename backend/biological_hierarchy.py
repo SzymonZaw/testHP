@@ -1,8 +1,15 @@
-"""Multiscale biological hierarchy for the digital hand twin."""
+"""Compatibility hierarchy API backed by the canonical anatomy foundation.
+
+New multiscale anatomical data should use :class:`MultiscaleHierarchy` from
+``anatomy_foundation``. This module remains as a compatibility facade for the
+older observation/timeline API while exposing the canonical model explicitly.
+"""
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 from typing import Any, Literal, TYPE_CHECKING
+
+from .anatomy_foundation import MultiscaleHierarchy
 
 if TYPE_CHECKING:
     from .biological_timeline import BiologicalTimeline
@@ -14,7 +21,6 @@ if TYPE_CHECKING:
 Level = Literal["hand", "region", "structure", "tissue", "cell_population", "cell", "molecular"]
 _LEVEL_ORDER = ("hand", "region", "structure", "tissue", "cell_population", "cell", "molecular")
 
-
 @dataclass(frozen=True)
 class BiologicalObservation:
     observation_id: str
@@ -23,11 +29,9 @@ class BiologicalObservation:
     values: dict[str, Any] = field(default_factory=dict)
     quality: dict[str, Any] = field(default_factory=dict)
     confidence: float | None = None
-
     def __post_init__(self) -> None:
         if self.confidence is not None and not 0 <= self.confidence <= 1:
             raise ValueError("confidence must be between 0 and 1")
-
 
 @dataclass(frozen=True)
 class BiologicalNode:
@@ -38,22 +42,18 @@ class BiologicalNode:
     child_ids: tuple[str, ...] = ()
     observations: tuple[BiologicalObservation, ...] = ()
     metadata: dict[str, Any] = field(default_factory=dict)
-
     def add_child(self, child_id: str) -> "BiologicalNode":
-        if child_id in self.child_ids:
-            return self
+        if child_id in self.child_ids: return self
         return BiologicalNode(self.node_id, self.level, self.label, self.parent_id, self.child_ids + (child_id,), self.observations, self.metadata)
-
     def with_observation(self, observation: BiologicalObservation) -> "BiologicalNode":
         return BiologicalNode(self.node_id, self.level, self.label, self.parent_id, self.child_ids, self.observations + (observation,), self.metadata)
-
     def timeline(self) -> "BiologicalTimeline":
         from .biological_timeline import BiologicalTimeline
         return BiologicalTimeline(self.observations)
 
-
 @dataclass(frozen=True)
 class BiologicalHierarchy:
+    """Legacy observation graph; canonical anatomy lives in MultiscaleHierarchy."""
     root_id: str
     nodes: dict[str, BiologicalNode] = field(default_factory=dict)
 
@@ -61,12 +61,14 @@ class BiologicalHierarchy:
     def create_hand(cls, node_id: str, label: str = "hand") -> "BiologicalHierarchy":
         return cls(node_id, {node_id: BiologicalNode(node_id, "hand", label)})
 
+    def canonical(self, hand_id: str | None = None) -> MultiscaleHierarchy:
+        """Return the canonical multiscale container for this hierarchy's hand."""
+        return MultiscaleHierarchy(hand_id or self.root_id)
+
     def add_node(self, node_id: str, level: Level, label: str, parent_id: str, metadata: dict[str, Any] | None = None) -> "BiologicalHierarchy":
-        if node_id in self.nodes:
-            raise ValueError(f"node already exists: {node_id}")
+        if node_id in self.nodes: raise ValueError(f"node already exists: {node_id}")
         parent = self.nodes.get(parent_id)
-        if parent is None:
-            raise ValueError(f"parent node does not exist: {parent_id}")
+        if parent is None: raise ValueError(f"parent node does not exist: {parent_id}")
         nodes = dict(self.nodes)
         nodes[parent_id] = parent.add_child(node_id)
         nodes[node_id] = BiologicalNode(node_id, level, label, parent_id=parent_id, metadata=metadata or {})
@@ -74,10 +76,8 @@ class BiologicalHierarchy:
 
     def with_observation(self, node_id: str, observation: BiologicalObservation) -> "BiologicalHierarchy":
         node = self.nodes.get(node_id)
-        if node is None:
-            raise ValueError(f"node does not exist: {node_id}")
-        nodes = dict(self.nodes)
-        nodes[node_id] = node.with_observation(observation)
+        if node is None: raise ValueError(f"node does not exist: {node_id}")
+        nodes = dict(self.nodes); nodes[node_id] = node.with_observation(observation)
         return BiologicalHierarchy(self.root_id, nodes)
 
     def levels(self) -> tuple[Level, ...]:
@@ -85,31 +85,24 @@ class BiologicalHierarchy:
 
     def descendants(self, node_id: str) -> tuple[BiologicalNode, ...]:
         node = self.nodes.get(node_id)
-        if node is None:
-            raise ValueError(f"node does not exist: {node_id}")
+        if node is None: raise ValueError(f"node does not exist: {node_id}")
         result: list[BiologicalNode] = []
         for child_id in node.child_ids:
-            child = self.nodes[child_id]
-            result.append(child)
-            result.extend(self.descendants(child_id))
+            child = self.nodes[child_id]; result.append(child); result.extend(self.descendants(child_id))
         return tuple(result)
 
     def aggregate_observations(self, node_id: str) -> tuple[BiologicalObservation, ...]:
         node = self.nodes.get(node_id)
-        if node is None:
-            raise ValueError(f"node does not exist: {node_id}")
+        if node is None: raise ValueError(f"node does not exist: {node_id}")
         observations = list(node.observations)
-        for descendant in self.descendants(node_id):
-            observations.extend(descendant.observations)
+        for descendant in self.descendants(node_id): observations.extend(descendant.observations)
         return tuple(observations)
 
     def timeline(self, node_id: str, include_descendants: bool = False) -> "BiologicalTimeline":
         from .biological_timeline import BiologicalTimeline
         node = self.nodes.get(node_id)
-        if node is None:
-            raise ValueError(f"node does not exist: {node_id}")
-        observations = self.aggregate_observations(node_id) if include_descendants else node.observations
-        return BiologicalTimeline(observations)
+        if node is None: raise ValueError(f"node does not exist: {node_id}")
+        return BiologicalTimeline(self.aggregate_observations(node_id) if include_descendants else node.observations)
 
     def trajectory(self, node_id: str, key: str, include_descendants: bool = False) -> "BiologicalTrajectory":
         from .biological_trajectory import BiologicalTrajectory
@@ -117,33 +110,15 @@ class BiologicalHierarchy:
 
     def risk_assessment(self, node_id: str, estimate: Any, *, risk_level: str, rationale: str, confidence: float | None = None) -> "BiologicalRiskAssessment":
         from .biological_state_estimate import BiologicalRiskAssessment
-        if node_id not in self.nodes:
-            raise ValueError(f"node does not exist: {node_id}")
+        if node_id not in self.nodes: raise ValueError(f"node does not exist: {node_id}")
         return BiologicalRiskAssessment.from_estimate(estimate, risk_level=risk_level, rationale=rationale, confidence=confidence)
 
     def decision_support(self, node_id: str, risk_model: "RiskModel", comparison: Any = None, future_state: Any = None) -> "DecisionSupport":
-        """Create traceable follow-up support for a hierarchy node; never prescribes treatment."""
         from .decision_support import DecisionSupport
-        if node_id not in self.nodes:
-            raise ValueError(f"node does not exist: {node_id}")
+        if node_id not in self.nodes: raise ValueError(f"node does not exist: {node_id}")
         result = DecisionSupport.from_analysis(risk_model, comparison, future_state)
-        evidence = dict(result.evidence)
-        evidence["node_id"] = node_id
+        evidence = dict(result.evidence); evidence["node_id"] = node_id
         return DecisionSupport(result.action, result.reasons, result.risk_level, result.scenario_name, evidence)
 
     def to_dict(self) -> dict[str, Any]:
-        return {
-            "root_id": self.root_id,
-            "nodes": {
-                node_id: {
-                    "node_id": node.node_id,
-                    "level": node.level,
-                    "label": node.label,
-                    "parent_id": node.parent_id,
-                    "child_ids": list(node.child_ids),
-                    "observations": [ob.__dict__ for ob in node.observations],
-                    "metadata": node.metadata,
-                }
-                for node_id, node in self.nodes.items()
-            },
-        }
+        return {"root_id": self.root_id, "nodes": {node_id: {"node_id": n.node_id, "level": n.level, "label": n.label, "parent_id": n.parent_id, "child_ids": list(n.child_ids), "observations": [o.__dict__ for o in n.observations], "metadata": n.metadata} for node_id, n in self.nodes.items()}}
