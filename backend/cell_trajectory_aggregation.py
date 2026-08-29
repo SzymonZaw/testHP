@@ -45,7 +45,8 @@ def _age_delta(trajectory: CellTrajectory) -> float | None:
 def _confidence(trajectory: CellTrajectory) -> float | None:
     values = [point.state_confidence for point in trajectory.points if point.state_confidence is not None]
     identity = trajectory.identity_confidence
-    values = ([identity] if identity is not None else []) + values
+    if identity is not None:
+        values.append(identity)
     return min(values) if values else None
 
 
@@ -53,13 +54,11 @@ def _uncertainty(trajectory: CellTrajectory) -> tuple[float, float] | None:
     intervals = [point.age_interval for point in trajectory.points if point.age_interval is not None]
     if not intervals:
         return None
-    lows = [item[0] for item in intervals]
-    highs = [item[1] for item in intervals]
-    return (min(lows), max(highs))
+    return (min(item[0] for item in intervals), max(item[1] for item in intervals))
 
 
 def _evidence_ids(trajectory: CellTrajectory) -> tuple[str, ...]:
-    return tuple(sorted({item.evidence_id for item in trajectory.evidence}))
+    return tuple(sorted({item.observation_id for item in trajectory.evidence if item.observation_id is not None}))
 
 
 def _aggregate(grouped: dict[tuple[str, str], list[CellTrajectory]]) -> list[AggregatedTrajectory]:
@@ -74,21 +73,19 @@ def _aggregate(grouped: dict[tuple[str, str], list[CellTrajectory]]) -> list[Agg
         uncertainty = (min(item[0] for item in intervals), max(item[1] for item in intervals)) if intervals else None
         evidence = tuple(sorted({evidence_id for trajectory in trajectories for evidence_id in _evidence_ids(trajectory)}))
         status = "attention" if changed else ("stable_observation" if deltas else "insufficient_observation")
-        result.append(
-            AggregatedTrajectory(
-                zone_id=zone_id,
-                level=level,
-                metric="biological_age_years",
-                cell_count=len(trajectories),
-                changed_cells=len(changed),
-                mean_delta=mean,
-                status=status,
-                source_cell_ids=tuple(sorted(trajectory.cell_id for trajectory in trajectories)),
-                confidence=confidence,
-                uncertainty_interval=uncertainty,
-                evidence_ids=evidence,
-            )
-        )
+        result.append(AggregatedTrajectory(
+            zone_id=zone_id,
+            level=level,
+            metric="biological_age_years",
+            cell_count=len(trajectories),
+            changed_cells=len(changed),
+            mean_delta=mean,
+            status=status,
+            source_cell_ids=tuple(sorted(trajectory.cell_id for trajectory in trajectories)),
+            confidence=confidence,
+            uncertainty_interval=uncertainty,
+            evidence_ids=evidence,
+        ))
     order = {"hand": 0, "anatomy": 1, "tissue": 2}
     return sorted(result, key=lambda item: (order.get(item.level, 99), item.zone_id))
 
