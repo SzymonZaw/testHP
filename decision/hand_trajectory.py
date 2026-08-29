@@ -8,6 +8,7 @@ intervention.
 """
 
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Mapping, Sequence
 
 from longitudinal.trajectory import TrajectoryAnalyzer, TrajectoryPoint, Trend
@@ -75,17 +76,27 @@ def analyze_longitudinal_twin(
 ) -> HandTrajectory:
     """Adapt a ``LongitudinalHandTwin`` into the existing trajectory analyzer.
 
-    The adapter exposes stable observational signals (biological age, cell
-    count, and confidence) without changing the meaning of the underlying
-    trajectory engine or introducing treatment recommendations.
+    Calendar time is converted to fractional years relative to the first
+    observation so the shared trajectory engine can compare measurements made
+    at different dates.
     """
     from backend.longitudinal_hand_twin import LongitudinalHandTwin
 
     if not isinstance(twin, LongitudinalHandTwin):
         raise TypeError("twin must be a LongitudinalHandTwin")
 
+    if not twin.observations:
+        return analyze_hand_trajectory(
+            subject_id or str(twin.metadata.get("subject_id", twin.hand_id)),
+            twin.hand_id,
+            (),
+            expected_timepoints=expected_timepoints,
+        )
+
+    parsed = [datetime.fromisoformat(item.observed_at.replace("Z", "+00:00")) for item in twin.observations]
+    origin = parsed[0]
     observations = []
-    for observation in twin.observations:
+    for observation, timestamp in zip(twin.observations, parsed):
         state = observation.state
         values: dict[str, float] = {
             "cell_count": float(state.cell_count),
@@ -93,7 +104,8 @@ def analyze_longitudinal_twin(
         }
         if state.biological_age is not None:
             values["biological_age"] = float(state.biological_age)
-        observations.append((observation.observed_at, float(observation.timestamp_value), values))
+        elapsed_years = (timestamp - origin).total_seconds() / (365.2425 * 24 * 3600)
+        observations.append((observation.observed_at, elapsed_years, values))
 
     return analyze_hand_trajectory(
         subject_id or str(twin.metadata.get("subject_id", twin.hand_id)),
