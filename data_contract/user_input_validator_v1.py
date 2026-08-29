@@ -1,8 +1,8 @@
 """Validation and readiness reporting for the TestHP multiscale user package.
 
 The validator is intentionally conservative: it reports missing or insufficient
-inputs instead of inventing values. It validates the JSON contract plus the
-modality-specific minimums declared in multiscale_input_requirements_v1.yaml.
+inputs instead of inventing values. It validates the package structure and the
+modality-specific minimums declared in the v1 input requirements.
 """
 from __future__ import annotations
 
@@ -13,18 +13,18 @@ import json
 
 
 MODALITY_REQUIREMENTS: dict[str, tuple[str, ...]] = {
-    "hand_images": ("uri", "format", "provenance", "laterality", "anatomical_site", "acquisition_time"),
-    "hand_video": ("uri", "format", "provenance", "laterality", "acquisition_time"),
-    "hand_3d": ("uri", "format", "provenance", "laterality", "acquisition_time", "coordinate_system"),
-    "tissue_wsi": ("uri", "format", "provenance", "tissue_type", "specimen_id", "acquisition_metadata"),
+    "hand_images": ("uri", "format", "provenance", "acquisition.laterality", "acquisition.anatomical_site", "acquisition.acquisition_time"),
+    "hand_video": ("uri", "format", "provenance", "acquisition.laterality", "acquisition.acquisition_time"),
+    "hand_3d": ("uri", "format", "provenance", "acquisition.laterality", "acquisition.acquisition_time", "metadata.coordinate_system"),
+    "tissue_wsi": ("uri", "format", "provenance", "sample_id", "metadata.tissue_type", "metadata.specimen_id", "metadata.acquisition_metadata"),
     "microscopy": ("uri", "format", "provenance", "sample_id"),
-    "single_cell_rna": ("uri", "format", "provenance", "sample_id", "gene_identifier_namespace"),
-    "bulk_rna": ("uri", "format", "provenance", "sample_id", "gene_identifier_namespace"),
-    "genomics": ("uri", "format", "provenance", "sample_id", "genome_build"),
-    "proteomics": ("uri", "format", "provenance", "sample_id", "protein_identifier_namespace"),
-    "epigenetics": ("uri", "format", "provenance", "sample_id", "assay_type"),
-    "clinical_context": ("uri", "format", "provenance", "structured_metadata"),
-    "ground_truth": ("uri", "format", "provenance", "label", "label_definition", "label_source", "reference_timepoint"),
+    "single_cell_rna": ("uri", "format", "provenance", "sample_id", "metadata.gene_identifier_namespace"),
+    "bulk_rna": ("uri", "format", "provenance", "sample_id", "metadata.gene_identifier_namespace"),
+    "genomics": ("uri", "format", "provenance", "sample_id", "metadata.genome_build"),
+    "proteomics": ("uri", "format", "provenance", "sample_id", "metadata.protein_identifier_namespace"),
+    "epigenetics": ("uri", "format", "provenance", "sample_id", "metadata.assay_type"),
+    "clinical_context": ("uri", "format", "provenance", "metadata.structured_metadata"),
+    "ground_truth": ("uri", "format", "provenance", "metadata.label", "metadata.label_definition", "metadata.label_source", "metadata.reference_timepoint"),
 }
 
 SUPPORTED_KINDS = frozenset(MODALITY_REQUIREMENTS)
@@ -54,28 +54,61 @@ class ReadinessReport:
         return [f for f in self.findings if f.severity == "warning"]
 
     @property
+    def accepted_inputs(self) -> list[Finding]:
+        return [f for f in self.findings if f.code == "INPUT_ACCEPTED"]
+
+    @property
     def ready_for_any_processing(self) -> bool:
-        return self.valid_contract and any(f.code == "INPUT_ACCEPTED" for f in self.findings)
+        return self.valid_contract and bool(self.accepted_inputs)
+
+    @property
+    def status(self) -> str:
+        if not self.valid_contract:
+            return "INVALID"
+        if not self.accepted_inputs:
+            return "INCOMPLETE"
+        if self.warnings:
+            return "READY_WITH_WARNINGS"
+        return "READY"
 
     def to_dict(self) -> dict[str, Any]:
         return {
+            "status": self.status,
             "valid_contract": self.valid_contract,
             "ready_for_any_processing": self.ready_for_any_processing,
+            "accepted_input_count": len(self.accepted_inputs),
             "errors": [f.__dict__ for f in self.errors],
             "warnings": [f.__dict__ for f in self.warnings],
             "findings": [f.__dict__ for f in self.findings],
         }
 
 
+def _get_path(obj: Any, path: str) -> Any:
+    current = obj
+    for part in path.split("."):
+        if not isinstance(current, dict) or part not in current:
+            return None
+        current = current[part]
+    return current
+
+
 def _missing(obj: dict[str, Any], keys: tuple[str, ...]) -> list[str]:
-    return [k for k in keys if k not in obj or obj[k] in (None, "")]
+    return [k for k in keys if _get_path(obj, k) in (None, "")]
+
+
+def _validate_provenance(item: dict[str, Any]) -> bool:
+    provenance = item.get("provenance")
+    return isinstance(provenance, dict) and provenance.get("source_type") in {
+        "user", "clinical", "research_dataset", "derived"
+    }
 
 
 def validate_user_package(package: dict[str, Any]) -> ReadinessReport:
     """Validate a parsed v1 package and report what can be processed.
 
-    This function does not inspect the referenced files and does not claim
-    scientific validity. It only checks package metadata and modality readiness.
+    This function checks metadata only. It deliberately does not inspect or
+    interpret the referenced scientific files and therefore cannot establish
+    scientific or clinical validity.
     """
     report = ReadinessReport()
     if not isinstance(package, dict):
@@ -108,6 +141,7 @@ def validate_user_package(package: dict[str, Any]) -> ReadinessReport:
             report.valid_contract = False
             report.findings.append(Finding("error", "INPUT_NOT_OBJECT", "Each input must be an object."))
             continue
+
         input_id = item.get("input_id")
         kind = item.get("kind")
         if not input_id or not kind:
@@ -120,17 +154,14 @@ def validate_user_package(package: dict[str, Any]) -> ReadinessReport:
             continue
 
         missing = _missing(item, MODALITY_REQUIREMENTS[kind])
-        # Provenance is itself structured and must identify its source type.
-        provenance = item.get("provenance")
-        if "provenance" not in missing and (not isinstance(provenance, dict) or not provenance.get("source_type")):
+        if "provenance" not in missing and not _validate_provenance(item):
             missing.append("provenance.source_type")
         if missing:
             report.findings.append(Finding("warning", "INPUT_INCOMPLETE", f"Missing modality requirements: {', '.join(missing)}.", input_id=input_id, kind=kind))
         else:
             report.findings.append(Finding("info", "INPUT_ACCEPTED", f"{kind} package metadata is complete for the v1 minimum contract.", input_id=input_id, kind=kind))
 
-        # Explicitly mark scientific outputs that require reference evidence.
-        if kind == "ground_truth":
+        if kind == "ground_truth" and not missing:
             report.findings.append(Finding("info", "GROUND_TRUTH_PRESENT", "Ground truth is supplied as reference evidence; it is not inferred from the prediction.", input_id=input_id, kind=kind))
 
     return report
