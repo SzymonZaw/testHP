@@ -1,101 +1,98 @@
-"""Conservative biological-age estimation from longitudinal assessment signals."""
+"""Trainable biological-age regression model for the cell twin.
+
+This experimental baseline produces an auditable estimate with uncertainty;
+it is not a clinical model or diagnosis.
+"""
 from __future__ import annotations
 
-from dataclasses import dataclass
-from statistics import fmean
-from typing import Iterable
+from dataclasses import dataclass, field
+from math import sqrt
+from statistics import pstdev
+from typing import Any, Mapping, Sequence
 
-from .observation_identity import CellIdentity
-
-
-@dataclass(frozen=True)
-class BiologicalAgeEstimate:
-    """An auditable biological-age estimate with an explicit uncertainty interval."""
-
-    level: str
-    node_id: str
-    age_estimate: float | None
-    age_interval: tuple[float, float] | None
-    confidence: float | None
-    evidence_ids: tuple[str, ...] = ()
-    provenance: tuple[str, ...] = ()
-
-    def to_dict(self) -> dict[str, object]:
-        return {
-            "level": self.level,
-            "node_id": self.node_id,
-            "age_estimate": self.age_estimate,
-            "age_interval": self.age_interval,
-            "confidence": self.confidence,
-            "evidence_ids": self.evidence_ids,
-            "provenance": self.provenance,
-        }
+from .cell_age import CellAgeEstimate
+from .data_foundation import Uncertainty, utc_now
+from .ml_contracts import ModelInput
 
 
-def estimate_biological_age(
-    ages: Iterable[float],
-    *,
-    level: str,
-    node_id: str,
-    confidence: float | None = None,
-    uncertainty: float = 0.0,
-    evidence_ids: Iterable[str] = (),
-    provenance: Iterable[str] = (),
-) -> BiologicalAgeEstimate:
-    """Estimate age conservatively from supplied biological-age observations.
+@dataclass
+class BiologicalAgeRegressor:
+    model_id: str = "biological-cell-age-linear"
+    model_version: str = "0.1.0"
+    learning_rate: float = 0.01
+    epochs: int = 800
+    weights: dict[str, float] = field(default_factory=dict)
+    bias: float = 0.0
+    feature_names: tuple[str, ...] = ()
+    residual_std: float | None = None
+    trained: bool = False
 
-    The model is deliberately transparent: it reports the mean of available
-    estimates and expands the interval by the supplied uncertainty. It does not
-    infer chronological age, disease, or treatment recommendations.
-    """
-    values = tuple(float(age) for age in ages)
-    if any(age < 0 for age in values):
-        raise ValueError("biological age cannot be negative")
-    if uncertainty < 0:
-        raise ValueError("uncertainty cannot be negative")
-    if confidence is not None and not 0.0 <= confidence <= 1.0:
-        raise ValueError("confidence must be between 0 and 1")
-    if not values:
-        return BiologicalAgeEstimate(
-            level=level,
-            node_id=node_id,
-            age_estimate=None,
-            age_interval=None,
-            confidence=confidence,
-            evidence_ids=tuple(sorted(set(evidence_ids))),
-            provenance=tuple(sorted(set(provenance))),
+    def fit(self, inputs: Sequence[ModelInput], target_ages: Sequence[float]) -> None:
+        if not inputs or len(inputs) != len(target_ages):
+            raise ValueError("inputs and target_ages must be non-empty and have equal length")
+        names = tuple(sorted({name for item in inputs for name, value in item.features.items() if isinstance(value, (int, float)) and not isinstance(value, bool)}))
+        if not names:
+            raise ValueError("training requires numeric features")
+        self.feature_names = names
+        self.weights = {name: 0.0 for name in names}
+        self.bias = sum(float(age) for age in target_ages) / len(target_ages)
+        n = float(len(inputs))
+        for _ in range(self.epochs):
+            gradients = {name: 0.0 for name in names}
+            bias_gradient = 0.0
+            for item, target in zip(inputs, target_ages):
+                prediction = self._predict_value(item)
+                error = prediction - float(target)
+                bias_gradient += error
+                for name in names:
+                    gradients[name] += error * float(item.features.get(name, 0.0))
+            self.bias -= self.learning_rate * bias_gradient / n
+            for name in names:
+                self.weights[name] -= self.learning_rate * gradients[name] / n
+        errors = [self._predict_value(item) - float(target) for item, target in zip(inputs, target_ages)]
+        self.residual_std = sqrt(sum(error * error for error in errors) / len(errors)) if errors else None
+        self.trained = True
+
+    def _predict_value(self, model_input: ModelInput) -> float:
+        return max(0.0, self.bias + sum(self.weights[name] * float(model_input.features.get(name, 0.0)) for name in self.feature_names))
+
+    def predict_age(self, model_input: ModelInput) -> tuple[float, float | None, float | None]:
+        model_input.validate()
+        if not self.trained:
+            raise RuntimeError("biological age model is not trained")
+        age = self._predict_value(model_input)
+        uncertainty = self.residual_std
+        confidence = None if uncertainty is None else 1.0 / (1.0 + uncertainty)
+        return age, uncertainty, confidence
+
+    def to_cell_age_estimate(
+        self,
+        *,
+        estimate_id: str,
+        cell_id: str,
+        model_input: ModelInput,
+        evidence: tuple[Any, ...],
+        provenance: Any,
+        metadata: Mapping[str, object] | None = None,
+    ) -> CellAgeEstimate:
+        age, uncertainty_years, confidence = self.predict_age(model_input)
+        interval = None if uncertainty_years is None else (max(0.0, age - uncertainty_years), age + uncertainty_years)
+        estimate = CellAgeEstimate(
+            estimate_id=estimate_id,
+            cell_id=cell_id,
+            biological_age_years=age,
+            uncertainty=Uncertainty(
+                kind="residual_rmse",
+                score=None if confidence is None else 1.0 - confidence,
+                interval=interval,
+                details={"uncertainty_years": uncertainty_years},
+            ),
+            evidence=evidence,
+            provenance=provenance,
+            model_id=self.model_id,
+            model_version=self.model_version,
+            assessed_at=utc_now(),
+            metadata={**dict(metadata or {}), "confidence": confidence, "feature_names": self.feature_names},
         )
-
-    estimate = fmean(values)
-    interval = (max(0.0, min(values) - uncertainty), max(values) + uncertainty)
-    return BiologicalAgeEstimate(
-        level=level,
-        node_id=node_id,
-        age_estimate=estimate,
-        age_interval=interval,
-        confidence=confidence,
-        evidence_ids=tuple(sorted(set(evidence_ids))),
-        provenance=tuple(sorted(set(provenance))),
-    )
-
-
-def estimate_hand_age(
-    cells: Iterable[tuple[CellIdentity, float]],
-    *,
-    hand_id: str,
-    confidence: float | None = None,
-    uncertainty: float = 0.0,
-) -> BiologicalAgeEstimate:
-    """Convenience roll-up for cell age estimates belonging to one hand."""
-    cells = tuple(cells)
-    for identity, _ in cells:
-        if identity.hand_id != hand_id:
-            raise ValueError(f"cell {identity.cell_id} belongs to another hand")
-    return estimate_biological_age(
-        (age for _, age in cells),
-        level="hand",
-        node_id=hand_id,
-        confidence=confidence,
-        uncertainty=uncertainty,
-        provenance=("cell_biological_age_rollup",),
-    )
+        estimate.validate()
+        return estimate
