@@ -8,6 +8,8 @@ if TYPE_CHECKING:
     from .biological_timeline import BiologicalTimeline
     from .biological_trajectory import BiologicalTrajectory
     from .biological_state_estimate import BiologicalRiskAssessment
+    from .decision_support import DecisionSupport
+    from .risk_model import RiskModel
 
 Level = Literal["hand", "region", "structure", "tissue", "cell_population", "cell", "molecular"]
 _LEVEL_ORDER = ("hand", "region", "structure", "tissue", "cell_population", "cell", "molecular")
@@ -114,11 +116,20 @@ class BiologicalHierarchy:
         return BiologicalTrajectory.from_timeline(self.timeline(node_id, include_descendants=include_descendants), key)
 
     def risk_assessment(self, node_id: str, estimate: Any, *, risk_level: str, rationale: str, confidence: float | None = None) -> "BiologicalRiskAssessment":
-        """Attach a non-diagnostic risk assessment to an existing state estimate."""
         from .biological_state_estimate import BiologicalRiskAssessment
         if node_id not in self.nodes:
             raise ValueError(f"node does not exist: {node_id}")
         return BiologicalRiskAssessment.from_estimate(estimate, risk_level=risk_level, rationale=rationale, confidence=confidence)
+
+    def decision_support(self, node_id: str, risk_model: "RiskModel", comparison: Any = None, future_state: Any = None) -> "DecisionSupport":
+        """Create traceable follow-up support for a hierarchy node; never prescribes treatment."""
+        from .decision_support import DecisionSupport
+        if node_id not in self.nodes:
+            raise ValueError(f"node does not exist: {node_id}")
+        result = DecisionSupport.from_analysis(risk_model, comparison, future_state)
+        evidence = dict(result.evidence)
+        evidence["node_id"] = node_id
+        return DecisionSupport(result.action, result.reasons, result.risk_level, result.scenario_name, evidence)
 
     def to_dict(self) -> dict[str, Any]:
         return {
