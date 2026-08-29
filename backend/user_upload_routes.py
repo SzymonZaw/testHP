@@ -16,6 +16,7 @@ from core.input_validation import validate_user_input_package
 from core.user_capabilities import build_user_analysis_plan
 from backend.macro_analysis import analyze_image
 from backend.video_analysis import inspect_video
+from pipeline.wsi_pipeline import analyze_wsi
 
 ROOT = Path(__file__).resolve().parents[1]
 USER_UPLOAD_ROOT = ROOT / "data" / "user_uploads"
@@ -174,7 +175,7 @@ def _package(asset: UserUploadAsset, laterality: str, kind: str) -> dict[str, An
 
 
 def _execute_available_analysis(asset: UserUploadAsset) -> dict[str, Any]:
-    """Run only analyses that are already implemented and directly match the upload."""
+    """Run only analyses that are implemented and directly match the upload."""
     if asset.status != "available":
         return {"status": "skipped", "reason": "upload is empty or unavailable"}
 
@@ -199,6 +200,16 @@ def _execute_available_analysis(asset: UserUploadAsset) -> dict[str, Any]:
                 "status": "completed",
                 "analysis_id": "hand_video_inspection",
                 "analysis_level": "macro",
+                "biological_inference": "not_established",
+                "result": result,
+            }
+
+        if asset.modality == "wsi":
+            result = analyze_wsi(path)
+            return {
+                "status": "completed",
+                "analysis_id": "wsi_spatial_cell_morphology",
+                "analysis_level": "cell_and_tissue_spatial",
                 "biological_inference": "not_established",
                 "result": result,
             }
