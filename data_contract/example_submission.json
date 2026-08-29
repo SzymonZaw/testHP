@@ -1,0 +1,32 @@
+{
+  "subject_id": "subject-001",
+  "metadata": {
+    "chronological_age_years": 42
+  },
+  "timepoints": [
+    {
+      "timepoint_id": "T0",
+      "acquisition_time": "2026-08-29T10:00:00+02:00",
+      "hand_observations": [
+        {
+          "hand_side": "right",
+          "view": "dorsal",
+          "file": {
+            "path": "T0/hand/right/dorsal.jpg",
+            "modality": "hand_image",
+            "format": "jpg"
+          }
+        },
+        {
+          "hand_side": "right",
+          "view": "palmar",
+          "file": {
+            "path": "T0/hand/right/palmar.jpg",
+            "modality": "hand_image",
+            "format": "jpg"
+          }
+        }
+      ]
+    }
+  ]
+}
