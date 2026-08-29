@@ -5,10 +5,10 @@ from dataclasses import dataclass
 from typing import Any
 
 from .change_relationship import ChangeRelationship
+from .function_trajectory import FunctionTrajectory
 from .hand_trajectory import HandTrajectory
 from .health_trajectory import HealthTrajectory
 from .region_trajectory import RegionTrajectory
-from .function_trajectory import FunctionTrajectory
 
 
 @dataclass(frozen=True)
@@ -54,7 +54,7 @@ class HandAssessment:
             overall = "observe"
 
         affected = tuple(
-            sorted({point.region_id for trajectory in regions for point in trajectory.points if point.changed})
+            sorted({trajectory.region_id for trajectory in regions if _region_changed(trajectory)})
         )
         evidence = {
             "age_delta": hand.age_delta,
@@ -83,3 +83,21 @@ class HandAssessment:
             "affected_regions": self.affected_regions,
             "evidence": self.evidence,
         }
+
+
+def _region_changed(trajectory: RegionTrajectory) -> bool:
+    return any(
+        value not in (None, 0, 0.0)
+        for value in (
+            trajectory.age_delta,
+            trajectory.cell_count_delta,
+            trajectory.confidence_delta,
+        )
+    ) or _distribution_changed(trajectory)
+
+
+def _distribution_changed(trajectory: RegionTrajectory) -> bool:
+    if len(trajectory.points) < 2:
+        return False
+    first, last = trajectory.points[0], trajectory.points[-1]
+    return first.health_distribution != last.health_distribution or first.function_distribution != last.function_distribution
