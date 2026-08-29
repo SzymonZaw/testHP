@@ -1,10 +1,11 @@
 """Unified multiscale health and aging assessment."""
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Iterable
 
 from .anatomy_foundation import CellStateAssessment
+from .assessment_trace import AssessmentTrace
 from .risk_signal import RiskSignal
 from .hand_aging_profile import HandAgingProfile
 from .aging_priority import AgingPriority
@@ -25,6 +26,12 @@ class MultiscaleAssessment:
     source_cell_ids: tuple[str, ...]
     aging_profile: HandAgingProfile | None = None
     aging_priorities: tuple[AgingPriority, ...] = ()
+    trace: AssessmentTrace | None = None
+
+    def __post_init__(self) -> None:
+        if self.trace is not None:
+            if self.trace.level != self.level or self.trace.node_id != self.node_id:
+                raise ValueError("assessment trace must match assessment level and node_id")
 
     @property
     def health_state(self) -> str:
@@ -45,26 +52,24 @@ class MultiscaleAssessment:
         scores = [item.priority_score for item in self.aging_priorities if item.priority_score is not None]
         return max(scores) if scores else None
 
+    def with_trace(self, trace: AssessmentTrace) -> "MultiscaleAssessment":
+        """Return this assessment with an explicit audit/provenance trace."""
+        if trace.level != self.level or trace.node_id != self.node_id:
+            raise ValueError("assessment trace must match assessment level and node_id")
+        return replace(self, trace=trace)
+
     def with_aging(self, aging_profile: HandAgingProfile, aging_priorities: Iterable[AgingPriority] = ()) -> "MultiscaleAssessment":
         """Attach hand-level aging information to an existing assessment."""
         if self.level != "hand":
             raise ValueError("aging_profile can only be attached to a hand assessment")
         if self.node_id != aging_profile.hand_id:
             raise ValueError("aging_profile hand_id must match assessment node_id")
-        return MultiscaleAssessment(
-            level=self.level,
-            node_id=self.node_id,
-            cell_count=self.cell_count,
-            healthy_count=self.healthy_count,
-            diseased_count=self.diseased_count,
-            unknown_count=self.unknown_count,
-            confidence=self.confidence,
-            uncertainty=self.uncertainty,
-            evidence_ids=tuple(sorted(set(self.evidence_ids) | set(aging_profile.evidence_ids))),
-            source_cell_ids=self.source_cell_ids,
-            aging_profile=aging_profile,
-            aging_priorities=tuple(aging_priorities),
-        )
+        evidence_ids = tuple(sorted(set(self.evidence_ids) | set(aging_profile.evidence_ids)))
+        trace = self.trace
+        if trace is not None:
+            trace = replace(trace, evidence_ids=tuple(sorted(set(trace.evidence_ids) | set(aging_profile.evidence_ids))))
+        return replace(self, evidence_ids=evidence_ids, aging_profile=aging_profile,
+                       aging_priorities=tuple(aging_priorities), trace=trace)
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -78,6 +83,7 @@ class MultiscaleAssessment:
             "aging_priorities": tuple(item.to_dict() for item in self.aging_priorities),
             "aging_priority_count": self.aging_priority_count,
             "aging_priority_max": self.aging_priority_max,
+            "trace": self.trace.to_dict() if self.trace else None,
         }
 
     def to_risk_signal(self) -> RiskSignal:
@@ -92,7 +98,8 @@ class MultiscaleAssessment:
                       "health_state": self.health_state, "uncertainty": self.uncertainty,
                       "evidence_ids": self.evidence_ids, "source_cell_ids": self.source_cell_ids,
                       "aging_priority_count": self.aging_priority_count,
-                      "aging_priority_max": self.aging_priority_max},
+                      "aging_priority_max": self.aging_priority_max,
+                      "assessment_id": self.trace.assessment_id if self.trace else None},
         )
 
 
@@ -107,11 +114,17 @@ def _aggregate(items: list[CellStateAssessment], level: str, node_id: str) -> Mu
     confidences = [item.confidence for item in items if item.confidence is not None]
     evidence_ids = tuple(sorted({e.evidence_id for item in items for e in item.evidence}))
     source_ids = tuple(sorted({item.cell_id for item in items}))
+    confidence = min(confidences) if confidences else None
+    uncertainty = (1.0 - confidence) if confidence is not None else 1.0
+    trace = AssessmentTrace(
+        assessment_id=f"{level}:{node_id}", level=level, node_id=node_id,
+        source_ids=source_ids, evidence_ids=evidence_ids,
+        confidence=confidence, uncertainty=uncertainty,
+    )
     return MultiscaleAssessment(level=level, node_id=node_id, cell_count=len(items),
         healthy_count=healthy, diseased_count=diseased, unknown_count=unknown,
-        confidence=min(confidences) if confidences else None,
-        uncertainty=(1.0 - min(confidences)) if confidences else 1.0,
-        evidence_ids=evidence_ids, source_cell_ids=source_ids)
+        confidence=confidence, uncertainty=uncertainty,
+        evidence_ids=evidence_ids, source_cell_ids=source_ids, trace=trace)
 
 
 def aggregate_assessments(
