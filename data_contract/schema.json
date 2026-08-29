@@ -1,0 +1,69 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://testhp.local/schemas/submission.schema.json",
+  "title": "TestHP Digital Twin User Submission",
+  "type": "object",
+  "required": ["subject_id", "timepoints"],
+  "additionalProperties": false,
+  "properties": {
+    "subject_id": {"type": "string", "minLength": 1},
+    "metadata": {"$ref": "#/$defs/subjectMetadata"},
+    "timepoints": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"$ref": "#/$defs/timepoint"}
+    }
+  },
+  "$defs": {
+    "subjectMetadata": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "chronological_age_years": {"type": "number", "minimum": 0, "maximum": 130},
+        "sex": {"type": "string"}
+      }
+    },
+    "timepoint": {
+      "type": "object",
+      "required": ["timepoint_id", "acquisition_time", "hand_observations"],
+      "additionalProperties": true,
+      "properties": {
+        "timepoint_id": {"type": "string", "minLength": 1},
+        "acquisition_time": {"type": "string", "format": "date-time"},
+        "chronological_age_years": {"type": "number", "minimum": 0, "maximum": 130},
+        "hand_observations": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"$ref": "#/$defs/handObservation"}
+        },
+        "tissue_samples": {"type": "array", "items": {"$ref": "#/$defs/fileArtifact"}},
+        "cellular_samples": {"type": "array", "items": {"$ref": "#/$defs/fileArtifact"}},
+        "molecular_samples": {"type": "array", "items": {"$ref": "#/$defs/fileArtifact"}}
+      }
+    },
+    "handObservation": {
+      "type": "object",
+      "required": ["hand_side", "view", "file"],
+      "additionalProperties": true,
+      "properties": {
+        "hand_side": {"enum": ["left", "right", "bilateral", "unknown"]},
+        "view": {"enum": ["dorsal", "palmar", "thumb", "lateral", "oblique", "unknown"]},
+        "file": {"$ref": "#/$defs/fileArtifact"},
+        "scale_mm": {"type": "number", "exclusiveMinimum": 0},
+        "landmarks_file": {"type": "string"}
+      }
+    },
+    "fileArtifact": {
+      "type": "object",
+      "required": ["path", "modality"],
+      "additionalProperties": true,
+      "properties": {
+        "path": {"type": "string", "minLength": 1},
+        "modality": {"type": "string", "minLength": 1},
+        "format": {"type": "string"},
+        "sha256": {"type": "string"},
+        "metadata": {"type": "object", "additionalProperties": true}
+      }
+    }
+  }
+}
