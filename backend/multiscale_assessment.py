@@ -127,6 +127,73 @@ def _aggregate(items: list[CellStateAssessment], level: str, node_id: str) -> Mu
         evidence_ids=evidence_ids, source_cell_ids=source_ids, trace=trace)
 
 
+def _attach_lineage(
+    assessments: list[MultiscaleAssessment],
+    mapping_registry: HierarchyMappingRegistry | None,
+) -> list[MultiscaleAssessment]:
+    """Attach direct parent assessment IDs and mapping provenance to each level."""
+    if mapping_registry is None:
+        return assessments
+
+    mappings = mapping_registry.mappings
+    by_cell = {item.cell_id: item for item in mappings}
+    result_by_id = {f"{item.level}:{item.node_id}": item for item in assessments}
+
+    parents: dict[str, set[str]] = {key: set() for key in result_by_id}
+    evidence: dict[str, set[str]] = {key: set() for key in result_by_id}
+    provenance: dict[str, set[str]] = {key: set() for key in result_by_id}
+
+    for mapping in mappings:
+        cell_result = result_by_id.get(f"cell:{mapping.cell_id}")
+        # CellStateAssessment is the source object, not a MultiscaleAssessment;
+        # keep it in source_ids rather than fabricating a cell-level assessment.
+        chain = (
+            ("cell_population", mapping.population_id),
+            ("tissue", mapping.tissue_id),
+            ("region", mapping.region_id),
+        )
+        for level, node_id in chain:
+            key = f"{level}:{node_id}"
+            if key in evidence:
+                evidence[key].update(mapping.evidence_ids)
+                provenance[key].update(mapping.provenance)
+        population_key = f"cell_population:{mapping.population_id}"
+        tissue_key = f"tissue:{mapping.tissue_id}"
+        region_key = f"region:{mapping.region_id}"
+        hand_key = None
+        # The hand assessment is identified by the registry's hand_id below.
+        if tissue_key in parents:
+            parents[tissue_key].add(population_key)
+        if region_key in parents:
+            parents[region_key].add(tissue_key)
+        hand_key = next((key for key in result_by_id if key == f"hand:{mapping.hand_id}"), None)
+        if hand_key:
+            parents[hand_key].add(region_key)
+        if population_key in result_by_id:
+            evidence[population_key].update(mapping.evidence_ids)
+            provenance[population_key].update(mapping.provenance)
+
+    updated: list[MultiscaleAssessment] = []
+    for item in assessments:
+        key = f"{item.level}:{item.node_id}"
+        trace = item.trace
+        if trace is None:
+            updated.append(item)
+            continue
+        trace = replace(
+            trace,
+            parent_assessment_ids=tuple(sorted(parents[key])),
+            evidence_ids=tuple(sorted(set(trace.evidence_ids) | evidence[key])),
+            provenance=tuple(sorted(set(trace.provenance) | provenance[key])),
+        )
+        updated.append(replace(
+            item,
+            evidence_ids=tuple(sorted(set(item.evidence_ids) | evidence[key])),
+            trace=trace,
+        ))
+    return updated
+
+
 def aggregate_assessments(
     assessments: Iterable[CellStateAssessment], *,
     cell_to_population: dict[str, str] | None = None,
@@ -166,8 +233,9 @@ def aggregate_assessments(
             grouped.setdefault(key, []).append(item)
 
     order = {"cell_population": 0, "tissue": 1, "region": 2, "hand": 3}
-    return sorted((_aggregate(items, level, node_id) for (level, node_id), items in grouped.items()),
-                  key=lambda item: (order[item.level], item.node_id))
+    result = sorted((_aggregate(items, level, node_id) for (level, node_id), items in grouped.items()),
+                    key=lambda item: (order[item.level], item.node_id))
+    return _attach_lineage(result, hierarchy_mapping)
 
 
 def assessments_to_risk_signals(assessments: Iterable[MultiscaleAssessment]) -> tuple[RiskSignal, ...]:
