@@ -38,10 +38,12 @@ def build_cell_tissue_context(
     *,
     neighbor_radius_px: float = 150.0,
     region_tile_size_px: int = 1024,
+    cell_type_predictions: Iterable[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
-    """Aggregate detected cells into local neighborhoods and spatial tissue regions.
+    """Aggregate cells into neighborhoods and tissue regions.
 
-    Cell identity is deliberately unresolved until a validated classifier is supplied.
+    ``cell_type_predictions`` may only come from an explicitly validated,
+    versioned classifier. Without it, cell type remains ``not_established``.
     """
     if neighbor_radius_px <= 0:
         raise ValueError("neighbor_radius_px must be positive")
@@ -49,6 +51,14 @@ def build_cell_tissue_context(
         raise ValueError("region_tile_size_px must be positive")
 
     cells = list(cells)
+    prediction_map: dict[int, dict[str, Any]] = {}
+    if cell_type_predictions is not None:
+        for prediction in cell_type_predictions:
+            cell_id = int(prediction["cell_id"])
+            if cell_id in prediction_map:
+                raise ValueError(f"duplicate cell_type prediction for cell {cell_id}")
+            prediction_map[cell_id] = prediction
+
     contexts: list[CellContext] = []
     grouped: dict[tuple[int, int], list[Any]] = {}
 
@@ -65,10 +75,13 @@ def build_cell_tissue_context(
                 if other.cell_id != cell.cell_id and _distance(cell, other) <= neighbor_radius_px
             )
             neighborhood = "isolated" if neighbors == 0 else "sparse" if neighbors <= 4 else "dense"
+            prediction = prediction_map.get(int(cell.cell_id), {})
+            label = str(prediction.get("label", "not_established"))
+            confidence = prediction.get("confidence")
             contexts.append(CellContext(
                 cell_id=int(cell.cell_id),
-                cell_type="not_established",
-                cell_type_confidence=None,
+                cell_type=label,
+                cell_type_confidence=None if confidence is None else float(confidence),
                 nearest_neighbor_count=neighbors,
                 local_density_cells_per_1e6_px2=density,
                 neighborhood=neighborhood,
@@ -88,10 +101,11 @@ def build_cell_tissue_context(
             spatial_state="cell_present",
         ))
 
+    typed = any(c.cell_type != "not_established" for c in contexts)
     return {
         "cells": [asdict(c) for c in contexts],
         "tissue_regions": [asdict(r) for r in regions],
-        "cell_type_status": "not_established",
+        "cell_type_status": "established_with_validated_classifier" if typed else "not_established",
         "microenvironment_status": "spatial_descriptors_only",
         "tissue_state_status": "morphology_and_spatial_descriptors_only",
         "disease_status": "not_established",
