@@ -36,6 +36,7 @@ class HandAnalysis:
         twin: LongitudinalHandTwin,
         scenarios: tuple[InterventionScenario, ...] = (),
         uncertainty: float = 0.0,
+        horizon_years: float = 1.0,
     ) -> "HandAnalysis":
         hand = HandTrajectory.from_twin(twin)
         health = HealthTrajectory.from_twin(twin)
@@ -51,7 +52,11 @@ class HandAnalysis:
             for scenario in scenarios
         )
         future_states = tuple(
-            FutureState.from_scenario(scenario, horizon_years=1.0, uncertainty=uncertainty)
+            FutureState.from_scenario(
+                scenario,
+                horizon_years=horizon_years,
+                uncertainty=uncertainty,
+            )
             for scenario in scenarios
         )
         decision = DecisionSupport.from_analysis(
