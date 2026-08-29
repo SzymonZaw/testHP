@@ -1,0 +1,152 @@
+version: 1
+status: specification
+purpose: >-
+  Canonical acquisition standard for a future end-user hand digital-twin intake.
+  It defines what a user or acquisition service should provide before data enter
+  the multiscale pipeline. It is a data-quality contract, not a clinical
+  diagnostic standard.
+
+principles:
+  - Every file is linked to subject, hand, timepoint, and acquisition metadata when applicable.
+  - Left/right laterality is explicit; bilateral data are represented as two hand records when possible.
+  - Metric scale is required for any measurement presented in physical units.
+  - Raw files are immutable; preprocessing creates derived artifacts with provenance.
+  - Missing modalities are represented as unavailable and never imputed as measurements.
+  - Quality failure blocks only the affected modality/task unless the downstream task explicitly requires it.
+
+subject:
+  required:
+    - subject_id
+  recommended:
+    - reported_age_years
+    - chronological_age_at_acquisition
+    - sex_if_relevant_and_permitted
+    - sampling_context
+
+hand:
+  required:
+    - hand_id
+    - laterality
+  allowed_laterality: [left, right]
+
+acquisition:
+  required:
+    - timepoint_id
+    - acquisition_time
+    - anatomical_site
+  recommended:
+    - operator_id_or_device_id
+    - protocol_id
+    - environment
+    - calibration_metadata
+
+hand_images:
+  minimum_submission:
+    views: [dorsal, palmar]
+    laterality: explicit
+    anatomical_site: hand
+    resolution_min_px_long_edge: 2000
+    color_space: sRGB
+    file_formats: [jpg, jpeg, png, tiff]
+  preferred_submission:
+    views: [dorsal, palmar, thumb_side, little_finger_side]
+    scale_reference: physical ruler_or_calibration_object
+    lighting: diffuse_even_neutral_white_balance
+    background: uniform_non_reflective
+    pose: fingers_naturally_extended_hand_fully_visible
+    camera_metadata: [make, model, focal_length_mm, distance_mm, exposure, white_balance]
+  quality_gates:
+    - complete_hand_visible
+    - laterality_resolvable
+    - no_severe_motion_blur
+    - no_major_occlusion
+    - no_saturated_major_regions
+    - sufficient_resolution
+    - scale_available_for_metric_measurements
+
+hand_video:
+  required_when_submitted:
+    fps_min: 24
+    resolution_min: 1920x1080
+    duration_seconds: [3, 15]
+    stable_camera: true
+    hand_fully_visible: true
+  preferred:
+    calibration_reference: recommended
+    neutral_start_and_end_pose: true
+
+hand_3d:
+  required:
+    formats: [ply, obj, glb, gltf]
+    metric_scale: true
+    scale_unit: mm
+    coordinate_system: explicit
+    laterality: explicit
+    reconstruction_method: explicit
+  accepted_methods: [multi_view_stereo, structured_light, depth_sensor, other]
+  preferred:
+    camera_intrinsics: explicit
+    camera_extrinsics: explicit
+    anatomical_landmark_registration: true
+
+molecular:
+  general_required:
+    - sample_id
+    - assay_metadata
+    - identifier_namespace
+    - preprocessing_status
+    - provenance
+  single_cell_rna:
+    accepted_formats: [h5ad, mtx_bundle, loom]
+    recommended: [cell_annotations, tissue_region, genome_build_when_relevant]
+  bulk_rna:
+    accepted_formats: [tsv, csv, h5ad]
+    recommended: [tissue_type, normalization_status]
+  genomics:
+    accepted_formats: [vcf, bcf, gvcf]
+    required_metadata: [genome_build]
+    recommended: [platform, coverage_or_qc_metrics]
+  proteomics:
+    accepted_formats: [tsv, csv, mzml, mzidentml]
+    recommended: [assay_platform, normalization_status]
+  epigenetics:
+    accepted_assays: [dna_methylation, chromatin_accessibility, histone_marks, other]
+    accepted_formats: [idat, bed, bedgraph, bigwig, tsv]
+    required_metadata: [assay_type]
+    recommended: [genome_build_when_applicable]
+
+tissue_wsi:
+  required:
+    formats: [svs, ndpi, ome_tiff]
+    tissue_type: explicit
+    specimen_id: explicit
+    stain: explicit
+    magnification_or_mpp: explicit
+    scanner_metadata: explicit
+  preferred:
+    region_annotation: true
+    spatial_reference: explicit
+
+reference_labels:
+  ground_truth:
+    required: [label, label_definition, label_source, reference_timepoint]
+    preferred: [adjudication, evidence, confidence]
+  allowed_label_domains: [healthy, disease, disease_subtype, cell_type, tissue_region, pathology_grade]
+
+package:
+  required_per_input: [input_id, kind, uri, format, provenance.source_type]
+  recommended_per_input: [checksum, source_id, license, sample_id, tissue_id, cell_id, acquisition_metadata]
+  provenance_source_types: [user, clinical, research_dataset, derived]
+
+readiness_levels:
+  L0_invalid: required_fields_missing_or_file_unreadable
+  L1_ingestible: schema_valid_and_file_accessible
+  L2_analysis_ready: modality_quality_gates_passed_and_metadata_sufficient
+  L3_multiscale_linkable: subject_hand_timepoint_and_spatial_or_sample_links_resolved
+  L4_reference_validated: independent_ground_truth_or_validation_evidence_available
+
+important_limitations:
+  - This standard does not claim that a hand photograph alone can reveal individual cells.
+  - WSI and molecular inputs require tissue/specimen acquisition separate from ordinary hand photography.
+  - Biological age is reported only when a validated model is available for the exact input domain; otherwise result is unavailable.
+  - Health/disease output is a model prediction and must remain distinct from ground truth.
