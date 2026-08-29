@@ -1,0 +1,66 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "testhp://data-contract/user-input/v1",
+  "title": "TestHP User Input Package v1",
+  "type": "object",
+  "required": ["subject", "acquisition", "inputs"],
+  "properties": {
+    "subject": {
+      "type": "object",
+      "required": ["subject_id"],
+      "properties": {
+        "subject_id": {"type": "string", "minLength": 1},
+        "reported_age_years": {"type": ["number", "null"], "minimum": 0, "maximum": 150}
+      },
+      "additionalProperties": true
+    },
+    "acquisition": {
+      "type": "object",
+      "required": ["timepoint_id", "acquisition_time"],
+      "properties": {
+        "timepoint_id": {"type": "string", "minLength": 1},
+        "acquisition_time": {"type": "string", "format": "date-time"},
+        "anatomical_site": {"type": ["string", "null"]},
+        "laterality": {"enum": ["left", "right", "bilateral", "unknown"]}
+      },
+      "additionalProperties": true
+    },
+    "inputs": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["input_id", "kind", "uri", "format", "provenance"],
+        "properties": {
+          "input_id": {"type": "string", "minLength": 1},
+          "kind": {
+            "enum": [
+              "hand_images", "hand_video", "hand_3d", "tissue_wsi", "microscopy",
+              "single_cell_rna", "bulk_rna", "genomics", "proteomics", "epigenetics",
+              "clinical_context", "ground_truth"
+            ]
+          },
+          "uri": {"type": "string", "minLength": 1},
+          "format": {"type": "string", "minLength": 1},
+          "sample_id": {"type": ["string", "null"]},
+          "tissue_id": {"type": ["string", "null"]},
+          "cell_id": {"type": ["string", "null"]},
+          "provenance": {
+            "type": "object",
+            "required": ["source_type"],
+            "properties": {
+              "source_type": {"enum": ["user", "clinical", "research_dataset", "derived"]},
+              "source_id": {"type": ["string", "null"]},
+              "license": {"type": ["string", "null"]},
+              "checksum": {"type": ["string", "null"]}
+            },
+            "additionalProperties": true
+          },
+          "metadata": {"type": "object"}
+        },
+        "additionalProperties": true
+      }
+    }
+  },
+  "additionalProperties": false
+}
