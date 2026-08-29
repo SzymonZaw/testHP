@@ -1,8 +1,4 @@
-"""Multiscale biological hierarchy for the digital hand twin.
-
-This module defines representation contracts only. It does not diagnose disease,
-estimate human lifespan, or prescribe treatment.
-"""
+"""Multiscale biological hierarchy for the digital hand twin."""
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -11,6 +7,7 @@ from typing import Any, Literal, TYPE_CHECKING
 if TYPE_CHECKING:
     from .biological_timeline import BiologicalTimeline
     from .biological_trajectory import BiologicalTrajectory
+    from .biological_state_estimate import BiologicalRiskAssessment
 
 Level = Literal["hand", "region", "structure", "tissue", "cell_population", "cell", "molecular"]
 _LEVEL_ORDER = ("hand", "region", "structure", "tissue", "cell_population", "cell", "molecular")
@@ -18,8 +15,6 @@ _LEVEL_ORDER = ("hand", "region", "structure", "tissue", "cell_population", "cel
 
 @dataclass(frozen=True)
 class BiologicalObservation:
-    """Evidence attached to any level of the biological hierarchy."""
-
     observation_id: str
     source: str
     timestamp: str
@@ -34,8 +29,6 @@ class BiologicalObservation:
 
 @dataclass(frozen=True)
 class BiologicalNode:
-    """A node at one biological scale, linked to parent and child nodes."""
-
     node_id: str
     level: Level
     label: str
@@ -59,8 +52,6 @@ class BiologicalNode:
 
 @dataclass(frozen=True)
 class BiologicalHierarchy:
-    """Immutable hierarchy from whole hand down to molecular evidence."""
-
     root_id: str
     nodes: dict[str, BiologicalNode] = field(default_factory=dict)
 
@@ -102,7 +93,6 @@ class BiologicalHierarchy:
         return tuple(result)
 
     def aggregate_observations(self, node_id: str) -> tuple[BiologicalObservation, ...]:
-        """Return direct and descendant observations without inventing measurements."""
         node = self.nodes.get(node_id)
         if node is None:
             raise ValueError(f"node does not exist: {node_id}")
@@ -112,7 +102,6 @@ class BiologicalHierarchy:
         return tuple(observations)
 
     def timeline(self, node_id: str, include_descendants: bool = False) -> "BiologicalTimeline":
-        """Build a timeline for a node, optionally including descendant evidence."""
         from .biological_timeline import BiologicalTimeline
         node = self.nodes.get(node_id)
         if node is None:
@@ -121,11 +110,15 @@ class BiologicalHierarchy:
         return BiologicalTimeline(observations)
 
     def trajectory(self, node_id: str, key: str, include_descendants: bool = False) -> "BiologicalTrajectory":
-        """Build an observed trajectory for a value at one hierarchy level."""
         from .biological_trajectory import BiologicalTrajectory
-        return BiologicalTrajectory.from_timeline(
-            self.timeline(node_id, include_descendants=include_descendants), key
-        )
+        return BiologicalTrajectory.from_timeline(self.timeline(node_id, include_descendants=include_descendants), key)
+
+    def risk_assessment(self, node_id: str, estimate: Any, *, risk_level: str, rationale: str, confidence: float | None = None) -> "BiologicalRiskAssessment":
+        """Attach a non-diagnostic risk assessment to an existing state estimate."""
+        from .biological_state_estimate import BiologicalRiskAssessment
+        if node_id not in self.nodes:
+            raise ValueError(f"node does not exist: {node_id}")
+        return BiologicalRiskAssessment.from_estimate(estimate, risk_level=risk_level, rationale=rationale, confidence=confidence)
 
     def to_dict(self) -> dict[str, Any]:
         return {
