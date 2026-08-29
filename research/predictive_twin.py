@@ -20,7 +20,6 @@ from dataclasses import dataclass, field
 from typing import Dict, Iterable, Mapping, Sequence
 
 
-
 def _bounded(value: float, name: str) -> float:
     value = float(value)
     if not 0.0 <= value <= 1.0:
@@ -42,23 +41,20 @@ class MolecularState:
         for name, value in vars(self).items():
             _bounded(value, name)
 
-    def as_tuple(self) -> tuple[float, ...]:
-        return tuple(vars(self).values())
-
 
 @dataclass(frozen=True)
 class CellState:
-    """Cell state with molecular inputs and observable research signals."""
+    """Cell state with backward-compatible observable and molecular inputs."""
 
     cell_id: str
+    health_signals: Mapping[str, float] = field(default_factory=dict)
+    age_signals: Mapping[str, float] = field(default_factory=dict)
+    confidence: float = 0.0
     molecular: MolecularState = field(default_factory=MolecularState)
     function: float = 1.0
     damage: float = 0.0
     repair: float = 1.0
     senescence: float = 0.0
-    health_signals: Mapping[str, float] = field(default_factory=dict)
-    age_signals: Mapping[str, float] = field(default_factory=dict)
-    confidence: float = 0.0
 
     def __post_init__(self) -> None:
         if not self.cell_id.strip():
@@ -78,20 +74,14 @@ class CellHealthAssessment:
 
 
 class CellHealthModel:
-    """Transparent research baseline for cell-state assessment.
-
-    Inputs are normalized health-related evidence, not clinical labels. The
-    output is intentionally named a research index and remains unvalidated.
-    """
+    """Transparent research baseline for cell-state assessment."""
 
     def assess(self, state: CellState) -> CellHealthAssessment:
         values = [float(v) for v in state.health_signals.values()]
         if any(v < 0.0 or v > 1.0 for v in values):
             raise ValueError("health signals must be normalized to [0, 1]")
         if not values:
-            return CellHealthAssessment(
-                state.cell_id, 0.0, "insufficient_evidence", state.confidence, (), False
-            )
+            return CellHealthAssessment(state.cell_id, 0.0, "insufficient_evidence", state.confidence, (), False)
         score = sum(values) / len(values)
         if state.confidence < 0.5:
             status = "insufficient_evidence"
@@ -101,10 +91,7 @@ class CellHealthModel:
             status = "research_uncertain"
         else:
             status = "research_concerning"
-        return CellHealthAssessment(
-            state.cell_id, score, status, state.confidence,
-            tuple(state.health_signals.keys()), False
-        )
+        return CellHealthAssessment(state.cell_id, score, status, state.confidence, tuple(state.health_signals.keys()), False)
 
 
 @dataclass(frozen=True)
@@ -117,10 +104,7 @@ class CellAgeEstimate:
 
 
 class CellAgeModel:
-    """Research-only estimator using caller-supplied calibrated features.
-
-    No biological-age truth or universal weights are embedded in the package.
-    """
+    """Research-only estimator using caller-supplied calibrated features."""
 
     def __init__(self, weights: Mapping[str, float], intercept: float = 0.0):
         if not weights:
@@ -132,9 +116,7 @@ class CellAgeModel:
         missing = tuple(k for k in self.weights if k not in state.age_signals)
         if missing:
             return CellAgeEstimate(state.cell_id, None, state.confidence, missing)
-        age = self.intercept + sum(
-            self.weights[k] * float(state.age_signals[k]) for k in self.weights
-        )
+        age = self.intercept + sum(self.weights[k] * float(state.age_signals[k]) for k in self.weights)
         return CellAgeEstimate(state.cell_id, float(age), state.confidence, ())
 
 
@@ -234,12 +216,7 @@ class MechanisticTrace:
 
 
 class MechanisticSimulator:
-    """Deterministic toy dynamics establishing the multiscale contract.
-
-    ``step`` models local cell dynamics. ``simulate_multiscale`` demonstrates
-    bottom-up propagation and top-down contextual feedback. It is deliberately
-    simple and must be replaced/calibrated against biological evidence.
-    """
+    """Deterministic toy dynamics establishing the multiscale contract."""
 
     def step(self, state: MechanisticState, years: float = 1.0) -> MechanisticState:
         if years < 0:
@@ -247,10 +224,7 @@ class MechanisticSimulator:
         damage = min(1.0, state.damage + 0.02 * years - 0.01 * state.repair * years)
         repair = max(0.0, min(1.0, state.repair - 0.005 * years + 0.01 * state.function))
         senescence = max(0.0, min(1.0, state.senescence + 0.01 * damage * years))
-        function = max(
-            0.0,
-            min(1.0, state.function - 0.015 * damage * years - 0.01 * senescence * years),
-        )
+        function = max(0.0, min(1.0, state.function - 0.015 * damage * years - 0.01 * senescence * years))
         return MechanisticState(function, damage, repair, senescence)
 
     def simulate_multiscale(
@@ -266,21 +240,14 @@ class MechanisticSimulator:
     ) -> tuple[MechanisticTrace, ...]:
         if years < 0 or step_years <= 0:
             raise ValueError("years must be >= 0 and step_years must be > 0")
-        for name, value in {
-            "tissue_context": tissue_context,
-            "organ_context": organ_context,
-            "organism_context": organism_context,
-        }.items():
+        for name, value in {"tissue_context": tissue_context, "organ_context": organ_context, "organism_context": organism_context}.items():
             _bounded(value, name)
-
         traces: list[MechanisticTrace] = []
         current = cell
         elapsed = 0.0
         while elapsed < years:
             step = min(step_years, years - elapsed)
             current = self.step(current, step)
-            # Higher-level context modulates local function without pretending
-            # to represent a real physiological feedback law.
             feedback = (tissue_context + organ_context + organism_context) / 3.0
             function = max(0.0, min(1.0, current.function * (0.8 + 0.2 * feedback)))
             current = MechanisticState(function, current.damage, current.repair, current.senescence)
@@ -288,11 +255,7 @@ class MechanisticSimulator:
             tissue_function = max(0.0, min(1.0, current.function * tissue_context))
             organ_function = max(0.0, min(1.0, tissue_function * organ_context))
             organism_function = max(0.0, min(1.0, organ_function * organism_context))
-            traces.append(
-                MechanisticTrace(
-                    elapsed, molecular, current, tissue_function, organ_function, organism_function
-                )
-            )
+            traces.append(MechanisticTrace(elapsed, molecular, current, tissue_function, organ_function, organism_function))
         return tuple(traces)
 
 
@@ -306,10 +269,7 @@ class LongHorizonPrediction:
 
 
 class LongHorizonPredictor:
-    """Research scenarios for 5, 20, 50, 100+ year horizons.
-
-    Uncertainty increases with horizon and is surfaced rather than hidden.
-    """
+    """Research scenarios for 5, 20, 50, 100+ year horizons."""
 
     DEFAULT_HORIZONS = (5.0, 20.0, 50.0, 100.0)
 
@@ -317,12 +277,7 @@ class LongHorizonPredictor:
         self.simulator = simulator
         self.model_version = model_version
 
-    def predict(
-        self,
-        initial: MechanisticState,
-        horizon_years: float,
-        step_years: float = 1.0,
-    ) -> LongHorizonPrediction:
+    def predict(self, initial: MechanisticState, horizon_years: float, step_years: float = 1.0) -> LongHorizonPrediction:
         if horizon_years < 0 or step_years <= 0:
             raise ValueError("horizon_years must be >= 0 and step_years must be > 0")
         state = initial
@@ -331,15 +286,10 @@ class LongHorizonPredictor:
             step = min(step_years, remaining)
             state = self.simulator.step(state, step)
             remaining -= step
-        # This is a transparent uncertainty policy, not a statistical CI.
         uncertainty = min(1.0, 0.05 + 0.003 * float(horizon_years))
-        return LongHorizonPrediction(
-            float(horizon_years), state, self.model_version, uncertainty, False
-        )
+        return LongHorizonPrediction(float(horizon_years), state, self.model_version, uncertainty, False)
 
-    def forecast_standard_horizons(
-        self, initial: MechanisticState, step_years: float = 1.0
-    ) -> tuple[LongHorizonPrediction, ...]:
+    def forecast_standard_horizons(self, initial: MechanisticState, step_years: float = 1.0) -> tuple[LongHorizonPrediction, ...]:
         return tuple(self.predict(initial, h, step_years) for h in self.DEFAULT_HORIZONS)
 
 
@@ -354,11 +304,7 @@ class RejuvenationTarget:
 
 
 class RejuvenationPlanner:
-    """Ranks research candidates; it never prescribes a therapy.
-
-    A candidate must have sufficient evidence and confidence. Otherwise the
-    correct outcome is monitoring or insufficient evidence.
-    """
+    """Ranks research candidates; it never prescribes a therapy."""
 
     def rank(self, nodes: Iterable[Mapping[str, object]]) -> tuple[RejuvenationTarget, ...]:
         results: list[RejuvenationTarget] = []
@@ -380,11 +326,7 @@ class RejuvenationPlanner:
             else:
                 action = requested
                 evidence_status = "research_candidate"
-            results.append(
-                RejuvenationTarget(
-                    node_id, priority, rationale, action, confidence, evidence_status
-                )
-            )
+            results.append(RejuvenationTarget(node_id, priority, rationale, action, confidence, evidence_status))
         return tuple(sorted(results, key=lambda x: x.priority, reverse=True))
 
 
@@ -397,25 +339,14 @@ class WholeBodyTwin:
 
     LEVELS = ("organism", "organ", "tissue", "cell", "molecular")
 
-    def add_node(
-        self,
-        node_id: str,
-        *,
-        parent_id: str | None = None,
-        level: str = "unknown",
-        state: Mapping[str, object] | None = None,
-    ) -> None:
+    def add_node(self, node_id: str, *, parent_id: str | None = None, level: str = "unknown", state: Mapping[str, object] | None = None) -> None:
         if not node_id.strip():
             raise ValueError("node_id cannot be empty")
         if level not in self.LEVELS and level != "unknown":
             raise ValueError(f"unsupported level: {level}")
         if parent_id is not None and parent_id not in self.nodes:
             raise KeyError(f"unknown parent_id: {parent_id}")
-        self.nodes[node_id] = {
-            "parent_id": parent_id,
-            "level": level,
-            "state": dict(state or {}),
-        }
+        self.nodes[node_id] = {"parent_id": parent_id, "level": level, "state": dict(state or {})}
 
     def descendants(self, node_id: str) -> tuple[str, ...]:
         if node_id not in self.nodes:
@@ -459,12 +390,7 @@ class LongevityScenarioModel:
 
     def scenario(self, initial: MechanisticState, target_years: float) -> LongevityScenario:
         prediction = self.predictor.predict(initial, target_years)
-        return LongevityScenario(
-            target_years=target_years,
-            predicted_function=prediction.state.function,
-            uncertainty=prediction.uncertainty,
-            model_version=prediction.model_version,
-        )
+        return LongevityScenario(target_years, prediction.state.function, prediction.uncertainty, prediction.model_version)
 
 
 @dataclass(frozen=True)
