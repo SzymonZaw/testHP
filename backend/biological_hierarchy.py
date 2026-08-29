@@ -1,8 +1,16 @@
-"""Multiscale biological hierarchy for the digital hand twin."""
+"""Multiscale biological hierarchy for the digital hand twin.
+
+This module defines representation contracts only. It does not diagnose disease,
+estimate human lifespan, or prescribe treatment.
+"""
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Literal
+from typing import Any, Literal, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from .biological_timeline import BiologicalTimeline
+    from .biological_trajectory import BiologicalTrajectory
 
 Level = Literal["hand", "region", "structure", "tissue", "cell_population", "cell", "molecular"]
 _LEVEL_ORDER = ("hand", "region", "structure", "tissue", "cell_population", "cell", "molecular")
@@ -44,7 +52,7 @@ class BiologicalNode:
     def with_observation(self, observation: BiologicalObservation) -> "BiologicalNode":
         return BiologicalNode(self.node_id, self.level, self.label, self.parent_id, self.child_ids, self.observations + (observation,), self.metadata)
 
-    def timeline(self):
+    def timeline(self) -> "BiologicalTimeline":
         from .biological_timeline import BiologicalTimeline
         return BiologicalTimeline(self.observations)
 
@@ -103,13 +111,21 @@ class BiologicalHierarchy:
             observations.extend(descendant.observations)
         return tuple(observations)
 
-    def timeline(self, node_id: str, include_descendants: bool = False):
+    def timeline(self, node_id: str, include_descendants: bool = False) -> "BiologicalTimeline":
         """Build a timeline for a node, optionally including descendant evidence."""
         from .biological_timeline import BiologicalTimeline
-        observations = self.aggregate_observations(node_id) if include_descendants else self.nodes.get(node_id).observations
-        if observations is None:
+        node = self.nodes.get(node_id)
+        if node is None:
             raise ValueError(f"node does not exist: {node_id}")
+        observations = self.aggregate_observations(node_id) if include_descendants else node.observations
         return BiologicalTimeline(observations)
+
+    def trajectory(self, node_id: str, key: str, include_descendants: bool = False) -> "BiologicalTrajectory":
+        """Build an observed trajectory for a value at one hierarchy level."""
+        from .biological_trajectory import BiologicalTrajectory
+        return BiologicalTrajectory.from_timeline(
+            self.timeline(node_id, include_descendants=include_descendants), key
+        )
 
     def to_dict(self) -> dict[str, Any]:
         return {
