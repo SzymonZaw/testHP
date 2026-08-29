@@ -1,13 +1,15 @@
-"""Auditable provenance trace for multiscale assessments."""
+"""Auditable provenance and spatial trace for multiscale assessments."""
 from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Any, Mapping
 
+from .data_foundation import SpatialReference
+
 
 @dataclass(frozen=True)
 class AssessmentTrace:
-    """Trace explaining where an assessment came from and how certain it is."""
+    """Trace explaining where an assessment came from and where it is located."""
 
     assessment_id: str
     level: str
@@ -18,6 +20,7 @@ class AssessmentTrace:
     provenance: tuple[str, ...] = ()
     confidence: float | None = None
     uncertainty: float | None = None
+    spatial_references: tuple[SpatialReference, ...] = ()
 
     def __post_init__(self) -> None:
         if not self.assessment_id:
@@ -34,6 +37,8 @@ class AssessmentTrace:
             raise ValueError("assessment cannot be its own parent")
         if len(set(self.parent_assessment_ids)) != len(self.parent_assessment_ids):
             raise ValueError("parent_assessment_ids must be unique")
+        for reference in self.spatial_references:
+            reference.validate()
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -46,24 +51,20 @@ class AssessmentTrace:
             "provenance": self.provenance,
             "confidence": self.confidence,
             "uncertainty": self.uncertainty,
+            "spatial_references": tuple(
+                {
+                    "frame_id": item.frame_id,
+                    "registration_status": item.registration_status,
+                    "anatomical_target": item.anatomical_target,
+                    "transform": item.transform,
+                    "registration_quality": item.registration_quality,
+                }
+                for item in self.spatial_references
+            ),
         }
 
-    @classmethod
-    def from_mapping(cls, value: Mapping[str, Any]) -> "AssessmentTrace":
-        return cls(
-            assessment_id=str(value["assessment_id"]),
-            level=str(value["level"]),
-            node_id=str(value["node_id"]),
-            source_ids=tuple(value.get("source_ids", ())),
-            parent_assessment_ids=tuple(value.get("parent_assessment_ids", ())),
-            evidence_ids=tuple(value.get("evidence_ids", ())),
-            provenance=tuple(value.get("provenance", ())),
-            confidence=value.get("confidence"),
-            uncertainty=value.get("uncertainty"),
-        )
-
     def explain(self) -> dict[str, Any]:
-        """Return a compact, machine-readable explanation of this assessment."""
+        """Return a machine-readable explanation of lineage and location."""
         return {
             "assessment_id": self.assessment_id,
             "level": self.level,
@@ -74,4 +75,30 @@ class AssessmentTrace:
             "provenance": self.provenance,
             "confidence": self.confidence,
             "uncertainty": self.uncertainty,
+            "spatial": self.to_dict()["spatial_references"],
         }
+
+    @classmethod
+    def from_mapping(cls, value: Mapping[str, Any]) -> "AssessmentTrace":
+        spatial = tuple(
+            item if isinstance(item, SpatialReference) else SpatialReference(
+                frame_id=str(item["frame_id"]),
+                registration_status=item.get("registration_status", "unknown"),
+                anatomical_target=item.get("anatomical_target"),
+                transform=item.get("transform", {}),
+                registration_quality=item.get("registration_quality"),
+            )
+            for item in value.get("spatial_references", ())
+        )
+        return cls(
+            assessment_id=str(value["assessment_id"]),
+            level=str(value["level"]),
+            node_id=str(value["node_id"]),
+            source_ids=tuple(value.get("source_ids", ())),
+            parent_assessment_ids=tuple(value.get("parent_assessment_ids", ())),
+            evidence_ids=tuple(value.get("evidence_ids", ())),
+            provenance=tuple(value.get("provenance", ())),
+            confidence=value.get("confidence"),
+            uncertainty=value.get("uncertainty"),
+            spatial_references=spatial,
+        )
