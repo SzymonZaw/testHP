@@ -33,6 +33,7 @@ from .stages_5_8 import register_stage_5_8_routes
 from .hand_surface_photo import register_hand_surface_photo_routes
 from .stages_21_32 import register_stage_21_32_routes
 from .database_routes import router as database_router
+from .user_input_routes import router as user_input_router
 
 ROOT = Path(__file__).resolve().parents[1]
 RAW_ROOT = ROOT / "data" / "raw"
@@ -51,6 +52,7 @@ register_hand_surface_photo_routes(app)
 register_stage_21_32_routes(app)
 app.include_router(observation_router)
 app.include_router(database_router)
+app.include_router(user_input_router)
 
 class PipelineRequest(BaseModel):
     datasets: list[str] = []
