@@ -1,0 +1,50 @@
+{
+  "schemaVersion": "1.0.0",
+  "purpose": "Curated references for real tissue, cell, and molecular layers; these are reference datasets, not personal measurements.",
+  "entries": [
+    {
+      "id": "hubmap-reference-skin",
+      "layer": "tissue",
+      "sourceUrl": "https://portal.hubmapconsortium.org/",
+      "accession": "HuBMAP",
+      "species": "Homo sapiens",
+      "tissue": "skin",
+      "modality": "spatial-transcriptomics",
+      "limitations": ["Not assumed to be hand tissue unless the selected specimen explicitly identifies hand."],
+      "provenance": "HuBMAP Data Portal"
+    },
+    {
+      "id": "geo-gse109822",
+      "layer": "cell",
+      "sourceUrl": "https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE109822",
+      "accession": "GSE109822",
+      "species": "Homo sapiens",
+      "tissue": "skin",
+      "modality": "single-cell-rna",
+      "limitations": ["Human dermal fibroblast reference; not a complete spatial cell atlas of a hand."],
+      "provenance": "NCBI GEO"
+    },
+    {
+      "id": "allen-cell-explorer-reference",
+      "layer": "cell",
+      "sourceUrl": "https://www.allencell.org/data-downloading.html",
+      "accession": "Allen Cell Explorer",
+      "species": "Homo sapiens",
+      "tissue": "cell culture / reference cells",
+      "modality": "3d-cell-imaging",
+      "limitations": ["Cell morphology reference; not a hand-specific tissue map."],
+      "provenance": "Allen Institute for Cell Science"
+    },
+    {
+      "id": "gtex-reference-molecular",
+      "layer": "molecular",
+      "sourceUrl": "https://gtexportal.org/home/",
+      "accession": "GTEx",
+      "species": "Homo sapiens",
+      "tissue": "multi-tissue",
+      "modality": "genomics",
+      "limitations": ["Population/tissue reference; does not provide per-cell spatial registration to a hand."],
+      "provenance": "GTEx Portal"
+    }
+  ]
+}
