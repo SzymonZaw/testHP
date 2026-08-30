@@ -1,0 +1,34 @@
+{
+  "schemaVersion": "1.0.0",
+  "purpose": "Real spatial-cell references suitable for building cellId -> coordinates -> segmentation -> molecular evidence adapters.",
+  "references": [
+    {
+      "id": "human-skin-spatial-census-merfish",
+      "layer": "cell",
+      "title": "A single-cell spatial transcriptomic census of human skin anatomy",
+      "accession": "S-BIAD2376",
+      "processedData": "https://doi.org/10.5281/zenodo.16795569",
+      "sourceUrl": "https://www.ebi.ac.uk/biostudies/bioimages/studies/S-BIAD2376",
+      "publication": "https://doi.org/10.1038/s41588-026-02552-8",
+      "technology": "MERFISH",
+      "species": "Homo sapiens",
+      "cellCountApprox": 1200000,
+      "sampleCount": 114,
+      "donorCount": 22,
+      "anatomicSites": 15,
+      "capabilities": ["single-cell spatial coordinates", "cell type", "spatial neighborhoods", "transcriptomic measurements", "histology"],
+      "limitations": ["Skin atlas, not a hand-specific atlas", "must not be spatially registered to the NIH hand without an explicit registration procedure"]
+    },
+    {
+      "id": "hubmap-cosmx-reference",
+      "layer": "cell",
+      "title": "HuBMAP CosMx transcriptomics data specification/reference",
+      "accession": "HuBMAP CosMx",
+      "sourceUrl": "https://hubmapconsortium.github.io/ingest-validation-tools/cosmx-transcriptomics/current/",
+      "technology": "CosMx",
+      "species": "Homo sapiens",
+      "capabilities": ["unique cell ID", "cell centroid", "global/local coordinates", "cell morphology", "cell segmentation labels", "transcript coordinates", "gene panel", "cell expression matrix", "protein staining"],
+      "limitations": ["This catalog entry is a format/reference pointer; a concrete HuBMAP specimen must be selected before importing measurements"]
+    }
+  ]
+}
