@@ -21,11 +21,32 @@
       const dataset=catalog?.datasets?.find(item=>item.id==='nih-hand-template-3dpx-017237');
       const url=dataset?.asset?.url;
       if(!url) throw new Error('NIH 3D reference hand asset is not available in the reference catalog.');
-      const asset={id:dataset.id,url,sourceId:dataset.id,sourceType:'public_reference',status:'available',ownership:'reference',metadata:{...dataset,referenceOnly:true,assetUrl:url},mapping:{}};
+
+      const mappingApi=window.testhpReferenceRegionMapping;
+      const regionMapping=await mappingApi?.loadReferenceRegionMapping?.();
+      const sourceMapping=mappingApi?.getAssetMapping?.(regionMapping,dataset.id) || {status:'not_established',regions:{}};
+      const mapping={
+        status:sourceMapping.status || 'not_established',
+        source:sourceMapping.source || dataset.url,
+        sourceAccession:sourceMapping.sourceAccession || dataset.accession,
+        geometryIdField:sourceMapping.geometryIdField ?? null,
+        geometryToRegion:{},
+        regionToGeometry:{}
+      };
+      Object.entries(sourceMapping.regions || {}).forEach(([regionId,entry])=>{
+        (entry?.geometryIds || []).forEach(geometryId=>{
+          mapping.geometryToRegion[geometryId]=regionId;
+          mapping.regionToGeometry[regionId]=geometryId;
+        });
+      });
+
+      const asset={id:dataset.id,url,sourceId:dataset.id,sourceType:'public_reference',status:'available',ownership:'reference',metadata:{...dataset,referenceOnly:true,assetUrl:url},mapping};
       window.TestHPSpatialData?.setActiveAsset?.(asset);
       status.className='dt-spatial-source-status ok';
-      status.textContent='NIH 3D reference hand active · reference-only geometry · Palm selected.';
-      window.dispatchEvent(new CustomEvent('testhp:reference-hand-activated',{detail:{asset,regionId:'palm'}}));
+      status.textContent=mapping.status==='established'
+        ? 'NIH 3D reference hand active · source-backed region mapping available · Palm selected.'
+        : 'NIH 3D reference hand active · Palm is a navigation target; semantic geometry IDs are NOT ESTABLISHED.';
+      window.dispatchEvent(new CustomEvent('testhp:reference-hand-activated',{detail:{asset,regionId:'palm',regionMapping:mapping}}));
     }catch(error){
       status.className='dt-spatial-source-status error';
       status.textContent=String(error.message||error);
