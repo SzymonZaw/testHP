@@ -15,8 +15,10 @@
   });
 
   function publishUiState() {
+    if (!window.__testhpReferenceHandState?.active) return;
     const host = document.getElementById('testhp-end-user-layer');
     if (!host) return;
+
     host.dataset.referenceHandActive = 'true';
     host.dataset.referenceHandSource = REFERENCE_HAND.sourceId;
     host.dataset.referenceHandRegion = 'palm';
@@ -48,18 +50,23 @@
     window.__testhpReferenceHandActivated = true;
     window.__testhpReferenceHandState = Object.freeze({
       active: true,
-      source: REFERENCE_HAND,
+      sourceId: REFERENCE_HAND.sourceId,
       regionId: 'palm',
       provenance: 'public_reference'
     });
     publishUiState();
     window.dispatchEvent(new CustomEvent('testhp:reference-hand-activated', {
-      detail: { reference: REFERENCE_HAND, regionId: 'palm' }
+      detail: window.__testhpReferenceHandState
     }));
     return true;
   }
 
   window.testhpReferenceHand = Object.freeze({ REFERENCE_HAND, activate });
   window.addEventListener('testhp:reference-hand-requested', activate);
+
+  const observer = new MutationObserver(() => publishUiState());
+  if (document.documentElement) {
+    observer.observe(document.documentElement, { childList: true, subtree: true });
+  }
   if (window.__testhpReferenceHandActivated) publishUiState();
 })();
