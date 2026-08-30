@@ -1,5 +1,5 @@
 <!doctype html>
-<!-- Existing digital-twin page. Canonical foundation modules are loaded before feature/inspector modules. -->
+<!-- Canonical Digital Twin foundation and legacy feature modules. -->
 <script src="/digital-twin/digital-twin-core.js?v=core-1"></script>
 <script src="/digital-twin/spatial-hierarchy.js?v=spatial-1"></script>
 <script src="/digital-twin/digital-twin-data-contract-v2.js?v=contract-v2-1"></script>
@@ -12,8 +12,16 @@
 <script src="/digital-twin/multiscale-inspector.js?v=multiscale-1"></script>
 <script src="/digital-twin/digital-twin-evidence-health-ui-v1.js?v=end-user-ui-1"></script>
 <script src="/digital-twin/intervention-priority-ui-v1.js?v=intervention-1"></script>
-<script src="/digital-twin/end-user-analysis-bridge-v1.js?v=analysis-bridge-1"></script>
+<script src="/digital-twin/end-user-analysis-bridge-v1.js?v=analysis-bridge-2"></script>
 <script src="/digital-twin/biological-age-hierarchy-ui-v2.js?v=age-hierarchy-2"></script>
 <script src="/digital-twin/twin-viewer-state-v1.js?v=twin-state-1"></script>
-<script src="/digital-twin/user-upload-wizard-v1.js?v=upload-wizard-1"></script>
+<script src="/digital-twin/user-upload-wizard-v1.js?v=upload-wizard-2"></script>
 <script src="/digital-twin/multiscale-digital-twin-model-v1.js?v=twin-model-1"></script>
+
+<!-- Canonical state boundary. These are ES modules and intentionally load after the page scripts. -->
+<script type="module" src="/digital-twin/backend-contracts.js?v=contracts-2"></script>
+<script type="module" src="/digital-twin/canonical-state.js?v=state-2"></script>
+<script type="module" src="/digital-twin/analysis-result-adapter.js?v=adapter-3"></script>
+<script type="module" src="/digital-twin/canonical-ui-runtime.js?v=state-runtime-1"></script>
+<script type="module" src="/digital-twin/biological-model-status.js?v=model-status-1"></script>
+<script type="module" src="/digital-twin/analysis-state-presentation.js?v=status-presentation-1"></script>
