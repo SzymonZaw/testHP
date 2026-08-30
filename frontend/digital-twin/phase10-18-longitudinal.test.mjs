@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { buildTimelineModel, normalizeResultStatus, trajectoryStatusForTimepoint } from './phase10-18-longitudinal.js';
+import { buildTimelineModel, normalizeResultStatus, trajectoryStatusForTimepoint } from './phase10-18-model.js';
 
 test('timeline defaults unknown timepoints to Not established', () => {
   const model = buildTimelineModel({ selection: { timepoint: 'T0' }, timepoint: 'T0', status: 'idle' });
