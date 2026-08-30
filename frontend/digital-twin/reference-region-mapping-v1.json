@@ -1,0 +1,27 @@
+{
+  "schemaVersion": "1.0",
+  "purpose": "Source-backed semantic region mapping contract for reference hand assets.",
+  "rules": [
+    "A semantic region is active only when its geometry identifier is explicitly supported by the source asset or a traceable annotation derived from that source.",
+    "No Palm/Thumb/Index/Middle/Ring/Little/Wrist geometry ID is inferred from visual position or mesh order.",
+    "Until source-backed identifiers exist, region status remains not_established.",
+    "Reference geometry is never converted into user-specific health data."
+  ],
+  "assetMappings": {
+    "nih-hand-template-3dpx-017237": {
+      "status": "not_established",
+      "source": "https://3d.nih.gov/entries/3DPX-017237",
+      "sourceAccession": "3DPX-017237",
+      "geometryIdField": null,
+      "regions": {
+        "palm": { "status": "not_established", "geometryIds": [] },
+        "thumb": { "status": "not_established", "geometryIds": [] },
+        "index": { "status": "not_established", "geometryIds": [] },
+        "middle": { "status": "not_established", "geometryIds": [] },
+        "ring": { "status": "not_established", "geometryIds": [] },
+        "little": { "status": "not_established", "geometryIds": [] },
+        "wrist": { "status": "not_established", "geometryIds": [] }
+      }
+    }
+  }
+}
