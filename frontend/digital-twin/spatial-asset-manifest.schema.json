@@ -1,0 +1,52 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "TestHP Spatial Asset Manifest",
+  "type": "object",
+  "required": ["schemaVersion", "assetId", "assetUrl", "format", "coordinateSystem", "regions"],
+  "properties": {
+    "schemaVersion": { "type": "string" },
+    "assetId": { "type": "string", "minLength": 1 },
+    "assetUrl": { "type": "string", "minLength": 1 },
+    "format": { "enum": ["glb", "gltf"] },
+    "coordinateSystem": {
+      "type": "object",
+      "required": ["units", "upAxis", "handedness"],
+      "properties": {
+        "units": { "type": "string", "minLength": 1 },
+        "upAxis": { "enum": ["X", "Y", "Z"] },
+        "handedness": { "enum": ["left", "right"] },
+        "origin": { "type": "array", "prefixItems": [{"type":"number"},{"type":"number"},{"type":"number"}], "minItems": 3, "maxItems": 3 }
+      },
+      "additionalProperties": true
+    },
+    "regions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["regionId", "geometryId"],
+        "properties": {
+          "regionId": { "type": "string", "enum": ["palm", "thumb", "index", "middle", "ring", "little", "wrist"] },
+          "geometryId": { "type": "string", "minLength": 1 },
+          "tissueId": { "type": ["string", "null"] },
+          "cellId": { "type": ["string", "null"] },
+          "evidenceIds": { "type": "array", "items": { "type": "string" } }
+        },
+        "additionalProperties": false
+      }
+    },
+    "evidence": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["evidenceId"],
+        "properties": {
+          "evidenceId": { "type": "string", "minLength": 1 },
+          "source": { "type": ["string", "null"] },
+          "provenance": { "type": ["string", "null"] }
+        },
+        "additionalProperties": true
+      }
+    }
+  },
+  "additionalProperties": true
+}
