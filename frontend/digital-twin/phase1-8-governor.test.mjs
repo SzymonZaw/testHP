@@ -5,6 +5,8 @@ import {
   NOT_ESTABLISHED,
   canonicalSpatialTree,
   sanitizeSelection,
+  saveCanonicalSelection,
+  loadCanonicalSelection,
   suppliedCells,
   suppliedMolecularLayers,
   suppliedTissues,
@@ -30,6 +32,10 @@ test('canonical initialization contains the phase 1 state dimensions', () => {
   assert.deepEqual(state.selection, {
     subject: 'own_cohort', timepoint: 'T0', region: 'palm', tissue: null, cell: null, molecularLayer: null,
   });
+  assert.deepEqual(
+    [state.subject, state.timepoint, state.region, state.tissue, state.cell, state.molecularLayer],
+    [state.selection.subject, state.selection.timepoint, state.selection.region, state.selection.tissue, state.selection.cell, state.selection.molecularLayer],
+  );
   assert.ok(state.evidence);
   assert.ok(state.biologicalState);
   assert.equal(state.biologicalState.status, NOT_ESTABLISHED);
@@ -64,4 +70,22 @@ test('partial backend data never becomes clinical confidence', () => {
   assert.equal(state.evidence.coverage, 0.125);
   assert.equal(state.evidence.confidence, null);
   assert.equal(state.biologicalState.status, NOT_ESTABLISHED);
+});
+
+test('selection can be restored after reload', () => {
+  const storage = {
+    data: new Map(),
+    setItem(key, value) { this.data.set(key, value); },
+    getItem(key) { return this.data.get(key) ?? null; },
+  };
+  const state = stateWithAnatomy();
+  const selected = sanitizeSelection(state, { subject: 'own_cohort', timepoint: 'T0', region: 'palm', tissue: 'connective-1', cell: 'A17', molecularLayer: 'rna' });
+  saveCanonicalSelection(selected.selection, storage);
+  const restored = loadCanonicalSelection(storage);
+  assert.deepEqual(restored, selected.selection);
+  const reloadedState = sanitizeSelection(createDigitalTwinState({ anatomy: state.anatomy, molecular: state.molecular }), restored);
+  assert.equal(reloadedState.region, 'palm');
+  assert.equal(reloadedState.tissue, 'connective-1');
+  assert.equal(reloadedState.cell, 'A17');
+  assert.equal(reloadedState.molecularLayer, 'rna');
 });
