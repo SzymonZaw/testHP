@@ -1,0 +1,31 @@
+{
+  "schemaVersion": "spatial-user/v1",
+  "asset": {
+    "file": "my-hand.glb",
+    "format": "glb",
+    "assetId": "user-hand-001"
+  },
+  "coordinateSystem": {
+    "id": "user-defined",
+    "units": "mm",
+    "handedness": "right-handed",
+    "origin": "scan-origin",
+    "axisConvention": "X-right,Y-up,Z-forward"
+  },
+  "regions": [
+    {"regionId":"palm","geometryId":"mesh_palm"},
+    {"regionId":"thumb","geometryId":"mesh_thumb"},
+    {"regionId":"index","geometryId":"mesh_index"},
+    {"regionId":"middle","geometryId":"mesh_middle"},
+    {"regionId":"ring","geometryId":"mesh_ring"},
+    {"regionId":"little","geometryId":"mesh_little"},
+    {"regionId":"wrist","geometryId":"mesh_wrist"}
+  ],
+  "tissues": [],
+  "cells": [],
+  "evidence": {
+    "sourceId": "my-hand-scan",
+    "provenance": "user-provided",
+    "regionLinks": []
+  }
+}
