@@ -1,0 +1,35 @@
+/* UX polish for the canonical Digital Twin surface.
+   Deliberately keeps the existing runtime/semantics intact and only improves hierarchy. */
+.dt{max-width:1600px;margin:0 auto;padding:20px}
+.dt header{position:sticky;top:10px;z-index:20;backdrop-filter:blur(14px);box-shadow:0 12px 36px #0005}
+.dt header strong{font-size:15px}
+.dt header small{margin-top:3px}
+.context{order:2}
+.workspace{order:3;grid-template-columns:minmax(190px,230px) minmax(520px,1fr) minmax(280px,320px);min-height:680px}
+.left,.right{min-width:0}
+.left{gap:14px}
+.center{box-shadow:0 18px 50px #0003}
+.viewer-head{align-items:center;min-height:54px}
+.viewport{min-height:600px}
+.hint{pointer-events:none}
+.right{gap:10px}
+.right .card:first-child{border-color:#2d5666}
+.bottom{order:4}
+.bottom .panel{min-height:120px}
+/* Make empty/not-established states calm and clearly distinct from errors. */
+.dt-ne{letter-spacing:.04em;color:#8195a7;font-weight:600}
+.dt-empty,.dt-empty-block,.dt-empty-inspector{color:#8195a7}
+/* Keep provenance/governance visible but subordinate to exploration. */
+.provenance,.timeline{background:#091521}
+@media(max-width:1100px){
+  .workspace{grid-template-columns:200px minmax(0,1fr)}
+  .right{grid-column:1/-1;display:grid;grid-template-columns:repeat(3,minmax(0,1fr))}
+  .viewport{min-height:540px}
+}
+@media(max-width:760px){
+  .dt{padding:10px}
+  .dt header{position:static}
+  .workspace{grid-template-columns:1fr}
+  .right{grid-column:auto;display:flex}
+  .viewport{min-height:460px}
+}
