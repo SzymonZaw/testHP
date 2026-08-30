@@ -28,7 +28,9 @@ jobs:
 
       - name: Start local static server
         run: |
-          python -m http.server 4173 --directory . > /tmp/testhp-server.log 2>&1 &
+          # index.html lives in frontend/digital-twin. Serve frontend/ so
+          # /digital-twin/ resolves to that directory from the repo layout.
+          python -m http.server 4173 --directory frontend > /tmp/testhp-server.log 2>&1 &
           echo $! > /tmp/testhp-server.pid
           for i in $(seq 1 20); do
             if curl -fsS http://127.0.0.1:4173/digital-twin/ >/dev/null; then exit 0; fi
