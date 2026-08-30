@@ -5,7 +5,9 @@ let state = createDigitalTwinState();
 const subscribers = new Set();
 
 function snapshot() {
-  return structuredClone ? structuredClone(state) : JSON.parse(JSON.stringify(state));
+  return typeof structuredClone === 'function'
+    ? structuredClone(state)
+    : JSON.parse(JSON.stringify(state));
 }
 
 function publish() {
@@ -17,6 +19,7 @@ function publish() {
 
 export function getDigitalTwinState() { return snapshot(); }
 export function subscribeDigitalTwinState(listener) {
+  if (typeof listener !== 'function') throw new TypeError('listener must be a function');
   subscribers.add(listener);
   listener(snapshot());
   return () => subscribers.delete(listener);
@@ -33,10 +36,10 @@ export function setAnalysisError(error) {
 export function setUserInput(input) {
   state = createDigitalTwinState({
     ...state,
-    status: 'validating',
     input: { ...state.input, ...input },
     modalities: input?.modalities ?? state.modalities,
   });
+  state.status = 'validating';
   return publish();
 }
 export function resetDigitalTwinState() {
