@@ -1,0 +1,82 @@
+{
+  "schemaVersion": "1.0",
+  "purpose": "External reference sources for the Human Digital Twin. References are metadata-only until a user explicitly downloads or imports data.",
+  "policy": {
+    "referenceDataIsNotUserData": true,
+    "referenceDataMustNotProduceUserHealthClaims": true,
+    "missingSourceMeansNotEstablished": true,
+    "downloadIntoRepoByDefault": false
+  },
+  "sources": [
+    {
+      "id": "nih3d-hand-template-3DPX-017237",
+      "kind": "spatial_asset",
+      "provider": "NIH 3D Print Exchange",
+      "title": "3D Model of an Anatomical Template of Healthy Adult Human Hand",
+      "url": "https://3d.nih.gov/entries/3DPX-017237",
+      "downloadUrl": "https://3d.nih.gov/entries/download/17237/1",
+      "modalities": ["3d_mesh", "anatomical_template"],
+      "spatialScope": "hand",
+      "intendedUse": "Reference geometry and spatial registration baseline",
+      "limitations": [
+        "Template of healthy adult hands, not a subject-specific digital twin",
+        "Does not by itself provide tissue- or cell-level identity",
+        "Region IDs must be supplied or derived and validated before semantic picking"
+      ],
+      "provenance": {
+        "sourceType": "public_reference",
+        "version": "1",
+        "license": "See source record"
+      }
+    },
+    {
+      "id": "hubmap-data-portal",
+      "kind": "spatial_single_cell",
+      "provider": "HuBMAP Consortium",
+      "title": "HuBMAP Data Portal",
+      "url": "https://portal.hubmapconsortium.org/",
+      "downloadUrl": "https://hubmapconsortium.org/hubmap-data/",
+      "modalities": [
+        "spatial_transcriptomics",
+        "single_cell",
+        "imaging",
+        "rna",
+        "chromatin",
+        "multimodal"
+      ],
+      "spatialScope": "human tissues",
+      "intendedUse": "Reference tissue/cell/spatial/molecular datasets and provenance-aware adapters",
+      "limitations": [
+        "Dataset availability depends on organ, specimen and assay",
+        "Reference observations must not be relabeled as observations of the current user",
+        "Download access and terms are controlled by the source portal"
+      ],
+      "provenance": {
+        "sourceType": "public_reference",
+        "version": "portal_current",
+        "license": "See individual dataset record"
+      }
+    },
+    {
+      "id": "allen-cell-explorer",
+      "kind": "cell_reference",
+      "provider": "Allen Institute for Cell Science",
+      "title": "Allen Cell Explorer / Cell Feature Explorer",
+      "url": "https://www.allencell.org/",
+      "downloadUrl": "https://www.allencell.org/data-downloading.html",
+      "modalities": ["3d_cell_imaging", "segmentation", "cell_features", "single_cell_rna", "genomics"],
+      "spatialScope": "cellular",
+      "intendedUse": "Reference 3D cell morphology, segmentation and cell-level feature data",
+      "limitations": [
+        "Reference cell datasets are not cells from the user's hand",
+        "Cell line and assay context must remain attached to provenance",
+        "Do not infer hand-specific health or age from these data alone"
+      ],
+      "provenance": {
+        "sourceType": "public_reference",
+        "version": "source_current",
+        "license": "See individual dataset record"
+      }
+    }
+  ]
+}
