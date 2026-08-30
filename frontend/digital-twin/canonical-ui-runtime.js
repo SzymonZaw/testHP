@@ -29,6 +29,12 @@ export function ingestAnalysisResult(result) {
   state = reduceAnalysisResult(state, adapted);
   return publish();
 }
+export function setAnalysisLoading() {
+  state = createDigitalTwinState(state);
+  state.status = 'analyzing';
+  state.error = null;
+  return publish();
+}
 export function setAnalysisError(error) {
   state = setDigitalTwinError(state, error);
   return publish();
@@ -40,18 +46,40 @@ export function setUserInput(input) {
     modalities: input?.modalities ?? state.modalities,
   });
   state.status = 'validating';
+  state.error = null;
   return publish();
 }
+
+/** Only frontend API boundary for AnalysisResult retrieval. */
+export async function fetchAnalysisResult(endpoint, options = {}, fetchImpl = globalThis.fetch) {
+  if (typeof fetchImpl !== 'function') throw new TypeError('fetch implementation is required');
+  if (!endpoint) throw new TypeError('analysis endpoint is required');
+  setAnalysisLoading();
+  try {
+    const response = await fetchImpl(endpoint, {
+      ...options,
+      headers: { Accept: 'application/json', ...(options.headers || {}) },
+    });
+    if (!response.ok) throw new Error(`Analysis request failed: HTTP ${response.status}`);
+    return ingestAnalysisResult(await response.json());
+  } catch (error) {
+    setAnalysisError(error);
+    throw error;
+  }
+}
+
 export function resetDigitalTwinState() {
   state = createDigitalTwinState();
   return publish();
 }
 
 window.TestHPCanonicalState = Object.freeze({
-  version: '1',
+  version: '2',
   get: getDigitalTwinState,
   subscribe: subscribeDigitalTwinState,
   ingestAnalysisResult,
+  fetchAnalysisResult,
+  setLoading: setAnalysisLoading,
   setAnalysisError,
   setUserInput,
   reset: resetDigitalTwinState,
