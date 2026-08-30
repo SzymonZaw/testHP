@@ -1,4 +1,4 @@
-from __future__
+from __future__ import annotations
 
 import io
 import mimetypes
@@ -203,24 +203,10 @@ async def upload(modality: str, file: UploadFile = File(...), subject_id: str = 
     try:
         asset=await ingest_upload(file,subject_id,timepoint,modality,subtype,view)
         canonical=register_canonical_asset(asset)
-    except ValueError as exc: raise HTTPException(status_code=400,detail=str(exc)) from exc
-    analysis=analyze_asset(asset.to_dict())
-    return {"status":asset.status,"asset":asset.to_dict(),"canonical_data_object":canonical.to_dict(),"provenance":make_provenance(asset_id=asset.asset_id,source=asset.path,method="upload"),"analysis":analysis}
+        return {"asset":asset,"canonical":canonical}
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
-@app.post("/api/longitudinal/compare")
-def longitudinal_compare(request: LongitudinalRequest): return {"subject_id":request.subject_id,"changes":compare_observations(request.subject_id,request.observations)}
-@app.get("/api/video/inspect")
-def video_inspect(path: str):
-    target=ROOT/path
-    if not target.is_file(): raise HTTPException(status_code=404,detail="video not found")
-    return inspect_video(target)
-@app.get("/api/video")
-def video_inventory(): return {"videos":analyze_video_directory(RAW_ROOT/"hand"/"media")}
-@app.get("/api/skin/longitudinal")
-def skin_longitudinal(request: SkinLongitudinalRequest): return {"subject_id":request.subject_id,"changes":compare_skin_observations(request.subject_id,request.observations)}
-
-@app.get("/api/ontology/skin")
-def skin_ontology(): return ontology_snapshot()
-
-app.mount("/web", StaticFiles(directory=WEB_ROOT), name="web")
-app.mount("/digital-twin", StaticFiles(directory=DIGITAL_TWIN_ROOT, html=True), name="digital-twin")
+# Serve the Digital Twin frontend from FastAPI as a single-process deployment surface.
+if DIGITAL_TWIN_ROOT.exists():
+    app.mount("/digital-twin", StaticFiles(directory=DIGITAL_TWIN_ROOT, html=True), name="digital-twin")
