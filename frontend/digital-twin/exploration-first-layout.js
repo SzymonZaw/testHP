@@ -3,6 +3,7 @@
   if (window.__testhpExplorationFirstInstalled) return;
   window.__testhpExplorationFirstInstalled = true;
   const root = () => document.getElementById('testhp-end-user-layer');
+
   function render() {
     const host = root();
     if (!host || !host.querySelector('.dt-phase9')) return;
@@ -35,6 +36,23 @@
       right.prepend(next);
     }
   }
+
+  function activateReference(event) {
+    const detail = event?.detail ?? {};
+    window.__testhpReferenceHandState = Object.freeze({
+      active: true,
+      sourceId: detail.sourceId || 'nih-hand-template-3DPX-017237',
+      regionId: detail.regionId || 'palm',
+      provenance: 'public_reference'
+    });
+    window.dispatchEvent(new CustomEvent('testhp:reference-hand-activated', {
+      detail: window.__testhpReferenceHandState
+    }));
+    render();
+  }
+
+  window.addEventListener('testhp:reference-hand-requested', activateReference);
+
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', render, { once: true });
   else render();
   new MutationObserver(render).observe(document.documentElement, { childList: true, subtree: true });
