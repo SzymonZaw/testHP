@@ -1,0 +1,31 @@
+{
+  "schemaVersion": "1.0.0",
+  "references": [
+    {
+      "id": "nih3d-hand-template-3dpx-017237",
+      "kind": "hand_reference_geometry",
+      "provider": "NIH 3D Print Exchange",
+      "url": "https://3d.nih.gov/entries/3DPX-017237",
+      "repository": "https://github.com/HegdeUSA/Hand_template",
+      "subjectScope": "healthy_adult_reference",
+      "spatialScale": "hand",
+      "assetFormats": ["stl", "nifti", "glb_if_available_in_processed_version"],
+      "supports": ["3d_hand_geometry", "reference_registration"],
+      "doesNotAssert": ["personal_subject_geometry", "semantic_hand_region_ids", "tissue_segmentation", "cell_segmentation", "molecular_measurements"],
+      "provenanceRequired": true
+    },
+    {
+      "id": "hubmap-human-reference-atlas",
+      "kind": "multiscale_spatial_reference",
+      "provider": "HuBMAP Consortium",
+      "url": "https://humanatlas.io/",
+      "dataPortal": "https://hubmapconsortium.org/hubmap-data/",
+      "documentation": "https://docs.humanatlas.io/dev",
+      "subjectScope": "healthy_human_reference_and_experimental_datasets",
+      "spatialScale": "organ_to_cell",
+      "supports": ["anatomical_reference", "cell_types", "spatial_positions", "registration", "biomarkers", "experimental_spatial_data"],
+      "doesNotAssert": ["personal_hand_measurements", "individual_health", "individual_biological_age"],
+      "provenanceRequired": true
+    }
+  ]
+}
