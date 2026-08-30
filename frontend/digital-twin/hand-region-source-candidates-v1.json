@@ -1,0 +1,42 @@
+{
+  "version": "1.0.0",
+  "purpose": "Source-backed candidate datasets for semantic hand-region mapping; no candidate is asserted as a direct mapping for the NIH reference mesh without explicit topology correspondence.",
+  "target_regions": ["wrist", "palm", "thumb", "index", "middle", "ring", "little"],
+  "candidates": [
+    {
+      "id": "egohands_v1",
+      "name": "Ego3DHands",
+      "source": "https://github.com/AlextheEngineer/Ego3DHands",
+      "coverage": ["wrist", "palm", "thumb", "index", "middle", "ring", "little"],
+      "evidence": ["15-class segmentation masks", "22 hand joints", "3D global and canonical joint locations"],
+      "modality": ["RGB", "depth", "segmentation", "3D joints"],
+      "real_world": true,
+      "direct_mesh_topology_match_to_nih": false,
+      "status": "candidate"
+    },
+    {
+      "id": "palm_3dmd_mano",
+      "name": "PALM",
+      "source": "https://github.com/facebookresearch/PALM",
+      "coverage": ["wrist", "palm", "thumb", "index", "middle", "ring", "little"],
+      "evidence": ["13k registered 3D hand scans", "MANO registrations", "3D scans", "multi-view imagery"],
+      "modality": ["3D mesh", "RGB", "depth", "MANO"],
+      "real_world": true,
+      "direct_mesh_topology_match_to_nih": false,
+      "status": "candidate"
+    },
+    {
+      "id": "muvi_hand",
+      "name": "MuViHand",
+      "source": "https://github.com/LeylaKhaleghi/MuViHand",
+      "coverage": ["wrist", "thumb", "index", "middle", "ring", "little"],
+      "evidence": ["3D keypoints with explicit wrist and finger chains"],
+      "modality": ["multi-view video", "3D keypoints"],
+      "real_world": true,
+      "direct_mesh_topology_match_to_nih": false,
+      "status": "candidate"
+    }
+  ],
+  "mapping_rule": "A semantic region may become ESTABLISHED for the NIH mesh only after a reproducible correspondence is supplied (shared topology, registration transform plus annotations, or source-provided region IDs). Keypoints or image segmentation alone do not establish mesh-face identity.",
+  "current_nih_status": "NOT_ESTABLISHED"
+}
