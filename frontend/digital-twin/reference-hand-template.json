@@ -1,0 +1,56 @@
+{
+  "schemaVersion": "spatial-reference/v1",
+  "referenceId": "nih-hand-template-3dpx-017237",
+  "title": "NIH 3D Healthy Adult Human Hand Template",
+  "source": {
+    "type": "public-reference",
+    "url": "https://3d.nih.gov/entries/3DPX-017237",
+    "downloadUrl": "https://3d.nih.gov/entries/download/17237/1",
+    "upstreamRepository": "https://github.com/HegdeUSA/Hand_template",
+    "license": "MIT (upstream HegdeUSA/Hand_template repository)"
+  },
+  "asset": {
+    "format": "stl",
+    "expectedFile": "T_template_MASKED.nii_.gz__0_resaved_1.stl",
+    "kind": "anatomical-template-surface",
+    "status": "reference_geometry_only"
+  },
+  "provenance": {
+    "modality": "T1-weighted MRI",
+    "inputHands": 27,
+    "subjects": 21,
+    "processing": ["ANTs template creation", "3D Slicer segmentation", "STL export"]
+  },
+  "coordinateSystem": {
+    "id": "source-defined",
+    "units": "source-defined",
+    "handedness": "source-defined",
+    "origin": "source-defined",
+    "axisConvention": "source-defined",
+    "registrationRequiredForPatientData": true
+  },
+  "regions": {
+    "status": "not-provided-by-source",
+    "requiredIds": ["palm", "thumb", "index", "middle", "ring", "little", "wrist"],
+    "mappings": []
+  },
+  "tissues": {
+    "status": "not-provided-by-source",
+    "mappings": []
+  },
+  "cells": {
+    "status": "not-provided-by-source",
+    "mappings": []
+  },
+  "evidence": {
+    "referenceEvidenceId": "nih-3d-3dpx-017237",
+    "linkableScopes": ["subject", "timepoint", "region", "tissue", "cell"],
+    "note": "The reference can be attached as evidence for the geometry itself. It must not be presented as evidence of a user's health, disease, age, or cell state."
+  },
+  "integrationRules": [
+    "Do not invent region IDs from display labels or bounding boxes.",
+    "Do not claim a cell is spatially selectable until cell geometry/segmentation is supplied.",
+    "Do not register reference geometry to a user's hand without an explicit registration transform and provenance.",
+    "Keep reference data separate from user-specific Digital Twin observations."
+  ]
+}
