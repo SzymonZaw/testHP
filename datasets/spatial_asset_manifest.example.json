@@ -1,0 +1,25 @@
+{
+  "schemaVersion": "1.0",
+  "assetId": "my-hand-001",
+  "sourceId": "user-upload",
+  "assetUrl": "browser-object-url-is-added-at-import",
+  "coordinateSystem": {
+    "id": "hand-rig-v1",
+    "units": "mm",
+    "axisOrder": "x,y,z",
+    "orientation": "right-handed"
+  },
+  "regions": [
+    { "regionId": "wrist",  "geometryId": "mesh_wrist" },
+    { "regionId": "palm",   "geometryId": "mesh_palm" },
+    { "regionId": "thumb",  "geometryId": "mesh_thumb" },
+    { "regionId": "index",  "geometryId": "mesh_index" },
+    { "regionId": "middle", "geometryId": "mesh_middle" },
+    { "regionId": "ring",   "geometryId": "mesh_ring" },
+    { "regionId": "little", "geometryId": "mesh_little" }
+  ],
+  "annotations": [],
+  "tissues": [],
+  "cells": [],
+  "evidence": []
+}
