@@ -4,7 +4,7 @@
   const KEY = '__testhpSpatialHierarchy';
   if (window[KEY]) return;
 
-  const VERSION = '1.0.0';
+  const VERSION = '1.0.1';
   const LEVELS = Object.freeze(['macro', 'structure', 'tissue', 'cellular', 'cell', 'subcellular', 'molecular']);
   const LABELS = Object.freeze({
     macro: 'Macro anatomy',
@@ -55,6 +55,25 @@
     return [root, ...regions.map(id => makeNode({ id, label: id, level: 'structure', parentId: root.spatialId, regionId: id }))];
   }
 
+  function normalizeRenderedHandRoot() {
+    const roots = document.querySelectorAll('.dt-tree-root[data-region="palm"]');
+    roots.forEach(root => {
+      if (root.textContent.trim().toLowerCase() !== 'hand') return;
+      root.dataset.region = 'hand';
+      root.dataset.spatialId = 'hand';
+      root.dataset.spatialLevel = 'macro';
+    });
+  }
+
+  function installRenderedRootNormalization() {
+    normalizeRenderedHandRoot();
+    if (window.__testhpSpatialRootSemanticObserver) return;
+    const observer = new MutationObserver(() => normalizeRenderedHandRoot());
+    observer.observe(document.body, { childList: true, subtree: true });
+    window.__testhpSpatialRootSemanticObserver = observer;
+    window.addEventListener('beforeunload', () => observer.disconnect(), { once: true });
+  }
+
   const api = Object.freeze({
     version: VERSION,
     levels: LEVELS.slice(),
@@ -68,5 +87,6 @@
   });
 
   window[KEY] = api;
+  installRenderedRootNormalization();
   window.dispatchEvent(new CustomEvent('testhp:spatial-hierarchy-ready', { detail: { version: VERSION } }));
 })();
