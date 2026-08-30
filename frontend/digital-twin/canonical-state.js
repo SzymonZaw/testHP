@@ -5,7 +5,7 @@ import { normalizeAnalysisResult } from './backend-contracts.js';
  * UI modules should consume this state rather than maintaining independent
  * interpretations of the backend AnalysisResult.
  */
-export const DIGITAL_TWIN_STATE_VERSION = '1';
+export const DIGITAL_TWIN_STATE_VERSION = '2';
 
 export function createDigitalTwinState(initial = {}) {
   return {
@@ -30,6 +30,7 @@ export function createDigitalTwinState(initial = {}) {
       proteomics: null,
       epigenetics: null,
       genomics: null,
+      states: [],
     },
     health: initial.health ?? null,
     biologicalAge: initial.biologicalAge ?? null,
@@ -43,6 +44,7 @@ export function createDigitalTwinState(initial = {}) {
     provenance: initial.provenance ?? null,
     validation: initial.validation ?? null,
     interventions: initial.interventions ?? null,
+    selection: initial.selection ?? null,
   };
 }
 
@@ -65,9 +67,22 @@ export function reduceAnalysisResult(state, backendResult) {
   next.interventions = result.intervention_priority;
   next.evidence = {
     ...next.evidence,
-    items: result.provenance ? [result.provenance] : [],
+    coverage: result.evidence?.coverage ?? next.evidence.coverage,
+    confidence: result.evidence?.confidence ?? next.evidence.confidence,
+    missingModalities: Array.isArray(result.evidence?.missing_modalities)
+      ? result.evidence.missing_modalities
+      : next.evidence.missingModalities,
+    items: Array.isArray(result.evidence?.items)
+      ? result.evidence.items
+      : (result.provenance ? [result.provenance] : []),
     validation: result.validation,
   };
+  next.anatomy = result.anatomy && typeof result.anatomy === 'object'
+    ? result.anatomy
+    : next.anatomy;
+  next.modalities = result.modalities && typeof result.modalities === 'object'
+    ? result.modalities
+    : next.modalities;
 
   return next;
 }
