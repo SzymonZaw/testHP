@@ -1,0 +1,73 @@
+{
+  "version": 2,
+  "purpose": "Verified external references for the Digital Twin spatial biology pipeline. Reference data must never be treated as personal subject data.",
+  "datasets": [
+    {
+      "id": "nih3d-hand-template-017237",
+      "layer": "hand",
+      "type": "3d_anatomical_reference",
+      "source": "NIH 3D Print Exchange",
+      "url": "https://3d.nih.gov/entries/3DPX-017237",
+      "license": "See source record",
+      "usable_for": ["reference_hand_geometry", "spatial_registration"],
+      "limitations": ["template_not_personal_hand", "does_not_provide_soft_tissue_cell_geometry"],
+      "notes": "Healthy adult hand template built from T1-weighted MR images of 27 hands from 21 subjects; segmented hand export is available."
+    },
+    {
+      "id": "hra-ccf",
+      "layer": "multiscale_spatial",
+      "type": "reference_atlas_and_coordinate_framework",
+      "source": "Human Reference Atlas",
+      "url": "https://docs.humanatlas.io/dev",
+      "api_url": "https://apps.humanatlas.io/api/grlc/",
+      "usable_for": ["spatial_registration", "anatomical_semantics", "cell_type_mapping", "3d_reference_objects"],
+      "limitations": ["not_a_personal_hand_dataset", "coverage_is_organ_and_dataset_specific"],
+      "notes": "Provides Common Coordinate Framework concepts, 3D reference objects, semantic labels and spatially registered single-cell exploration."
+    },
+    {
+      "id": "hubmap-skin-098690deb730502e5d5d0bfdbf8f2c80",
+      "layer": "tissue_and_cells",
+      "type": "human_skin_pheno_cycler",
+      "source": "HuBMAP",
+      "url": "https://portal.hubmapconsortium.org/browse/dataset/098690deb730502e5d5d0bfdbf8f2c80",
+      "usable_for": ["skin_tissue_evidence", "multiplex_cell_imaging_reference"],
+      "limitations": ["skin_not_specifically_hand", "dataset_requires_registration_to_any_hand_reference", "not_a_personal_subject"],
+      "notes": "53-plex PhenoCycler dataset from human skin tissue cores; useful as a real tissue/cell imaging reference."
+    },
+    {
+      "id": "geo-gse109822",
+      "layer": "cell_and_molecular",
+      "type": "human_dermal_fibroblast_spatial_and_single_cell_rna",
+      "source": "NCBI GEO",
+      "accession": "GSE109822",
+      "url": "https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE109822",
+      "usable_for": ["dermal_fibroblast_cell_types", "spatial_transcriptional_reference", "single_cell_rna_reference"],
+      "limitations": ["not_hand_specific", "single_donor_for_single_cell_component", "does_not_provide_a_3d_hand_registration"],
+      "notes": "Human dermal fibroblast study combining spatial RNA profiling of papillary/reticular dermis with single-cell RNA sequencing."
+    },
+    {
+      "id": "allen-cell-explorer-3d",
+      "layer": "cell_geometry",
+      "type": "3d_single_cell_microscopy",
+      "source": "Allen Cell Explorer",
+      "url": "https://www.allencell.org/data-downloading.html",
+      "usable_for": ["3d_cell_geometry_reference", "cell_features", "segmentation_reference", "cell_image_pipeline"],
+      "limitations": ["mostly_cell_line_reference", "not_hand_tissue", "not_personal_subject"],
+      "notes": "Open 3D cell imaging and feature datasets; includes cell-level morphology/segmentation-derived features and downloadable volumetric images."
+    }
+  ],
+  "recommended_pipeline": {
+    "hand": "nih3d-hand-template-017237",
+    "spatial_framework": "hra-ccf",
+    "tissue_reference": "hubmap-skin-098690deb730502e5d5d0bfdbf8f2c80",
+    "cell_molecular_reference": "geo-gse109822",
+    "cell_geometry_reference": "allen-cell-explorer-3d"
+  },
+  "hard_rules": [
+    "reference_data != personal_data",
+    "reference_data != clinical_diagnosis",
+    "missing_registration != missing_biology",
+    "coverage != confidence",
+    "no biological age, health, disease, trajectory or intervention result may be fabricated by the frontend"
+  ]
+}
