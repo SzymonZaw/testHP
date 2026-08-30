@@ -28,7 +28,49 @@ export function setUserInput(input) {
   state = createDigitalTwinState({ ...state, input: { ...state.input, ...input }, modalities: input?.modalities ?? state.modalities });
   state.status = 'validating'; state.error = null; return publish();
 }
-export function updateSelection(patch = {}) { state = sanitizeSelection(state, patch); return publish(); }
+
+// A timepoint change invalidates all result data from the previous timepoint.
+// The next backend response repopulates the state. This prevents stale T0 data
+// from being displayed while T1/T2/T3 is loading or when its endpoint fails.
+export function updateSelection(patch = {}) {
+  const previous = state.selection.timepoint;
+  state = sanitizeSelection(state, patch);
+  if (Object.prototype.hasOwnProperty.call(patch, 'timepoint') && state.timepoint !== previous) {
+    clearAnalysisDataInPlace();
+  }
+  return publish();
+}
+
+function clearAnalysisDataInPlace() {
+  state.status = 'idle';
+  state.error = null;
+  state.qc = [];
+  state.modalities = {};
+  state.assets = [];
+  state.cells = [];
+  state.anatomy = { hand: null, regions: [], tissues: [], cells: [] };
+  state.trajectory = null;
+  state.diseaseTrajectory = null;
+  state.whatIf = null;
+  state.molecular = { rna: null, proteomics: null, epigenetics: null, genomics: null, states: [] };
+  state.health = null;
+  state.biologicalAge = null;
+  state.evidence = { coverage: null, confidence: null, missingModalities: [], items: [] };
+  state.biologicalState = {
+    health: { status: 'Not established', value: null, confidence: null, uncertainty: null, provenance: null },
+    diseaseState: { status: 'Not established', value: null, confidence: null, uncertainty: null, provenance: null },
+    biologicalAge: { status: 'Not established', value: null, confidence: null, uncertainty: null, provenance: null },
+    confidence: null,
+    uncertainty: null,
+    status: 'Not established',
+  };
+  state.uncertainty = null;
+  state.provenance = null;
+  state.validation = null;
+  state.interventions = null;
+  state.modelMetadata = null;
+}
+
 export async function fetchAnalysisResult(endpoint, options = {}, fetchImpl = globalThis.fetch) {
   if (typeof fetchImpl !== 'function') throw new TypeError('fetch implementation is required');
   if (!endpoint) throw new TypeError('analysis endpoint is required');
