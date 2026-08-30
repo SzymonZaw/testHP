@@ -1,0 +1,28 @@
+{
+  "schemaVersion": "1.0.0",
+  "datasetId": "HBM732.FZVZ.656",
+  "source": "HuBMAP",
+  "download": {
+    "method": "hubmap-clt",
+    "manifestLine": "HBM732.FZVZ.656 /",
+    "destination": "data/hubmap/HBM732.FZVZ.656"
+  },
+  "resources": {
+    "metadata": "metadata.tsv",
+    "segmentation": "derived/segmentation_masks/",
+    "transformations": "derived/segmentation_masks/transformations/",
+    "meshPattern": "derived/segmentation_masks/*-mesh.glb"
+  },
+  "normalization": {
+    "required": ["cellId", "coordinates"],
+    "optional": ["segmentationId", "cellType", "morphology"]
+  },
+  "registration": {
+    "status": "not-established",
+    "reason": "Dataset coordinates must be registered to the project's hand coordinate system before assigning a hand region."
+  },
+  "provenance": {
+    "documentation": "https://docs.hubmapconsortium.org/clt/",
+    "segmentationSchema": "https://hubmapconsortium.github.io/ingest-validation-tools/segmentation-mask/current/"
+  }
+}
