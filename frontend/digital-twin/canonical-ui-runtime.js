@@ -6,8 +6,11 @@ let state = createDigitalTwinState();
 const subscribers = new Set();
 function snapshot() { return typeof structuredClone === 'function' ? structuredClone(state) : JSON.parse(JSON.stringify(state)); }
 function publish() {
-  const next = snapshot(); subscribers.forEach(listener => listener(next)); saveCanonicalSelection(next.selection);
-  window.dispatchEvent(new CustomEvent('testhp:canonical-state-changed', { detail: next })); return next;
+  const next = snapshot();
+  subscribers.forEach(listener => listener(next));
+  saveCanonicalSelection(next.selection);
+  window.dispatchEvent(new CustomEvent('testhp:canonical-state-changed', { detail: next }));
+  return next;
 }
 export function getDigitalTwinState() { return snapshot(); }
 export function subscribeDigitalTwinState(listener) {
@@ -42,7 +45,7 @@ const restored = loadCanonicalSelection();
 if (restored) state = sanitizeSelection(state, restored);
 
 window.TestHPCanonicalState = Object.freeze({
-  version: '4', get: getDigitalTwinState, subscribe: subscribeDigitalTwinState, ingestAnalysisResult,
+  version: '6', get: getDigitalTwinState, subscribe: subscribeDigitalTwinState, ingestAnalysisResult,
   fetchAnalysisResult, setLoading: setAnalysisLoading, setAnalysisError, setUserInput, updateSelection, reset: resetDigitalTwinState,
 });
 window.addEventListener('testhp:end-user-analysis-loaded', () => { if (window.__testhpLastAnalysis) ingestAnalysisResult(window.__testhpLastAnalysis); });
