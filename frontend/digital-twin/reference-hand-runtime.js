@@ -44,6 +44,14 @@
       }
       badge.textContent = 'REFERENCE HAND · NIH 3D · 3DPX-017237';
     }
+
+    if (!head && !viewport && !host.querySelector('.dt-reference-runtime-state')) {
+      const status = document.createElement('section');
+      status.className = 'dt-reference-runtime-state';
+      status.setAttribute('aria-label', 'Active reference hand');
+      status.innerHTML = '<strong>REFERENCE HAND</strong><span>NIH 3D · 3DPX-017237 · reference geometry</span><em>Public reference data · not user health data</em>';
+      host.prepend(status);
+    }
   }
 
   function activate() {
