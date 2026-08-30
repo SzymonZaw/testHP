@@ -1,5 +1,5 @@
 {
-  "schemaVersion": "1.0",
+  "schemaVersion": "1.1",
   "purpose": "Reference-only catalog for bootstrapping the Digital Twin without inventing patient data.",
   "rules": [
     "Reference datasets are never treated as personal observations.",
@@ -14,11 +14,29 @@
       "title": "3D Model of An Anatomical Template of Healthy Adult Human Hand",
       "provider": "NIH 3D",
       "url": "https://3d.nih.gov/entries/3DPX-017237",
+      "download": "https://3d.nih.gov/entries/download/17237/2",
+      "asset": {
+        "format": "glb",
+        "url": "https://3d.nih.gov/api/submissions/23310/runs/c054b0b1-404c-4f43-b6a7-ddff98215e52/output-files/511811",
+        "processedVersion": "2"
+      },
+      "accession": "3DPX-017237",
       "type": "MRI-derived segmented 3D hand template",
       "status": "reference-only",
       "provides": ["hand_surface_geometry"],
       "doesNotProvide": ["patient_specific_geometry", "hand_region_ids", "tissue_geometry", "cell_geometry"],
-      "note": "Useful as a real anatomical reference, not as an individual patient's Digital Twin."
+      "coordinateSystem": "source-defined; retain source coordinates and provenance",
+      "provenance": {
+        "sourceType": "public_reference",
+        "provider": "NIH 3D",
+        "accession": "3DPX-017237"
+      },
+      "limitations": [
+        "Reference anatomy only; not a personal twin.",
+        "Semantic Palm/Thumb/Index/Middle/Ring/Little/Wrist geometry IDs are not asserted by the catalog.",
+        "No tissue, cell, molecular, health, biological-age, trajectory, or intervention result is inferred from this asset."
+      ],
+      "note": "Real anatomical reference. The runtime loads the processed GLB directly from NIH 3D and leaves semantic region mapping empty until source-backed annotations exist."
     },
     {
       "id": "nih-hand-bones-3dpx-017249",
