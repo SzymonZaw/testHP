@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { createDigitalTwinState, reduceAnalysisResult } from './canonical-state.js';
+import { createDigitalTwinState, reduceAnalysisResult, setSelection } from './canonical-state.js';
 import { normalizeAnalysisResult } from './backend-contracts.js';
 import { buildCanonicalViewModel } from './canonical-ui-projections-v1.js';
 
@@ -14,6 +14,29 @@ const baseResult = {
   multimodal_state: { status: 'not_established' },
   intervention_priority: { status: 'not_established', clinical_validation: false },
 };
+
+test('canonical state initializes with one shared selection', () => {
+  const state = createDigitalTwinState();
+  assert.deepEqual({
+    subject: state.subject, timepoint: state.timepoint, region: state.region,
+    tissue: state.tissue, cell: state.cell, molecularLayer: state.molecularLayer,
+  }, { subject: 'own_cohort', timepoint: 'T0', region: 'palm', tissue: null, cell: null, molecularLayer: null });
+  assert.deepEqual(state.selection, {
+    subject: state.subject, timepoint: state.timepoint, region: state.region,
+    tissue: state.tissue, cell: state.cell, molecularLayer: state.molecularLayer,
+  });
+});
+
+test('selection changes update every canonical field and explicit null is preserved', () => {
+  const state = createDigitalTwinState();
+  const selected = setSelection(state, { region: 'thumb' });
+  assert.equal(selected.region, 'thumb');
+  assert.equal(selected.tissue, null);
+  assert.equal(selected.cell, null);
+  assert.equal(selected.selection.region, 'thumb');
+  const cleared = setSelection(setSelection(state, { tissue: 'skin' }), { tissue: null });
+  assert.equal(cleared.tissue, null);
+});
 
 test('canonical state preserves no-data semantics', () => {
   const state = createDigitalTwinState();
@@ -31,9 +54,11 @@ test('AnalysisResult is normalized once into canonical state', () => {
   assert.equal(state.qc[0].status, 'usable');
   assert.equal(state.evidence.coverage, 0.25);
   assert.deepEqual(state.evidence.missingModalities, ['rna']);
+  assert.equal(state.subject, state.selection.subject);
+  assert.equal(state.timepoint, state.selection.timepoint);
 });
 
-test('validated status may be displayed but never invented', () => {
+test('backend-supplied biological age may be displayed but is never invented', () => {
   const result = { ...baseResult, biological_age: { status: 'validated', biological_age: 52 } };
   const state = reduceAnalysisResult(createDigitalTwinState(), normalizeAnalysisResult(result));
   assert.equal(state.biologicalAge.status, 'validated');
