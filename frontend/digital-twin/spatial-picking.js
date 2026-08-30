@@ -1,4 +1,6 @@
-export function resolveSpatialPicking(object, { canonicalState = null } = {}) {
+import { resolveGeometryRegion, resolveRegionEvidence } from '../../src/spatial/ReferenceTwinAdapter.js';
+
+export function resolveSpatialPicking(object, { canonicalState = null, spatialRegistry = null } = {}) {
   let node = object;
   const chain = [];
   while (node) {
@@ -17,10 +19,11 @@ export function resolveSpatialPicking(object, { canonicalState = null } = {}) {
     return null;
   };
 
-  const regionId = read(['regionId', 'region_id', 'region']);
+  const geometryId = read(['geometryId', 'geometry_id', 'geometry']);
+  const mappedRegionId = geometryId && spatialRegistry ? resolveGeometryRegion(spatialRegistry, geometryId) : null;
+  const regionId = mappedRegionId || read(['regionId', 'region_id', 'region']);
   const tissueId = read(['tissueId', 'tissue_id', 'tissue']);
   const cellId = read(['cellId', 'cell_id', 'cell']);
-  const geometryId = read(['geometryId', 'geometry_id', 'geometry']);
 
   if (!regionId && !tissueId && !cellId) return null;
 
@@ -29,6 +32,9 @@ export function resolveSpatialPicking(object, { canonicalState = null } = {}) {
     regionId,
     tissueId,
     cellId,
+    evidenceIds: regionId && spatialRegistry ? resolveRegionEvidence(spatialRegistry, regionId) : [],
+    sourceId: spatialRegistry?.sourceId ?? null,
+    sourceType: spatialRegistry?.sourceType ?? null,
     canonicalStateVersion: canonicalState?.version ?? null,
   };
 }
