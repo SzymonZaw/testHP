@@ -11,6 +11,8 @@ import { GLTFLoader } from 'https://cdn.jsdelivr.net/npm/three@0.160.0/examples/
   const LABELS = { wrist:'Wrist', palm:'Palm', thumb:'Thumb', index:'Index', middle:'Middle', ring:'Ring', little:'Little' };
   let host, canvas, renderer, scene, camera, controls, handRoot, raycaster, resizeObserver;
   let regionMeshes = new Map();
+  let cellMeshes = new Map();
+  let tissueMeshes = new Map();
   let current = { region:'palm', tissue:null, cell:null };
   let assetKey = null;
 
@@ -29,8 +31,6 @@ import { GLTFLoader } from 'https://cdn.jsdelivr.net/npm/three@0.160.0/examples/
     const assets=Array.isArray(state?.assets)?state.assets:[];
     return assets.find(a=>readyAsset(a) && ['hand_3d','3d','mesh','gltf','glb'].includes(String(a.modality??'').toLowerCase()) && assetUrl(a)) || null;
   };
-  const material=()=>new THREE.MeshStandardMaterial({color:0xc98f77,roughness:.62,metalness:.02});
-  const selectMaterial=()=>new THREE.MeshStandardMaterial({color:0x68b5ff,roughness:.58,emissive:0x0b2745,emissiveIntensity:.32});
 
   function disposeGroup(group){
     if(!group)return;
@@ -38,24 +38,46 @@ import { GLTFLoader } from 'https://cdn.jsdelivr.net/npm/three@0.160.0/examples/
   }
   function clearEmptyMessage(){host?.querySelector('.dt3d-empty')?.remove();}
   function showEmpty(title,detail){clearEmptyMessage();const e=document.createElement('div');e.className='dt3d-empty';e.innerHTML=`<strong>${title}</strong><span>${detail}</span>`;host.appendChild(e);}
-  function indexBackendRegions(state){
-    regionMeshes.clear();
-    const regions=Array.isArray(state?.anatomy?.regions)?state.anatomy.regions:[];
+
+  function indexBackendGeometry(state){
+    regionMeshes.clear(); cellMeshes.clear(); tissueMeshes.clear();
+    const anatomy=state?.anatomy && typeof state.anatomy==='object' ? state.anatomy : {};
+    const regions=Array.isArray(anatomy.regions)?anatomy.regions:[];
     regions.forEach(region=>{
       const id=String(region?.region_id ?? region?.regionId ?? region?.id ?? '').toLowerCase();
-      if(!REGIONS.includes(id))return;
-      regionMeshes.set(id,[]);
+      if(REGIONS.includes(id)) regionMeshes.set(id,[]);
     });
+    const tissues=Array.isArray(anatomy.tissues)?anatomy.tissues:[];
+    tissues.forEach(t=>{const id=String(t?.tissue_id ?? t?.tissueId ?? t?.id ?? '').toLowerCase();if(id)tissueMeshes.set(id,[]);});
+    const cells=Array.isArray(anatomy.cells)?anatomy.cells:(Array.isArray(state?.cells)?state.cells:[]);
+    cells.forEach(c=>{const id=String(c?.cell_id ?? c?.cellId ?? c?.id ?? '').toLowerCase();if(id)cellMeshes.set(id,[]);});
+
     handRoot?.traverse(node=>{
       if(!node.isMesh)return;
-      const raw=node.userData?.region ?? node.userData?.region_id ?? node.name;
-      const id=String(raw??'').toLowerCase();
-      const match=REGIONS.find(r=>id===r || id.includes(r));
+      const u=node.userData||{};
+      const rawRegion=u.region ?? u.region_id ?? u.regionId ?? node.name;
+      const rid=String(rawRegion??'').toLowerCase();
+      const match=REGIONS.find(r=>rid===r || rid.includes(r));
       if(match){if(!regionMeshes.has(match))regionMeshes.set(match,[]);regionMeshes.get(match).push(node);}
+      const cellId=String(u.cell_id ?? u.cellId ?? u.cell ?? '').toLowerCase();
+      if(cellId){if(!cellMeshes.has(cellId))cellMeshes.set(cellId,[]);cellMeshes.get(cellId).push(node);}
+      const tissueId=String(u.tissue_id ?? u.tissueId ?? u.tissue ?? '').toLowerCase();
+      if(tissueId){if(!tissueMeshes.has(tissueId))tissueMeshes.set(tissueId,[]);tissueMeshes.get(tissueId).push(node);}
+    });
+  }
+
+  function setMeshState(mesh, selected){
+    const materials=Array.isArray(mesh.material)?mesh.material:[mesh.material];
+    materials.filter(Boolean).forEach(m=>{
+      if(!m.userData.__dt3dOriginal){m.userData.__dt3dOriginal={color:m.color?.getHex?.(),emissive:m.emissive?.getHex?.(),emissiveIntensity:m.emissiveIntensity};}
+      if(m.color)m.color.setHex(selected?0x68b5ff:(m.userData.__dt3dOriginal.color ?? 0xc98f77));
+      if(m.emissive){m.emissive.setHex(selected?0x0b2745:(m.userData.__dt3dOriginal.emissive ?? 0));m.emissiveIntensity=selected?.32:(m.userData.__dt3dOriginal.emissiveIntensity ?? 0);}
     });
   }
   function highlight(){
-    for(const [id,meshes] of regionMeshes){for(const mesh of meshes){mesh.material?.color?.setHex(id===current.region?0x68b5ff:0xc98f77);if(mesh.material?.emissive){mesh.material.emissive.setHex(id===current.region?0x0b2745:0);mesh.material.emissiveIntensity=id===current.region?.32:0;}}}
+    for(const [id,meshes] of regionMeshes) meshes.forEach(m=>setMeshState(m,id===String(current.region).toLowerCase()));
+    for(const [id,meshes] of tissueMeshes) meshes.forEach(m=>{if(id!==String(current.tissue??'').toLowerCase())setMeshState(m,false);});
+    for(const [id,meshes] of cellMeshes) meshes.forEach(m=>setMeshState(m,id===String(current.cell??'').toLowerCase()));
     setBadge(current.cell?`CELL ${String(current.cell).toUpperCase()}`:current.tissue?'TISSUE FIELD':`${LABELS[current.region]||current.region} · 3D HAND`);
   }
   function setBadge(text){const el=host?.querySelector('.dt3d-badge');if(el)el.textContent=text;}
@@ -63,29 +85,39 @@ import { GLTFLoader } from 'https://cdn.jsdelivr.net/npm/three@0.160.0/examples/
   function reset(){camera.position.set(0,.45,8.6);controls.target.set(0,.1,0);controls.update();}
   function selectRegion(region){window.TestHPCanonicalState?.updateSelection?.({region});}
   function selectCell(cell){window.TestHPCanonicalState?.updateSelection?.({cell});}
+  function selectTissue(tissue){window.TestHPCanonicalState?.updateSelection?.({tissue});}
+
   function onPointer(event){
-    if(!canvas||!camera)return;const r=canvas.getBoundingClientRect();const p=new THREE.Vector2(((event.clientX-r.left)/r.width)*2-1,-((event.clientY-r.top)/r.height)*2+1);raycaster.setFromCamera(p,camera);
-    const objects=[...regionMeshes.values()].flat();const hit=raycaster.intersectObjects(objects,true)[0];if(!hit)return;let obj=hit.object;
-    while(obj && obj.parent && !obj.userData?.region && !obj.userData?.region_id && !obj.userData?.cell_id && !obj.userData?.cell) obj=obj.parent;
-    const region=obj?.userData?.region ?? obj?.userData?.region_id;const cell=obj?.userData?.cell_id ?? obj?.userData?.cell;
-    if(region)selectRegion(String(region));else if(cell)selectCell(String(cell));
+    if(!canvas||!camera)return;
+    const r=canvas.getBoundingClientRect();const p=new THREE.Vector2(((event.clientX-r.left)/r.width)*2-1,-((event.clientY-r.top)/r.height)*2+1);raycaster.setFromCamera(p,camera);
+    const objects=[...regionMeshes.values(),...tissueMeshes.values(),...cellMeshes.values()].flat();
+    const hit=raycaster.intersectObjects(objects,true)[0];if(!hit)return;
+    let obj=hit.object;
+    while(obj && obj.parent && !obj.userData?.region && !obj.userData?.region_id && !obj.userData?.regionId && !obj.userData?.tissue_id && !obj.userData?.tissueId && !obj.userData?.cell_id && !obj.userData?.cellId && !obj.userData?.cell) obj=obj.parent;
+    const u=obj?.userData||{};
+    const cell=u.cell_id ?? u.cellId ?? u.cell;
+    const tissue=u.tissue_id ?? u.tissueId ?? u.tissue;
+    const region=u.region ?? u.region_id ?? u.regionId;
+    if(cell)selectCell(String(cell));else if(tissue)selectTissue(String(tissue));else if(region)selectRegion(String(region));
   }
+
   async function loadBackendAsset(state){
-    disposeGroup(handRoot); regionMeshes.clear(); clearEmptyMessage();
+    disposeGroup(handRoot); regionMeshes.clear(); cellMeshes.clear(); tissueMeshes.clear(); clearEmptyMessage();
     const asset=hand3dAsset(state); const url=assetUrl(asset);
     if(!url){showEmpty('No 3D asset supplied','The backend has not supplied a ready hand 3D asset for this state. No anatomy is generated by the frontend.');setBadge('3D · NOT ESTABLISHED');assetKey=null;return;}
-    const key=String(url);if(assetKey===key && handRoot.children.length){highlight();return;}assetKey=key;
+    const key=String(url);if(assetKey===key && handRoot.children.length){indexBackendGeometry(state);highlight();return;}assetKey=key;
     const loader=new GLTFLoader();
     try{
-      const gltf=await loader.loadAsync(url);handRoot.add(gltf.scene);gltf.scene.traverse(n=>{if(n.isMesh && !n.material)n.material=material();});indexBackendRegions(state);highlight();
+      const gltf=await loader.loadAsync(url);handRoot.add(gltf.scene);indexBackendGeometry(state);highlight();
     }catch(error){assetKey=null;showEmpty('3D asset unavailable','The supplied 3D asset could not be loaded. The frontend does not substitute fictional anatomy.');setBadge('3D · UNAVAILABLE');window.dispatchEvent(new CustomEvent('testhp:3d-asset-error',{detail:{message:String(error)}}));}
   }
+
   function mount(){
     const next=findViewport();if(!next || (next===host&&canvas?.isConnected))return;host=next;host.innerHTML='';host.classList.add('dt3d-host');
     canvas=document.createElement('canvas');canvas.setAttribute('aria-label','Interactive 3D hand viewport');host.appendChild(canvas);
     const badge=document.createElement('div');badge.className='dt3d-badge';host.appendChild(badge);
     const controlsEl=document.createElement('div');controlsEl.className='dt3d-controls';const resetButton=document.createElement('button');resetButton.className='dt3d-reset';resetButton.type='button';resetButton.textContent='Reset view';resetButton.onclick=reset;controlsEl.appendChild(resetButton);host.appendChild(controlsEl);
-    const hint=document.createElement('div');hint.className='dt3d-hint';hint.textContent='Drag to rotate · wheel/pinch to zoom · click a supplied region';host.appendChild(hint);
+    const hint=document.createElement('div');hint.className='dt3d-hint';hint.textContent='Drag to rotate · wheel/pinch to zoom · click a supplied region, tissue or cell';host.appendChild(hint);
     renderer=new THREE.WebGLRenderer({canvas,antialias:true,alpha:true});renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,2));renderer.outputColorSpace=THREE.SRGBColorSpace;
     scene=new THREE.Scene();scene.background=new THREE.Color(0x0d1117);camera=new THREE.PerspectiveCamera(32,1,.1,100);camera.position.set(0,.45,8.6);
     controls=new OrbitControls(camera,canvas);controls.enableDamping=true;controls.enablePan=true;controls.minDistance=4;controls.maxDistance=15;controls.target.set(0,.1,0);
