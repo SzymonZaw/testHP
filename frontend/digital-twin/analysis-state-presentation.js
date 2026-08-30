@@ -43,6 +43,19 @@ export const canonicalViews = Object.freeze({
 window.TestHPCanonicalViews = canonicalViews;
 
 window.addEventListener('testhp:canonical-state-changed', event => {
-  const viewModel = buildCanonicalViewModel(event.detail);
+  const state = event.detail;
+  const viewModel = buildCanonicalViewModel(state);
+  const events = [
+    ['evidence', viewModel.evidence],
+    ['health', viewModel.health],
+    ['biological-age', viewModel.biologicalAge],
+    ['molecular', viewModel.molecular],
+    ['cells', viewModel.cells],
+    ['intervention', viewModel.intervention],
+    ['3d-twin', viewModel.twin3d],
+  ];
   window.dispatchEvent(new CustomEvent('testhp:canonical-view-model-changed', { detail: viewModel }));
+  events.forEach(([domain, detail]) => {
+    window.dispatchEvent(new CustomEvent(`testhp:canonical-${domain}-changed`, { detail }));
+  });
 });
