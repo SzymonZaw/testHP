@@ -1,0 +1,44 @@
+{
+  "schemaVersion": "1.0",
+  "sourceType": "external-reference",
+  "sources": [
+    {
+      "id": "nih3d-3dpx-017237",
+      "name": "3D Model of An Anatomical Template of Healthy Adult Human Hand",
+      "provider": "NIH 3D",
+      "url": "https://3d.nih.gov/entries/3DPX-017237",
+      "assetType": "human-hand-anatomical-template",
+      "modality": "T1-weighted MRI derived segmented 3D model",
+      "status": "reference-only",
+      "notes": "Real anatomical template derived from 27 healthy adult hands. Use as an external reference; do not represent it as an individual patient's twin."
+    },
+    {
+      "id": "nih3d-3dpx-017249",
+      "name": "Bones of the Healthy Adult Human Hand/Wrist",
+      "provider": "NIH 3D",
+      "url": "https://3d.nih.gov/entries/17249",
+      "assetType": "segmented-hand-wrist-bones",
+      "modality": "T1-weighted MRI derived segmentation",
+      "license": "GPLv3",
+      "status": "reference-only",
+      "notes": "Segmented bone model. Useful for spatial/anatomical reference, but it is not a complete soft-tissue hand model."
+    }
+  ],
+  "canonicalRegions": [
+    "palm",
+    "thumb",
+    "index",
+    "middle",
+    "ring",
+    "little",
+    "wrist"
+  ],
+  "mappingPolicy": {
+    "geometryId": "required-for-picking",
+    "regionId": "required-for-region-selection",
+    "tissueId": "optional",
+    "cellId": "optional",
+    "evidenceId": "optional",
+    "unknownGeometry": "do-not-infer"
+  }
+}
