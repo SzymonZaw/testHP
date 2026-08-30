@@ -1,0 +1,48 @@
+{
+  "schemaVersion": "1.0",
+  "status": "registration_ready_not_executed",
+  "purpose": "Traceable registration plan for transferring semantic hand regions from PALM/MANO into the NIH reference hand without inventing mesh IDs.",
+  "source": {
+    "dataset": "PALM",
+    "repository": "https://github.com/facebookresearch/PALM",
+    "geometry": "3dMD 3D hand scans",
+    "registration": "MANO",
+    "subjects": 263,
+    "scans": 13000
+  },
+  "semanticBridge": {
+    "model": "MANO",
+    "topology": "778 vertices",
+    "jointSchema": {
+      "wrist": 0,
+      "thumb": [1,2,3,4],
+      "index": [5,6,7,8],
+      "middle": [9,10,11,12],
+      "ring": [13,14,15,16],
+      "little": [17,18,19,20]
+    },
+    "regions": ["palm","thumb","index","middle","ring","little","wrist"]
+  },
+  "registrationSteps": [
+    "Load PALM 3D scan and its supplied MANO registration.",
+    "Load the NIH 3DPX-017237 reference mesh and preserve its original geometry IDs.",
+    "Establish a rigid or similarity transform from the PALM/MANO coordinate frame to the NIH reference frame using source-supported landmarks.",
+    "Transfer MANO semantic region labels to the registered surface only when correspondence quality passes the configured QC threshold.",
+    "Persist the resulting transform, source frame, target frame, landmark set, error metrics and provenance.",
+    "Write target geometry IDs only after the correspondence has been independently verified."
+  ],
+  "currentResult": {
+    "nihGeometryIds": {},
+    "status": "not_established",
+    "reason": "Repository contains no verified PALM scan-to-NIH registration result yet; no geometry IDs are inferred."
+  },
+  "qc": {
+    "required": true,
+    "metrics": ["landmark_rmse","surface_distance","coverage","outlier_rate"],
+    "thresholds": "to_be_defined_and_validated"
+  },
+  "licensing": {
+    "palm": "CC-BY-NC",
+    "note": "Dataset access and downstream use must comply with the source license and access conditions."
+  }
+}
