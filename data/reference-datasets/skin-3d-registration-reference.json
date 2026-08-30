@@ -1,0 +1,22 @@
+{
+  "schemaVersion": "1.0.0",
+  "purpose": "Reference for 3D registration of human skin tissue samples; no sample is assumed to belong to a specific hand without measured registration.",
+  "source": {
+    "id": "hubmap-skin-3d-matrics-a",
+    "name": "3D reconstruction of skin and spatial mapping of immune cell density, vascular distance and effects of sun exposure and aging",
+    "url": "https://github.com/hubmapconsortium/vccf-visualization-2022",
+    "portal": "https://portal.hubmapconsortium.org/"
+  },
+  "capabilities": ["2d-3d-registration", "segmentation", "classification", "3d-reconstruction", "cell-spatial-analysis"],
+  "registration": {
+    "referenceCoordinateSystem": "HRA-CCF",
+    "requiresMeasuredTransform": true,
+    "transformType": "rigid-or-affine",
+    "status": "reference-only"
+  },
+  "limitations": [
+    "Skin samples are not automatically hand samples.",
+    "A tissue-to-hand transform must be measured or otherwise validated before assigning a sample to a hand region.",
+    "This metadata does not contain a fabricated transform."
+  ]
+}
