@@ -1,3 +1,5 @@
+import { buildCanonicalViewModel, selectEvidence, selectHealthHierarchy, selectBiologicalAgeHierarchy, selectMolecular, selectCells, selectIntervention, select3DTwin } from './canonical-ui-projections-v1.js';
+
 /** UI semantics for missing, unusable and scientifically unestablished states. */
 const LABELS = Object.freeze({
   missing: 'Brak danych',
@@ -26,3 +28,21 @@ export function modalityState(qc, modelMetadata) {
     ? 'validated'
     : 'not_established';
 }
+
+export const canonicalViews = Object.freeze({
+  buildCanonicalViewModel,
+  selectEvidence,
+  selectHealthHierarchy,
+  selectBiologicalAgeHierarchy,
+  selectMolecular,
+  selectCells,
+  selectIntervention,
+  select3DTwin,
+});
+
+window.TestHPCanonicalViews = canonicalViews;
+
+window.addEventListener('testhp:canonical-state-changed', event => {
+  const viewModel = buildCanonicalViewModel(event.detail);
+  window.dispatchEvent(new CustomEvent('testhp:canonical-view-model-changed', { detail: viewModel }));
+});
