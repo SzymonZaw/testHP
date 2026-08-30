@@ -5,8 +5,8 @@
   function normalize(n){return n && typeof n==='object'?n:null;}
   function formatAge(node){
     const n=normalize(node);
-    if(!n || n.status==='not_established' || n.age==null) return 'Not established';
-    const age=Number(n.age); if(!Number.isFinite(age)) return 'Not established';
+    if(!n || n.status==='not_established' || n.age==null) return 'Nieustalone naukowo';
+    const age=Number(n.age); if(!Number.isFinite(age)) return 'Nieustalone naukowo';
     const unit=n.unit||'years';
     const uncertainty=n.uncertainty;
     return uncertainty!=null?`${age.toFixed(1)} ${unit} ± ${Number(uncertainty).toFixed(1)}`:`${age.toFixed(1)} ${unit}`;
@@ -23,5 +23,11 @@
     };
     walk(hierarchy,0);
   }
-  window.TestHPBiologicalAgeHierarchy={render,formatAge};
+  let canonicalAge=null;
+  function setCanonicalAge(view){
+    canonicalAge=view||null;
+    window.dispatchEvent(new CustomEvent('testhp:biological-age-canonical-changed',{detail:canonicalAge}));
+  }
+  window.TestHPBiologicalAgeHierarchy={render,formatAge,getCanonical:()=>canonicalAge};
+  window.addEventListener('testhp:canonical-biological-age-changed',e=>setCanonicalAge(e.detail));
 })();
