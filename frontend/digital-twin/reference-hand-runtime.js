@@ -14,8 +14,37 @@
     accession: '3DPX-017237'
   });
 
+  function publishUiState() {
+    const host = document.getElementById('testhp-end-user-layer');
+    if (!host) return;
+    host.dataset.referenceHandActive = 'true';
+    host.dataset.referenceHandSource = REFERENCE_HAND.sourceId;
+    host.dataset.referenceHandRegion = 'palm';
+
+    const head = host.querySelector('.viewer-head');
+    if (head) {
+      let context = head.querySelector('.dt-explore-context');
+      if (!context) {
+        context = document.createElement('div');
+        context.className = 'dt-explore-context';
+        head.prepend(context);
+      }
+      context.innerHTML = '<strong>REFERENCE HAND</strong><span>NIH 3D · 3DPX-017237 · reference geometry</span><em>Reference data · not user health data</em>';
+    }
+
+    const viewport = host.querySelector('.viewport');
+    if (viewport) {
+      let badge = viewport.querySelector('.dt-reference-active');
+      if (!badge) {
+        badge = document.createElement('div');
+        badge.className = 'dt-reference-active';
+        viewport.appendChild(badge);
+      }
+      badge.textContent = 'REFERENCE HAND · NIH 3D · 3DPX-017237';
+    }
+  }
+
   function activate() {
-    if (window.__testhpReferenceHandActivated) return true;
     window.__testhpReferenceHandActivated = true;
     window.__testhpReferenceHandState = Object.freeze({
       active: true,
@@ -23,6 +52,7 @@
       regionId: 'palm',
       provenance: 'public_reference'
     });
+    publishUiState();
     window.dispatchEvent(new CustomEvent('testhp:reference-hand-activated', {
       detail: { reference: REFERENCE_HAND, regionId: 'palm' }
     }));
@@ -31,4 +61,5 @@
 
   window.testhpReferenceHand = Object.freeze({ REFERENCE_HAND, activate });
   window.addEventListener('testhp:reference-hand-requested', activate);
+  if (window.__testhpReferenceHandActivated) publishUiState();
 })();
