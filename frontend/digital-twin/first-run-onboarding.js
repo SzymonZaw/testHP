@@ -2,9 +2,6 @@
   'use strict';
   if (window.__testhpFirstRunOnboardingInstalled) return;
   window.__testhpFirstRunOnboardingInstalled = true;
-  const STORAGE_KEY = 'testhp.digitalTwin.firstRun.v1';
-  const seen = () => { try { return localStorage.getItem(STORAGE_KEY) === 'seen'; } catch (_) { return false; } };
-  const markSeen = () => { try { localStorage.setItem(STORAGE_KEY, 'seen'); } catch (_) {} };
   const css = `.dt-onboarding-backdrop{position:fixed;inset:0;z-index:1000;background:rgba(2,7,12,.72);backdrop-filter:blur(8px);display:flex;align-items:center;justify-content:center;padding:24px}.dt-onboarding{width:min(920px,100%);border:1px solid #2b3948;border-radius:18px;background:#0b121a;box-shadow:0 30px 90px #000b;color:#e8eef5;overflow:hidden}.dt-onboarding-head{padding:28px 30px 20px;border-bottom:1px solid #202b36}.dt-onboarding-kicker{font-size:10px;font-weight:800;letter-spacing:.16em;color:#79bce9;text-transform:uppercase}.dt-onboarding h1{margin:8px 0 5px;font-size:25px;letter-spacing:-.02em}.dt-onboarding-sub{color:#8291a2;font-size:13px;max-width:620px}.dt-onboarding-body{display:grid;grid-template-columns:1fr 1fr;gap:14px;padding:22px 30px}.dt-onboarding-choice{border:1px solid #273442;border-radius:13px;background:#0e161f;padding:18px;display:flex;flex-direction:column;min-height:185px}.dt-onboarding-choice.primary{border-color:#31556b;background:#0e1a24}.dt-onboarding-choice h2{font-size:14px;margin:0 0 7px}.dt-onboarding-choice p{margin:0;color:#8392a2;font-size:12px;line-height:1.55}.dt-onboarding-choice button{margin-top:auto;align-self:flex-start;border:1px solid #35586e;background:#152735;color:#eaf4fb;border-radius:9px;padding:9px 12px;font:700 11px system-ui;cursor:pointer}.dt-onboarding-choice button.secondary{border-color:#2c3947;background:#121a22;color:#cbd5df}.dt-onboarding-steps{display:grid;grid-template-columns:repeat(3,1fr);gap:9px;padding:0 30px 22px}.dt-onboarding-step{border-top:1px solid #202b36;padding-top:12px;color:#7d8c9c;font-size:11px}.dt-onboarding-step b{display:block;color:#d7e0e9;margin-bottom:4px}.dt-onboarding-foot{padding:13px 30px;border-top:1px solid #202b36;display:flex;justify-content:space-between;gap:12px;align-items:center;color:#667687;font-size:10px}.dt-onboarding-close{border:0;background:transparent;color:#8291a2;cursor:pointer;font:600 10px system-ui;padding:5px}@media(max-width:680px){.dt-onboarding-body,.dt-onboarding-steps{grid-template-columns:1fr}.dt-onboarding-head{padding:22px}.dt-onboarding-body{padding:18px 22px}.dt-onboarding-steps{padding:0 22px 18px}.dt-onboarding-foot{padding:12px 22px}}`;
   const style = document.createElement('style'); style.textContent = css; document.head.appendChild(style);
   function importOwnHand(){ const button=document.querySelector('[data-import]'); if(button) button.click(); }
@@ -13,19 +10,18 @@
     window.dispatchEvent(new CustomEvent('testhp:reference-hand-requested', { detail: { sourceId:'nih-hand-template-3dpx-017237', regionId:'palm' } }));
     choosePalm();
   }
-  function close(backdrop){ markSeen(); backdrop.remove(); }
   function mount(){
-    if(seen() || document.querySelector('.dt-onboarding-backdrop')) return true;
+    if(document.querySelector('.dt-onboarding-backdrop')) return true;
     const root=document.getElementById('testhp-end-user-layer'); if(!root || !root.querySelector('.dt-phase9')) return false;
     const backdrop=document.createElement('div'); backdrop.className='dt-onboarding-backdrop'; backdrop.setAttribute('role','dialog'); backdrop.setAttribute('aria-modal','true'); backdrop.setAttribute('aria-labelledby','dt-onboarding-title');
     backdrop.innerHTML=`<section class="dt-onboarding"><div class="dt-onboarding-head"><div class="dt-onboarding-kicker">First visit</div><h1 id="dt-onboarding-title">Explore the human digital twin</h1><div class="dt-onboarding-sub">Start with a reference hand or load your own 3D hand. Then move from region to tissue, cell and molecular evidence as real data becomes available.</div></div><div class="dt-onboarding-body"><article class="dt-onboarding-choice primary"><h2>Explore reference hand</h2><p>Begin immediately with the public reference geometry. Reference data is not treated as your health data.</p><button type="button" data-start-reference>Explore reference hand →</button></article><article class="dt-onboarding-choice"><h2>Import my hand</h2><p>Load your GLB/GLTF asset together with metadata. The app validates the supplied asset before using it.</p><button type="button" class="secondary" data-start-import>Import my hand</button></article></div><div class="dt-onboarding-steps"><div class="dt-onboarding-step"><b>1 · Load</b>Reference geometry or your own supplied asset.</div><div class="dt-onboarding-step"><b>2 · Select</b>Choose a hand region, starting with Palm.</div><div class="dt-onboarding-step"><b>3 · Explore deeper</b>Hand → Region → Tissue → Cell → Molecular.</div></div><div class="dt-onboarding-foot"><span>Missing data stays <b>NOT ESTABLISHED</b>.</span><button type="button" class="dt-onboarding-close" data-skip>Skip for now</button></div></section>`;
     document.body.appendChild(backdrop);
-    backdrop.querySelector('[data-start-reference]').onclick=()=>{close(backdrop);startReference();};
-    backdrop.querySelector('[data-start-import]').onclick=()=>{close(backdrop);importOwnHand();};
-    backdrop.querySelector('[data-skip]').onclick=()=>close(backdrop);
-    backdrop.addEventListener('click',e=>{if(e.target===backdrop) close(backdrop);});
+    backdrop.querySelector('[data-start-reference]').onclick=()=>{backdrop.remove();startReference();};
+    backdrop.querySelector('[data-start-import]').onclick=()=>{backdrop.remove();importOwnHand();};
+    backdrop.querySelector('[data-skip]').onclick=()=>backdrop.remove();
+    backdrop.addEventListener('click',e=>{if(e.target===backdrop) backdrop.remove();});
     return true;
   }
   const observer=new MutationObserver(()=>mount()); if(document.body) observer.observe(document.body,{childList:true,subtree:true});
-  const timer=setInterval(()=>{if(mount()) clearInterval(timer);},250); setTimeout(()=>clearInterval(timer),15000);
+  const timer=setInterval(()=>mount(),250); setTimeout(()=>clearInterval(timer),15000);
 })();
