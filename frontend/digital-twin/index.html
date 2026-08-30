@@ -9,26 +9,20 @@
 <body>
   <div id="testhp-end-user-layer"></div>
 
-  <!-- Canonical Digital Twin foundation and legacy feature modules. -->
+  <!-- Canonical foundation / data contracts. -->
   <script src="/digital-twin/digital-twin-core.js?v=core-1"></script>
   <script src="/digital-twin/spatial-hierarchy.js?v=spatial-1"></script>
   <script src="/digital-twin/digital-twin-data-contract-v2.js?v=contract-v2-1"></script>
   <script src="/digital-twin/evidence-pipeline-v2.js?v=evidence-v2-1"></script>
   <script src="/digital-twin/anatomy-tissue-model-v1.js?v=anatomy-tissue-1"></script>
   <script src="/digital-twin/digital-twin-runtime.js?v=runtime-1"></script>
-  <script src="/digital-twin/cell-inspector-v1.js?v=cell-inspector-1"></script>
-  <script src="/digital-twin/assessment-data-adapter.js?v=adapter-2"></script>
-  <script src="/digital-twin/assessment-timeline-ui.js?v=timeline-ui-1"></script>
-  <script src="/digital-twin/multiscale-inspector.js?v=multiscale-1"></script>
-  <script src="/digital-twin/digital-twin-evidence-health-ui-v1.js?v=end-user-ui-2"></script>
-  <script src="/digital-twin/intervention-priority-ui-v1.js?v=intervention-1"></script>
-  <script src="/digital-twin/end-user-analysis-bridge-v1.js?v=analysis-bridge-2"></script>
-  <script src="/digital-twin/biological-age-hierarchy-ui-v2.js?v=age-hierarchy-2"></script>
   <script src="/digital-twin/twin-viewer-state-v1.js?v=twin-state-1"></script>
-  <script src="/digital-twin/user-upload-wizard-v1.js?v=upload-wizard-2"></script>
-  <script src="/digital-twin/multiscale-digital-twin-model-v1.js?v=twin-model-1"></script>
 
-  <!-- Canonical state boundary. These are ES modules and intentionally load after the page scripts. -->
+  <!-- Clean end-user workspace. -->
+  <script src="/digital-twin/digital-twin-evidence-health-ui-v1.js?v=end-user-ui-3"></script>
+  <script src="/digital-twin/end-user-analysis-bridge-v1.js?v=analysis-bridge-3"></script>
+
+  <!-- Canonical state boundary. -->
   <script type="module" src="/digital-twin/backend-contracts.js?v=contracts-2"></script>
   <script type="module" src="/digital-twin/canonical-state.js?v=state-2"></script>
   <script type="module" src="/digital-twin/analysis-result-adapter.js?v=adapter-3"></script>
