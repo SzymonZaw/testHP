@@ -9,6 +9,10 @@
   const style = document.createElement('style'); style.textContent = css; document.head.appendChild(style);
   function importOwnHand(){ const button=document.querySelector('[data-import]'); if(button) button.click(); }
   function choosePalm(){ const palm=document.querySelector('[data-region="palm"]'); if(palm) palm.click(); }
+  function startReference(){
+    window.dispatchEvent(new CustomEvent('testhp:reference-hand-requested', { detail: { sourceId:'nih-hand-template-3dpx-017237', regionId:'palm' } }));
+    choosePalm();
+  }
   function close(backdrop){ markSeen(); backdrop.remove(); }
   function mount(){
     if(seen() || document.querySelector('.dt-onboarding-backdrop')) return true;
@@ -16,7 +20,7 @@
     const backdrop=document.createElement('div'); backdrop.className='dt-onboarding-backdrop'; backdrop.setAttribute('role','dialog'); backdrop.setAttribute('aria-modal','true'); backdrop.setAttribute('aria-labelledby','dt-onboarding-title');
     backdrop.innerHTML=`<section class="dt-onboarding"><div class="dt-onboarding-head"><div class="dt-onboarding-kicker">First visit</div><h1 id="dt-onboarding-title">Explore the human digital twin</h1><div class="dt-onboarding-sub">Start with a reference hand or load your own 3D hand. Then move from region to tissue, cell and molecular evidence as real data becomes available.</div></div><div class="dt-onboarding-body"><article class="dt-onboarding-choice primary"><h2>Explore reference hand</h2><p>Begin immediately with the public reference geometry. Reference data is not treated as your health data.</p><button type="button" data-start-reference>Explore reference hand →</button></article><article class="dt-onboarding-choice"><h2>Import my hand</h2><p>Load your GLB/GLTF asset together with metadata. The app validates the supplied asset before using it.</p><button type="button" class="secondary" data-start-import>Import my hand</button></article></div><div class="dt-onboarding-steps"><div class="dt-onboarding-step"><b>1 · Load</b>Reference geometry or your own supplied asset.</div><div class="dt-onboarding-step"><b>2 · Select</b>Choose a hand region, starting with Palm.</div><div class="dt-onboarding-step"><b>3 · Explore deeper</b>Hand → Region → Tissue → Cell → Molecular.</div></div><div class="dt-onboarding-foot"><span>Missing data stays <b>NOT ESTABLISHED</b>.</span><button type="button" class="dt-onboarding-close" data-skip>Skip for now</button></div></section>`;
     document.body.appendChild(backdrop);
-    backdrop.querySelector('[data-start-reference]').onclick=()=>{close(backdrop);choosePalm();};
+    backdrop.querySelector('[data-start-reference]').onclick=()=>{close(backdrop);startReference();};
     backdrop.querySelector('[data-start-import]').onclick=()=>{close(backdrop);importOwnHand();};
     backdrop.querySelector('[data-skip]').onclick=()=>close(backdrop);
     backdrop.addEventListener('click',e=>{if(e.target===backdrop) close(backdrop);});
