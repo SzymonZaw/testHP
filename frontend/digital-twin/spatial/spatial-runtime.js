@@ -5,6 +5,10 @@ import { createSpatialAsset, createSpatialSource, createCoordinateSystem } from 
   "use strict";
   if (window.TestHPSpatial) return;
 
+  let referenceState = null;
+  let referenceLoaded = false;
+  let originalCanonicalState = null;
+
   function currentState() {
     try { return window.TestHPCanonicalState?.get?.() || null; } catch { return null; }
   }
@@ -59,14 +63,15 @@ import { createSpatialAsset, createSpatialSource, createCoordinateSystem } from 
     });
   }
 
-  function sync() {
+  function publishSpatialState() {
     const state = currentState();
     const adapter = buildAdapter(state);
     window.TestHPSpatial = {
-      version: 1,
+      version: 2,
       adapter,
       state,
-      validation: adapter?.validate() || { valid: false, reason: "No backend spatial asset supplied." },
+      reference: referenceState,
+      validation: adapter?.validate() || { valid: false, reason: "No backend or reference spatial asset supplied." },
       getRegion: (regionId) => adapter?.getRegion(regionId) || null,
       getEvidence: (regionId) => adapter?.getEvidence(regionId) || [],
     };
@@ -75,7 +80,87 @@ import { createSpatialAsset, createSpatialSource, createCoordinateSystem } from 
     }));
   }
 
-  window.TestHPSpatialRuntime = { sync, buildAdapter };
+  function installReferenceState(catalog) {
+    const hand = Array.isArray(catalog?.datasets)
+      ? catalog.datasets.find((dataset) => dataset?.id === "nih-hand-template-3dpx-017237")
+      : null;
+    if (!hand?.asset?.url) return false;
+
+    referenceState = {
+      id: hand.id,
+      status: "reference-only",
+      source: hand.provider,
+      accession: hand.accession,
+      provenance: hand.provenance || {},
+      limitations: hand.limitations || [],
+      asset: {
+        id: hand.id,
+        modality: "hand_3d",
+        type: "glb",
+        format: hand.asset.format || "glb",
+        url: hand.asset.url,
+        status: "ready",
+        sourceType: "public_reference",
+        sourceLabel: hand.title,
+        version: hand.asset.processedVersion || "2",
+        accession: hand.accession,
+        coordinateSystem: { id: "source-defined", label: hand.coordinateSystem || "source-defined" },
+        provenance: hand.provenance || {},
+        metadata: { referenceOnly: true, limitations: hand.limitations || [] },
+      },
+    };
+
+    if (window.TestHPCanonicalState && !window.__testhpReferenceCanonicalPatched) {
+      originalCanonicalState = window.TestHPCanonicalState;
+      const originalGet = originalCanonicalState.get;
+      const mergedGet = () => {
+        const state = originalGet();
+        const assets = Array.isArray(state?.assets) ? state.assets : [];
+        const hasRealHandAsset = assets.some((asset) => {
+          const modality = String(asset?.modality ?? asset?.type ?? "").toLowerCase();
+          const url = asset?.url || asset?.uri || asset?.assetUrl || asset?.asset_url;
+          return ["hand_3d", "3d", "mesh", "gltf", "glb"].includes(modality) && url;
+        });
+        if (hasRealHandAsset) return { ...state, spatialReference: referenceState };
+        return {
+          ...state,
+          assets: [...assets, referenceState.asset],
+          spatialReference: referenceState,
+        };
+      };
+      window.TestHPCanonicalState = Object.freeze({ ...originalCanonicalState, get: mergedGet });
+      window.__testhpReferenceCanonicalPatched = true;
+    }
+    referenceLoaded = true;
+    return true;
+  }
+
+  async function loadReferenceCatalog() {
+    try {
+      const response = await fetch("/digital-twin/reference-dataset-catalog-v1.json", { cache: "no-store" });
+      if (!response.ok) throw new Error(`Reference catalog HTTP ${response.status}`);
+      const catalog = await response.json();
+      installReferenceState(catalog);
+    } catch (error) {
+      window.dispatchEvent(new CustomEvent("testhp:reference-catalog-error", {
+        detail: { message: error?.message || String(error) },
+      }));
+    } finally {
+      publishSpatialState();
+    }
+  }
+
+  function sync() {
+    publishSpatialState();
+  }
+
+  window.TestHPSpatialRuntime = {
+    sync,
+    buildAdapter,
+    getReference: () => referenceState,
+    isReferenceLoaded: () => referenceLoaded,
+  };
   window.addEventListener("testhp:canonical-state-changed", sync);
   sync();
+  loadReferenceCatalog();
 })();
