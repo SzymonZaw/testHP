@@ -1,0 +1,75 @@
+{
+  "schemaVersion": "1.0",
+  "purpose": "Reference-only catalog for bootstrapping the Digital Twin without inventing patient data.",
+  "rules": [
+    "Reference datasets are never treated as personal observations.",
+    "A reference dataset may support anatomy, tissue, cell, or molecular UI, but does not become a user twin by itself.",
+    "Missing spatial registration must remain explicit; geometryId, tissueId, and cellId are never inferred from unrelated datasets.",
+    "Clinical, health, biological-age, trajectory, and intervention results require an actual validated backend/model result."
+  ],
+  "datasets": [
+    {
+      "id": "nih-hand-template-3dpx-017237",
+      "layer": "hand",
+      "title": "3D Model of An Anatomical Template of Healthy Adult Human Hand",
+      "provider": "NIH 3D",
+      "url": "https://3d.nih.gov/entries/3DPX-017237",
+      "type": "MRI-derived segmented 3D hand template",
+      "status": "reference-only",
+      "provides": ["hand_surface_geometry"],
+      "doesNotProvide": ["patient_specific_geometry", "hand_region_ids", "tissue_geometry", "cell_geometry"],
+      "note": "Useful as a real anatomical reference, not as an individual patient's Digital Twin."
+    },
+    {
+      "id": "nih-hand-bones-3dpx-017249",
+      "layer": "hand",
+      "title": "Bones of the Healthy Adult Human Hand/Wrist",
+      "provider": "NIH 3D",
+      "url": "https://3d.nih.gov/entries/3DPX-017249",
+      "type": "segmented MRI-derived bone model",
+      "status": "reference-only",
+      "provides": ["bone_geometry"],
+      "doesNotProvide": ["soft_tissue_geometry", "cell_geometry"],
+      "note": "Use for anatomical coordinate/reference context only."
+    },
+    {
+      "id": "hubmap-human-reference-atlas",
+      "layer": "tissue-cell-molecular",
+      "title": "HuBMAP Data Portal / Human Reference Atlas",
+      "provider": "HuBMAP Consortium",
+      "url": "https://hubmapconsortium.org/hubmap-data/",
+      "portal": "https://portal.hubmapconsortium.org/",
+      "type": "human tissue spatial and single-cell atlas infrastructure",
+      "status": "reference-catalog",
+      "provides": ["tissue_data", "spatial_cell_data", "single_cell_data", "multimodal_assays", "anatomical_reference_terms"],
+      "doesNotProvide": ["automatic_registration_to_hand_template"],
+      "note": "Use to locate compatible human tissue/cell datasets and anatomical reference terms."
+    },
+    {
+      "id": "hca-human-dermal-fibroblast-gse109822",
+      "layer": "tissue-cell-molecular",
+      "title": "Spatial and single-cell transcriptional profiling of human dermal fibroblast subpopulations",
+      "provider": "Human Cell Atlas / GEO",
+      "url": "https://explore.data.humancellatlas.org/projects/05657a59-9f9d-4bb9-b77b-24be13aa5cea",
+      "accession": "GSE109822",
+      "type": "human adult dermis spatial + single-cell transcriptomics",
+      "status": "reference-only",
+      "provides": ["dermis_context", "fibroblast_cell_types", "single_cell_transcriptomics", "spatial_transcriptional_profiling"],
+      "doesNotProvide": ["hand_registration", "3d_hand_coordinates", "patient_hand_geometry"],
+      "note": "Useful as a biological reference for connective-tissue/fibroblast layers, not as hand-specific spatial geometry."
+    },
+    {
+      "id": "allen-cell-explorer",
+      "layer": "cell",
+      "title": "Allen Cell Explorer",
+      "provider": "Allen Institute for Cell Science",
+      "url": "https://www.allencell.org/",
+      "viewer": "https://www.allencell.org/3d-cell-viewer.html",
+      "type": "3D microscopy and cell-structure reference",
+      "status": "reference-only",
+      "provides": ["3d_cell_images", "cell_structure_data", "cell_features"],
+      "doesNotProvide": ["hand_specific_cells", "hand_registration"],
+      "note": "Useful for developing the cell-level representation contract and viewer, not for claiming a specific hand cell."
+    }
+  ]
+}
