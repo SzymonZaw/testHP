@@ -6,7 +6,7 @@
 
   const NIH_GLB_URL = 'https://3d.nih.gov/api/submissions/23310/runs/c054b0b1-404c-4f43-b6a7-ddff98215e52/output-files/511811';
   const SOURCE_ID = 'nih-hand-template-3DPX-017237';
-  const VIEWER_VERSION = 'reference-3d-safe-2';
+  const VIEWER_VERSION = 'reference-3d-safe-3';
   const THREE_URL = 'https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js';
   const GLTF_URL = 'https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/loaders/GLTFLoader.js';
 
@@ -48,16 +48,13 @@
     document.head.appendChild(style);
   }
 
-  function findHost() {
-    return document.getElementById('testhp-end-user-layer');
-  }
+  function findHost() { return document.getElementById('testhp-end-user-layer'); }
 
   function ensureCard() {
     const host = findHost();
     if (!host) return null;
     let card = host.querySelector('.dt-reference-3d-card');
     if (card) return card;
-
     card = document.createElement('section');
     card.className = 'dt-reference-3d-card';
     card.setAttribute('aria-label', 'NIH 3D reference hand');
@@ -66,9 +63,7 @@
       <div class="dt-reference-3d-overlay">
         <div class="dt-reference-3d-title">REFERENCE HAND · NIH 3D · 3DPX-017237</div>
         <div class="dt-reference-3d-status">Public reference geometry · not user health data</div>
-      </div>
-    `;
-
+      </div>`;
     const preferred = host.querySelector('.center .viewport, .viewport');
     if (preferred) {
       preferred.style.position = preferred.style.position || 'relative';
@@ -111,80 +106,57 @@
     renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.75));
     renderer.setClearColor(0x0b1118, 1);
     renderer.outputColorSpace = THREE.SRGBColorSpace;
-
     const scene = new THREE.Scene();
     const camera = new THREE.PerspectiveCamera(30, 1, 0.01, 100);
     camera.position.set(0, 0.2, 7.5);
-
     scene.add(new THREE.HemisphereLight(0xe8f2ff, 0x10202b, 2.2));
     const key = new THREE.DirectionalLight(0xffffff, 3.0);
     key.position.set(4, 6, 8);
     scene.add(key);
-    const fill = new THREE.DirectionalLight(0x9bd8c4, 1.1);
-    fill.position.set(-5, 2, 3);
-    scene.add(fill);
-
     const root = new THREE.Group();
     scene.add(root);
     const loader = new GLTFLoader();
-
     const resize = () => {
       const rect = canvas.getBoundingClientRect();
-      const width = Math.max(1, rect.width);
-      const height = Math.max(1, rect.height);
+      const width = Math.max(1, rect.width), height = Math.max(1, rect.height);
       renderer.setSize(width, height, false);
       camera.aspect = width / height;
       camera.updateProjectionMatrix();
     };
-
-    let dragging = false;
-    let lastX = 0;
-    let lastY = 0;
+    let dragging = false, lastX = 0, lastY = 0;
     canvas.addEventListener('pointerdown', event => {
-      dragging = true;
-      lastX = event.clientX;
-      lastY = event.clientY;
+      dragging = true; lastX = event.clientX; lastY = event.clientY;
       canvas.setPointerCapture?.(event.pointerId);
     });
     canvas.addEventListener('pointermove', event => {
       if (!dragging) return;
       root.rotation.y += (event.clientX - lastX) * 0.008;
       root.rotation.x += (event.clientY - lastY) * 0.006;
-      lastX = event.clientX;
-      lastY = event.clientY;
+      lastX = event.clientX; lastY = event.clientY;
     });
     const stop = () => { dragging = false; };
     canvas.addEventListener('pointerup', stop);
     canvas.addEventListener('pointercancel', stop);
     canvas.addEventListener('wheel', event => {
       event.preventDefault();
-      const factor = event.deltaY > 0 ? 1.12 : 0.89;
-      camera.position.multiplyScalar(factor);
+      camera.position.multiplyScalar(event.deltaY > 0 ? 1.12 : 0.89);
       camera.position.clampLength(3.2, 14);
     }, { passive: false });
-
     const observer = new ResizeObserver(resize);
     observer.observe(canvas);
     resize();
     sceneState = { renderer, scene, camera, root, observer };
-
-    loader.load(
-      NIH_GLB_URL,
-      gltf => {
-        normalizeObject(gltf.scene, THREE);
-        root.add(gltf.scene);
-        state({ active: true, loading: false, loaded: true, error: null });
-        const status = card.querySelector('.dt-reference-3d-status');
-        if (status) status.textContent = 'Loaded from NIH 3D · public reference geometry · not user health data';
-      },
-      undefined,
-      error => {
-        console.warn('[reference-hand-3d] NIH GLB could not be loaded; keeping UI responsive.', error);
-        state({ active: true, loading: false, loaded: false, error: 'NIH reference GLB could not be loaded' });
-        fallback(card, 'The NIH reference remains available as provenance; the 3D asset could not be loaded into this viewer.');
-      }
-    );
-
+    loader.load(NIH_GLB_URL, gltf => {
+      normalizeObject(gltf.scene, THREE);
+      root.add(gltf.scene);
+      state({ active: true, loading: false, loaded: true, error: null });
+      const status = card.querySelector('.dt-reference-3d-status');
+      if (status) status.textContent = 'Loaded from NIH 3D · public reference geometry · not user health data';
+    }, undefined, error => {
+      console.warn('[reference-hand-3d] NIH GLB could not be loaded; keeping UI responsive.', error);
+      state({ active: true, loading: false, loaded: false, error: 'NIH reference GLB could not be loaded' });
+      fallback(card, 'The NIH reference remains available as provenance; the 3D asset could not be loaded into this viewer.');
+    });
     const animate = () => {
       if (!sceneState || sceneState.renderer !== renderer) return;
       renderer.render(scene, camera);
@@ -204,10 +176,9 @@
         return;
       }
       try {
-        const [{ default: THREE }, { GLTFLoader }] = await Promise.all([
-          import(THREE_URL),
-          import(GLTF_URL),
-        ]);
+        const THREE = await import(THREE_URL);
+        const loaderModule = await import(GLTF_URL);
+        const GLTFLoader = loaderModule.GLTFLoader;
         createScene(card, THREE, GLTFLoader);
       } catch (error) {
         console.warn('[reference-hand-3d] viewer dependency failed; keeping UI responsive.', error);
