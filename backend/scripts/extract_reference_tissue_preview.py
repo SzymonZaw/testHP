@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
-from collections import Counter
+from collections import Counter, defaultdict
 from pathlib import Path
 
 import h5py
@@ -80,6 +80,7 @@ def main() -> int:
     parser.add_argument("--limit", type=int, default=DEFAULT_LIMIT)
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
     parser.add_argument("--list-regions", action="store_true", help="Print observed anatomic_site/region_name labels and exit")
+    parser.add_argument("--list-samples", action="store_true", help="Print sample_id/sample_barcode/run_name with anatomic_site counts and exit")
     parser.add_argument("--search-all-obs", action="store_true", help="Search additional text obs fields for the requested term")
     args = parser.parse_args()
 
@@ -102,6 +103,7 @@ def main() -> int:
         total = dataset_length(obs[REQUIRED_OBS[0]])
         site_counts: Counter[str] = Counter()
         region_counts: Counter[str] = Counter()
+        sample_counts: Counter[tuple[str, str, str, str]] = Counter()
         search_fields = [k for k in SEARCH_FIELDS if k in obs]
         if args.search_all_obs:
             search_fields = list(obs.keys())
@@ -115,10 +117,20 @@ def main() -> int:
             stop = min(total, start + chunk)
             sites = read_obs_values(obs, "anatomic_site", start, stop)
             regions = read_obs_values(obs, "region_name", start, stop)
-            for site in sites:
-                site_counts[str(decode(site) or "")] += 1
-            for region in regions:
-                region_counts[str(decode(region) or "")] += 1
+
+            samples = read_obs_values(obs, "sample_id", start, stop)
+            sample_barcodes = read_obs_values(obs, "sample_barcode", start, stop) if "sample_barcode" in obs else np.array([None] * len(sites), dtype=object)
+            run_names = read_obs_values(obs, "run_name", start, stop) if "run_name" in obs else np.array([None] * len(sites), dtype=object)
+
+            for offset, (site, region, sample, barcode, run_name) in enumerate(zip(sites, regions, samples, sample_barcodes, run_names)):
+                site_text = str(decode(site) or "")
+                region_text = str(decode(region) or "")
+                sample_text = str(decode(sample) or "")
+                barcode_text = str(decode(barcode) or "")
+                run_text = str(decode(run_name) or "")
+                site_counts[site_text] += 1
+                region_counts[region_text] += 1
+                sample_counts[(sample_text, barcode_text, run_text, site_text)] += 1
 
             if needle:
                 row_hits: set[int] = set()
@@ -143,6 +155,15 @@ def main() -> int:
             print("Observed region_name labels:")
             for label, count in region_counts.most_common():
                 print(f"  {count:>7}  {label}")
+            return 0
+
+        if args.list_samples:
+            print("Observed MERFISH sample mapping:")
+            print("count | sample_id | sample_barcode | run_name | anatomic_site")
+            for (sample_id, sample_barcode, run_name, site), count in sorted(
+                sample_counts.items(), key=lambda item: (-item[1], item[0][0], item[0][1], item[0][2], item[0][3])
+            ):
+                print(f"{count:>7} | {sample_id} | {sample_barcode} | {run_name} | {site}")
             return 0
 
         if not matches:
