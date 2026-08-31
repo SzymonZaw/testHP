@@ -90,5 +90,28 @@ window.TestHPCanonicalState = Object.freeze({
   version: '6', get: getDigitalTwinState, subscribe: subscribeDigitalTwinState, ingestAnalysisResult,
   fetchAnalysisResult, setLoading: setAnalysisLoading, setAnalysisError, setUserInput, updateSelection, reset: resetDigitalTwinState,
 });
+
+// A local spatial extract is a bounded, already-materialized source. Registering
+// the clicked cell in anatomy lets the normal governor validate the cell ID
+// instead of bypassing canonical selection safety for this one event path.
+window.addEventListener('testhp:local-cell-selected', event => {
+  const detail = event?.detail;
+  const cell = detail?.cell;
+  const region = String(detail?.region || '').trim().toLowerCase();
+  const cellId = cell?.cellId ?? cell?.cell_id ?? null;
+  const currentRegion = String(state.selection?.region || '').trim().toLowerCase();
+  if (detail?.sourceId !== 'human-skin-spatial-census' || !cellId || !region || region !== currentRegion) return;
+  const existing = Array.isArray(state.anatomy?.cells) ? state.anatomy.cells : [];
+  const id = String(cellId);
+  if (!existing.some(item => String(item?.cellId ?? item?.cell_id ?? item?.id ?? '') === id)) {
+    state = createDigitalTwinState({
+      ...state,
+      anatomy: { ...state.anatomy, cells: [...existing, { ...cell, region }] },
+    });
+  }
+  state = sanitizeSelection(state, { cell: id });
+  if (state.selection.cell === id) publish();
+});
+
 window.addEventListener('testhp:end-user-analysis-loaded', () => { if (window.__testhpLastAnalysis) ingestAnalysisResult(window.__testhpLastAnalysis); });
 window.addEventListener('testhp:analysis-result', event => { if (event.detail) ingestAnalysisResult(event.detail); });
