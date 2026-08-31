@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+from collections import Counter
 from pathlib import Path
 
 import h5py
@@ -29,14 +30,13 @@ def read_obs_values(group: h5py.Group, key: str, start: int, stop: int) -> np.nd
     if not isinstance(node, h5py.Group):
         raise TypeError(f"Unsupported HDF5 node for obs[{key!r}]: {type(node).__name__}")
 
-    # AnnData categorical encoding: group with `codes` + `categories`.
     if "codes" in node and "categories" in node:
         codes = np.asarray(node["codes"][start:stop])
         categories = np.asarray(node["categories"][:])
         values = []
         for code in codes:
             idx = int(decode(code))
-            values.append(categories[idx] if idx >= 0 and idx < len(categories) else None)
+            values.append(categories[idx] if 0 <= idx < len(categories) else None)
         return np.asarray(values, dtype=object)
 
     raise TypeError(
@@ -53,9 +53,10 @@ def read_obs_value(group: h5py.Group, key: str, index: int):
 def main() -> int:
     parser = argparse.ArgumentParser(description="Create a bounded local preview from the MERFISH H5AD.")
     parser.add_argument("h5ad", type=Path, help="Path to merfish.integrated_annotated.h5ad")
-    parser.add_argument("--region", default="palm", choices=["palm", "hand"])
+    parser.add_argument("--region", default="palm", help="Case-insensitive substring for anatomic_site or region_name")
     parser.add_argument("--limit", type=int, default=DEFAULT_LIMIT)
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
+    parser.add_argument("--list-regions", action="store_true", help="Print observed anatomic_site/region_name labels and exit")
     args = parser.parse_args()
 
     if not args.h5ad.is_file():
@@ -76,21 +77,44 @@ def main() -> int:
 
         total = int(obs["cell_id"].shape[0]) if isinstance(obs["cell_id"], h5py.Dataset) else int(obs["cell_barcode"].shape[0])
         matches: list[int] = []
-        needle = args.region.lower()
+        site_counts: Counter[str] = Counter()
+        region_counts: Counter[str] = Counter()
+        needle = args.region.strip().lower()
         chunk = 5000
         for start in range(0, total, chunk):
             stop = min(total, start + chunk)
             sites = read_obs_values(obs, "anatomic_site", start, stop)
             regions = read_obs_values(obs, "region_name", start, stop)
             for offset, (site, region) in enumerate(zip(sites, regions)):
-                site_text = str(decode(site) or "").lower()
-                region_text = str(decode(region) or "").lower()
-                if needle in site_text or needle in region_text:
+                site_text = str(decode(site) or "")
+                region_text = str(decode(region) or "")
+                site_counts[site_text] += 1
+                region_counts[region_text] += 1
+                if needle and (needle in site_text.lower() or needle in region_text.lower()):
                     matches.append(start + offset)
                     if len(matches) >= args.limit:
                         break
             if len(matches) >= args.limit:
                 break
+
+        if args.list_regions:
+            print("Observed anatomic_site labels:")
+            for label, count in site_counts.most_common():
+                print(f"  {count:>7}  {label}")
+            print("Observed region_name labels:")
+            for label, count in region_counts.most_common():
+                print(f"  {count:>7}  {label}")
+            return 0
+
+        if not matches:
+            print(f"No cells matched region={args.region!r}.")
+            print("Top anatomic_site labels:")
+            for label, count in site_counts.most_common(20):
+                print(f"  {count:>7}  {label}")
+            print("Top region_name labels:")
+            for label, count in region_counts.most_common(20):
+                print(f"  {count:>7}  {label}")
+            raise SystemExit(2)
 
         rows: list[dict[str, object]] = []
         spatial = obsm["spatial"]
