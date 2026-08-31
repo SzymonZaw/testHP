@@ -7,15 +7,13 @@ from typing import Any
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
-import fsspec
-import h5py
 from fastapi import APIRouter, HTTPException, Query
 
 ZENODO_API = "https://zenodo.org/api/records/16795569"
 MERFISH_H5AD = "merfish.integrated_annotated.h5ad"
+HDF5_MAGIC = b"\x89HDF\r\n\x1a\n"
 MAX_PREVIEW_BYTES = 64 * 1024
 MAX_PREVIEW_ROWS = 12
-MAX_H5AD_METADATA_KEYS = 200
 USER_AGENT = "testHP-reference-tissue-preview/1.0"
 
 router = APIRouter(tags=["reference-tissue-preview"])
@@ -77,6 +75,30 @@ def _range_get(url: str, byte_limit: int) -> bytes:
         raise HTTPException(status_code=502, detail=f"reference data preview unavailable: {exc}") from exc
 
 
+def _head_range_get(url: str, byte_limit: int = 64) -> dict[str, Any]:
+    end = max(0, byte_limit - 1)
+    request = Request(
+        url,
+        headers={
+            "Accept": "application/octet-stream, */*",
+            "Range": f"bytes=0-{end}",
+            "User-Agent": USER_AGENT,
+        },
+    )
+    try:
+        with urlopen(request, timeout=20) as response:
+            raw = response.read(byte_limit)
+            return {
+                "bytes": raw,
+                "status": getattr(response, "status", None),
+                "contentRange": response.headers.get("Content-Range"),
+                "contentLength": response.headers.get("Content-Length"),
+                "acceptRanges": response.headers.get("Accept-Ranges"),
+            }
+    except (HTTPError, URLError, TimeoutError) as exc:
+        return {"bytes": b"", "error": str(exc)}
+
+
 def _parse_text_sample(raw: bytes, file_name: str) -> dict[str, Any]:
     text = raw.decode("utf-8", errors="replace")
     truncated = len(raw) >= MAX_PREVIEW_BYTES
@@ -136,38 +158,49 @@ def _find_merfish_file(record: dict[str, Any]) -> dict[str, Any] | None:
     return next((item for item in _files(record) if item.get("key") == MERFISH_H5AD), None)
 
 
-def _h5ad_schema(remote_url: str) -> dict[str, Any]:
-    """Inspect H5AD structure through HTTP range reads without loading X/data matrices."""
-    try:
-        with fsspec.open(
-            remote_url,
-            mode="rb",
-            block_size=64 * 1024,
-            headers={"User-Agent": USER_AGENT, "Accept-Encoding": "identity"},
-        ) as remote:
-            with h5py.File(remote, "r") as handle:
-                top_level = list(handle.keys())[:MAX_H5AD_METADATA_KEYS]
-                obs = handle.get("obs")
-                var = handle.get("var")
-                obsm = handle.get("obsm")
-                uns = handle.get("uns")
-
-                def keys(group: Any) -> list[str]:
-                    return list(group.keys())[:MAX_H5AD_METADATA_KEYS] if group is not None else []
-
-                return {
-                    "hdf5": True,
-                    "anndataEncodingType": handle.attrs.get("encoding-type"),
-                    "anndataEncodingVersion": handle.attrs.get("encoding-version"),
-                    "topLevelKeys": top_level,
-                    "obsKeys": keys(obs),
-                    "varKeys": keys(var),
-                    "obsmKeys": keys(obsm),
-                    "unsKeys": keys(uns),
-                    "obsShape": tuple(obs.attrs.get("_index", [])) if False else None,
-                }
-    except (OSError, ValueError, RuntimeError) as exc:
-        raise HTTPException(status_code=502, detail=f"H5AD metadata inspection failed: {exc}") from exc
+def _h5ad_schema_probe(remote_url: str) -> dict[str, Any]:
+    """Safely probe the remote H5AD header without random-access HDF5 reads."""
+    probe = _head_range_get(remote_url, 64)
+    raw = probe.get("bytes", b"")
+    if probe.get("error"):
+        return {
+            "hdf5": False,
+            "probeStatus": "remote_probe_failed",
+            "error": probe["error"],
+            "topLevelKeys": None,
+            "obsKeys": None,
+            "varKeys": None,
+            "obsmKeys": None,
+            "unsKeys": None,
+            "randomAccessInspection": False,
+        }
+    if raw[:8] != HDF5_MAGIC:
+        return {
+            "hdf5": False,
+            "probeStatus": "invalid_hdf5_magic",
+            "magicHex": raw[:8].hex(" "),
+            "topLevelKeys": None,
+            "obsKeys": None,
+            "varKeys": None,
+            "obsmKeys": None,
+            "unsKeys": None,
+            "randomAccessInspection": False,
+        }
+    return {
+        "hdf5": True,
+        "probeStatus": "hdf5_container_confirmed",
+        "magicHex": raw[:8].hex(" "),
+        "contentRange": probe.get("contentRange"),
+        "acceptRanges": probe.get("acceptRanges"),
+        "contentLength": probe.get("contentLength"),
+        "topLevelKeys": None,
+        "obsKeys": None,
+        "varKeys": None,
+        "obsmKeys": None,
+        "unsKeys": None,
+        "randomAccessInspection": False,
+        "note": "The remote file is confirmed as HDF5, but no random-access AnnData groups are read from the public file URL. This avoids downloading the multi-gigabyte H5AD.",
+    }
 
 
 @router.get("/api/reference/tissue/human-skin-spatial-census/files")
@@ -239,10 +272,10 @@ def inspect_reference_h5ad_schema() -> dict[str, Any]:
     url = selected.get("downloadUrl")
     if not url:
         raise HTTPException(status_code=502, detail="reference H5AD has no download URL")
-    schema = _h5ad_schema(str(url))
+    schema = _h5ad_schema_probe(str(url))
     return {
         "sourceId": "human-skin-spatial-census",
-        "status": "bounded_h5ad_schema",
+        "status": "bounded_h5ad_schema_probe",
         "file": selected,
         "schema": schema,
         "matrixLoaded": False,
@@ -250,7 +283,7 @@ def inspect_reference_h5ad_schema() -> dict[str, Any]:
         "coordinateScope": "sample_local",
         "registrationStatus": "unregistered_to_hand",
         "transform": None,
-        "note": "Only AnnData/HDF5 group metadata is inspected through HTTP range reads. Expression matrices and full cell tables are not loaded.",
+        "note": "Only the HDF5 file signature and transport headers are probed. No expression matrix, AnnData groups, or full cell table are loaded.",
     }
 
 
