@@ -3,7 +3,7 @@
   if (window.__testhpReferenceRegionGeometryInstalled) return;
   window.__testhpReferenceRegionGeometryInstalled = true;
 
-  const VERSION = 'reference-region-geometry-safe-4';
+  const VERSION = 'reference-region-geometry-safe-5';
   const SOURCE_ID = 'nih-hand-template-3DPX-017237';
   const REGIONS = Object.freeze({
     hand: Object.freeze({ label: 'Hand', mappingMethod: 'whole_model', confidence: 'high', focus: [50, 50], cameraOrbit: '0deg 75deg 105%' }),
@@ -63,6 +63,18 @@
     return true;
   }
 
+  function bindCameraAfterLoad(payload) {
+    const model = getModel();
+    if (!model || model.loaded) return false;
+    if (model.__testhpReferenceRegionFocusBound) return true;
+    model.__testhpReferenceRegionFocusBound = true;
+    model.addEventListener('load', () => {
+      const current = window.__testhpReferenceRegionGeometryState;
+      if (current?.regionId) applyCamera(current);
+    }, { once: true });
+    return true;
+  }
+
   function setRegion(regionId) {
     const normalized = REGIONS[regionId] ? regionId : 'palm';
     const region = REGIONS[normalized];
@@ -86,7 +98,7 @@
       model.dataset.referenceRegion = payload.regionId;
       model.dataset.referenceMapping = payload.mappingMethod;
       model.dataset.referenceConfidence = payload.confidence;
-      applyCamera(payload);
+      if (!applyCamera(payload)) bindCameraAfterLoad(payload);
     }
 
     renderFocus(payload);
