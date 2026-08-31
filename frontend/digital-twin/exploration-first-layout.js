@@ -4,6 +4,20 @@
   window.__testhpExplorationFirstInstalled = true;
   const root = () => document.getElementById('testhp-end-user-layer');
 
+  function ensureReferenceRegionGeometry() {
+    if (!window.__testhpReferenceHandState?.active) return;
+    if (window.testhpReferenceRegionGeometry) return;
+    if (document.getElementById('testhp-reference-region-geometry-script')) return;
+    const script = document.createElement('script');
+    script.id = 'testhp-reference-region-geometry-script';
+    script.src = '/digital-twin/reference-region-geometry.js?v=reference-region-safe-1';
+    script.async = true;
+    script.addEventListener('error', () => {
+      window.__testhpReferenceRegionGeometryLoadError = true;
+    }, { once: true });
+    document.head.appendChild(script);
+  }
+
   function render() {
     const host = root();
     if (!host || !host.querySelector('.dt-phase9')) return;
@@ -11,6 +25,7 @@
 
     if (window.__testhpReferenceHandState?.active && window.testhpReferenceHand3D?.activate) {
       window.testhpReferenceHand3D.activate();
+      ensureReferenceRegionGeometry();
     }
 
     const workspace = host.querySelector('.workspace');
@@ -53,6 +68,7 @@
     window.dispatchEvent(new CustomEvent('testhp:reference-hand-activated', {
       detail: window.__testhpReferenceHandState
     }));
+    ensureReferenceRegionGeometry();
     render();
   }
 
