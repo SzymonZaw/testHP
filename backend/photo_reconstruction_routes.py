@@ -10,6 +10,11 @@ from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel, Field
 
+# Install Windows/system certificate-store backed SSL globally before any NIH
+# reference requests are created. This is required in local Windows venvs where
+# Python's OpenSSL CA bundle does not include the issuer trusted by the browser.
+truststore.inject_into_ssl()
+
 from .photo_reconstruction import assign_view, prepare_by_id, register_prepared, state, upload_photo
 from .photo_reconstruction_file_resolver import resolve_photo_file
 from .reconstruction_orchestrator import clear, get_result, run
