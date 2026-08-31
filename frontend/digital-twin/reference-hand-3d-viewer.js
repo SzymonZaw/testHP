@@ -6,7 +6,7 @@
   const SOURCE_ID = 'nih-hand-template-3DPX-017237';
   const NIH_ENTRY_URL = 'https://3d.nih.gov/entries/3DPX-017237';
   const NIH_GLB_URL = 'https://3d.nih.gov/api/submissions/23310/runs/c054b0b1-404c-4f43-b6a7-ddff98215e52/output-files/511811';
-  const VIEWER_VERSION = 'reference-glb-safe-11';
+  const VIEWER_VERSION = 'reference-glb-safe-12';
   let observer = null;
   let retryTimer = null;
   let bootToken = 0;
@@ -49,10 +49,7 @@
     document.head.appendChild(s);
   }
 
-  function getHost() {
-    return document.getElementById('testhp-end-user-layer');
-  }
-
+  function getHost() { return document.getElementById('testhp-end-user-layer'); }
   function findMount() {
     const host = getHost();
     if (!host) return null;
@@ -63,32 +60,12 @@
     if (!mount) return null;
     let card = mount.querySelector(':scope > .dt-reference-3d-card');
     if (card) return card;
-
     card = document.createElement('section');
     card.className = 'dt-reference-3d-card';
     card.setAttribute('aria-label', 'NIH 3D reference hand');
     card.innerHTML = `
-      <model-viewer
-        class="dt-reference-3d-model"
-        alt="NIH 3D healthy adult human hand reference template"
-        loading="eager"
-        reveal="auto"
-        camera-controls
-        touch-action="pan-y"
-        interaction-prompt="none"
-        shadow-intensity="0.22"
-        exposure="0.95"
-        camera-orbit="0deg 75deg 105%"
-        crossorigin="anonymous"
-        ar
-        ar-modes="webxr scene-viewer quick-look">
-      </model-viewer>
-      <div class="dt-reference-3d-overlay">
-        <div class="dt-reference-3d-title">REFERENCE HAND · NIH 3D · 3DPX-017237</div>
-        <div class="dt-reference-3d-source">GLB · public reference</div>
-        <div class="dt-reference-3d-status">Loading NIH 3D reference geometry…</div>
-        <div class="dt-reference-3d-mapping">Region geometry mapping · NOT ESTABLISHED</div>
-      </div>`;
+      <model-viewer class="dt-reference-3d-model" alt="NIH 3D healthy adult human hand reference template" loading="eager" reveal="auto" camera-controls touch-action="pan-y" interaction-prompt="none" shadow-intensity="0.22" exposure="0.95" camera-orbit="0deg 75deg 105%" ar ar-modes="webxr scene-viewer quick-look"></model-viewer>
+      <div class="dt-reference-3d-overlay"><div class="dt-reference-3d-title">REFERENCE HAND · NIH 3D · 3DPX-017237</div><div class="dt-reference-3d-source">GLB · public reference</div><div class="dt-reference-3d-status">Loading NIH 3D reference geometry…</div><div class="dt-reference-3d-mapping">Region geometry mapping · NOT ESTABLISHED</div></div>`;
     card.style.display = 'block';
     card.style.position = 'relative';
     if (mount === getHost()) mount.prepend(card); else mount.appendChild(card);
@@ -117,7 +94,6 @@
     const model = card?.querySelector('.dt-reference-3d-model');
     if (!model || model.dataset.testhpBound === '1') return !!model;
     model.dataset.testhpBound = '1';
-
     const status = card.querySelector('.dt-reference-3d-status');
     model.addEventListener('load', () => {
       if (token !== bootToken) return;
@@ -125,7 +101,6 @@
       setState({active:true, loading:false, loaded:true, error:null, regionId:window.__testhpReferenceHandState?.regionId || 'palm'});
       if (status) status.textContent = 'Loaded NIH GLB · public reference geometry · not user health data';
     }, {once:true});
-
     model.addEventListener('error', (event) => {
       if (token !== bootToken) return;
       stopWaiting();
@@ -133,7 +108,6 @@
       setState({active:true, loading:false, loaded:false, error:detail});
       showFallback(card, 'The public NIH GLB could not be loaded in this browser.');
     }, {once:true});
-
     model.src = NIH_GLB_URL;
     return true;
   }
@@ -149,48 +123,62 @@
     return true;
   }
 
+  async function loadViaSameOriginProxy(model, token) {
+    const proxyUrl = `/digital-twin/reference-hand-glb-proxy.php?url=${encodeURIComponent(NIH_GLB_URL)}`;
+    try {
+      const response = await fetch(proxyUrl, {credentials:'same-origin'});
+      if (!response.ok) throw new Error(`Reference GLB proxy unavailable (${response.status})`);
+      const blob = await response.blob();
+      if (!blob.size) throw new Error('Reference GLB proxy returned an empty asset');
+      const objectUrl = URL.createObjectURL(blob);
+      if (token !== bootToken) { URL.revokeObjectURL(objectUrl); return; }
+      model.addEventListener('load', () => URL.revokeObjectURL(objectUrl), {once:true});
+      model.src = objectUrl;
+    } catch (error) {
+      if (token !== bootToken) return;
+      setState({active:true, loading:false, loaded:false, error:error?.message || 'Reference GLB proxy failed'});
+      showFallback(model?.closest('.dt-reference-3d-card'), 'The local reference asset proxy could not load the public NIH GLB.');
+    }
+  }
+
   function boot() {
     installStyles();
     const token = ++bootToken;
     stopWaiting();
     setState({active:true, loading:true, loaded:false, error:null});
-
-    if (tryMount(token)) return;
-
-    const root = document.documentElement || document;
-    observer = new MutationObserver(() => { tryMount(token); });
-    observer.observe(root, {childList:true, subtree:true});
-
-    let attempts = 0;
-    retryTimer = setInterval(() => {
-      attempts += 1;
-      if (tryMount(token)) {
+    const mount = findMount();
+    if (!mount) {
+      const root = document.documentElement || document;
+      observer = new MutationObserver(() => { if (tryMount(token)) stopWaiting(); });
+      observer.observe(root, {childList:true, subtree:true});
+      return;
+    }
+    const card = ensureCard(mount);
+    const model = card?.querySelector('.dt-reference-3d-model');
+    if (!model) return;
+    if (model.dataset.testhpBound !== '1') {
+      model.dataset.testhpBound = '1';
+      const status = card.querySelector('.dt-reference-3d-status');
+      model.addEventListener('load', () => {
+        if (token !== bootToken) return;
         stopWaiting();
-        return;
-      }
-      if (attempts >= 30) {
+        setState({active:true,loading:false,loaded:true,error:null,regionId:window.__testhpReferenceHandState?.regionId || 'palm'});
+        if (status) status.textContent = 'Loaded NIH GLB · public reference geometry · not user health data';
+      }, {once:true});
+      model.addEventListener('error', () => {
+        if (token !== bootToken) return;
         stopWaiting();
-        setState({active:true, loading:false, loaded:false, error:'Reference viewer host is not available'});
-      }
-    }, 250);
+        setState({active:true,loading:false,loaded:false,error:'NIH GLB could not be loaded'});
+        loadViaSameOriginProxy(model, token);
+      }, {once:true});
+    }
+    model.src = NIH_GLB_URL;
+    setState({active:true,loading:true,loaded:false,error:null});
   }
 
-  function activate() { boot(); }
-
-  window.testhpReferenceHand3D = Object.freeze({
-    version: VIEWER_VERSION,
-    sourceId: SOURCE_ID,
-    entryUrl: NIH_ENTRY_URL,
-    assetUrl: NIH_GLB_URL,
-    assetFormat: 'glb',
-    activate,
-    getState: () => window.__testhpReferenceHand3DViewerState
-  });
-
+  window.testhpReferenceHand3D = Object.freeze({version:VIEWER_VERSION,sourceId:SOURCE_ID,entryUrl:NIH_ENTRY_URL,assetUrl:NIH_GLB_URL,assetFormat:'glb',activate:boot,getState:()=>window.__testhpReferenceHand3DViewerState});
   setState();
-  window.addEventListener('testhp:reference-hand-activated', activate);
-  window.addEventListener('DOMContentLoaded', () => {
-    if (window.__testhpReferenceHandState?.active) activate();
-  }, {once:true});
-  if (window.__testhpReferenceHandState?.active) activate();
+  window.addEventListener('testhp:reference-hand-activated', boot);
+  window.addEventListener('DOMContentLoaded', () => { if (window.__testhpReferenceHandState?.active) boot(); }, {once:true});
+  if (window.__testhpReferenceHandState?.active) boot();
 })();
