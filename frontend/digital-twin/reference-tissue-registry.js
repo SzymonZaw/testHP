@@ -3,12 +3,71 @@
   if (window.__testhpReferenceTissueRegistryInstalled) return;
   window.__testhpReferenceTissueRegistryInstalled = true;
 
-  const VERSION = 'reference-tissue-safe-3';
+  const VERSION = 'reference-tissue-safe-4';
   const HAND_REFERENCE = 'nih-hand-template-3DPX-017237';
   const SOURCES = Object.freeze({
-    human_skin_spatial_census: Object.freeze({ id: 'human-skin-spatial-census', label: 'Single-cell spatial transcriptomic analysis of human skin anatomy', modality: 'spatial_transcriptomics', organism: 'Homo sapiens', tissueScope: 'human_skin', sourceType: 'public_reference', accessions: ['S-BIAD2376'], geospatial: 'dataset-local', registrationStatus: 'unregistered_to_hand', handRegionIds: [], provenance: 'public_reference', notes: 'Real human skin spatial data. No automatic registration to NIH hand geometry is claimed.' }),
-    geo_skin_spatial_visium: Object.freeze({ id: 'geo-skin-spatial-visium', label: 'GEO human skin spatial transcriptomics sample', modality: 'spatial_transcriptomics', organism: 'Homo sapiens', tissueScope: 'human_skin', sourceType: 'public_reference', accessions: ['GSM8238470'], geospatial: 'dataset-local', registrationStatus: 'unregistered_to_hand', handRegionIds: [], provenance: 'public_reference', notes: 'Real Visium skin sample. The source provides local spatial coordinates, not coordinates in the NIH hand-template frame.' }),
-    hubmap_human_reference_atlas: Object.freeze({ id: 'hubmap-human-reference-atlas', label: 'HuBMAP Human Reference Atlas resources', modality: 'multimodal_tissue_reference', organism: 'Homo sapiens', tissueScope: 'human_tissues', sourceType: 'public_reference', accessions: [], geospatial: 'resource-dependent', registrationStatus: 'unregistered_to_hand', handRegionIds: [], provenance: 'public_reference', notes: 'Reference atlas/resource collection. Individual datasets require explicit anatomical and coordinate registration.' })
+    human_skin_spatial_census: Object.freeze({
+      id: 'human-skin-spatial-census',
+      label: 'Single-cell spatial transcriptomic analysis of human skin anatomy',
+      modality: 'spatial_transcriptomics',
+      organism: 'Homo sapiens',
+      tissueScope: 'human_skin',
+      sourceType: 'public_reference',
+      accessions: ['S-BIAD2376'],
+      geospatial: 'dataset-local',
+      verification: Object.freeze({
+        status: 'verified_public_source',
+        study: 'Nature Genetics 2026',
+        cellCountApprox: 1200000,
+        donorCount: 22,
+        anatomicSiteCount: 15,
+        spatialMethod: 'MERFISH',
+        histologyIncluded: true,
+        sourceUrl: 'https://www.ebi.ac.uk/biostudies/arrayexpress/studies/S-BIAD2376',
+        publicationUrl: 'https://doi.org/10.1038/s41588-026-02552-8'
+      }),
+      registrationStatus: 'unregistered_to_hand',
+      handRegionIds: [],
+      provenance: 'public_reference',
+      notes: 'Real human skin spatial data. Verified as a public spatial source; no automatic registration to NIH hand geometry is claimed.'
+    }),
+    geo_skin_spatial_visium: Object.freeze({
+      id: 'geo-skin-spatial-visium',
+      label: 'GEO human skin spatial transcriptomics sample',
+      modality: 'spatial_transcriptomics',
+      organism: 'Homo sapiens',
+      tissueScope: 'human_skin',
+      sourceType: 'public_reference',
+      accessions: ['GSM8238470'],
+      geospatial: 'dataset-local',
+      verification: Object.freeze({
+        status: 'verified_public_source',
+        spatialMethod: '10x Genomics Visium',
+        sourceUrl: 'https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSM8238470'
+      }),
+      registrationStatus: 'unregistered_to_hand',
+      handRegionIds: [],
+      provenance: 'public_reference',
+      notes: 'Real Visium skin sample. The source provides local spatial coordinates, not coordinates in the NIH hand-template frame.'
+    }),
+    hubmap_human_reference_atlas: Object.freeze({
+      id: 'hubmap-human-reference-atlas',
+      label: 'HuBMAP Human Reference Atlas resources',
+      modality: 'multimodal_tissue_reference',
+      organism: 'Homo sapiens',
+      tissueScope: 'human_tissues',
+      sourceType: 'public_reference',
+      accessions: [],
+      geospatial: 'resource-dependent',
+      verification: Object.freeze({
+        status: 'verified_public_source',
+        sourceUrl: 'https://hubmapconsortium.org/'
+      }),
+      registrationStatus: 'unregistered_to_hand',
+      handRegionIds: [],
+      provenance: 'public_reference',
+      notes: 'Reference atlas/resource collection. Individual datasets require explicit anatomical and coordinate registration.'
+    })
   });
 
   let selectedSourceId = null;
@@ -29,6 +88,8 @@
       tissueScope: item?.tissueScope || null,
       regionId: regionId || 'palm',
       registrationStatus: item?.registrationStatus || 'no_source_selected',
+      verificationStatus: item?.verification?.status || null,
+      verification: item?.verification || null,
       provenance: item?.provenance || 'public_reference',
       handReferenceId: HAND_REFERENCE,
       handRegionMapped: Boolean(item?.handRegionIds?.includes(regionId)),
@@ -62,6 +123,7 @@
     handReferenceId: HAND_REFERENCE,
     sources: SOURCES,
     list: () => Object.values(SOURCES),
+    getSource: sourceById,
     selectSource,
     select: selectSource,
     setRegion,
