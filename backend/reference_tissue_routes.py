@@ -11,6 +11,7 @@ from fastapi import APIRouter, HTTPException, Query
 router = APIRouter(prefix="/api/reference/tissue", tags=["reference-tissue"])
 _HAND_REFERENCE = "nih-hand-template-3DPX-017237"
 _ZENODO_API = "https://zenodo.org/api/records/16795569"
+_EXPLORER_URL = "https://rstudio-connect.hpc.mssm.edu/humanskin-spatialcensus/"
 _ROOT = Path(__file__).resolve().parents[1]
 _LOCAL_PREVIEW = _ROOT / "data" / "reference" / "human-skin-spatial-census" / "palm_cells.json"
 _NATURE_SUPPLEMENTARY_XLSX = "https://media.springernature.com/original/springer-static/esm/art%3A10.1038%2Fs41588-026-02552-8/MediaObjects/41588_2026_2552_MOESM3_ESM.xlsx"
@@ -34,6 +35,7 @@ _SOURCES: dict[str, dict[str, Any]] = {
             "raw": "https://www.ebi.ac.uk/biostudies/bioimages/studies/S-BIAD2376",
             "processed": "https://doi.org/10.5281/zenodo.16795569",
             "publication": "https://doi.org/10.1038/s41588-026-02552-8",
+            "explorer": _EXPLORER_URL,
         },
     },
     "geo-skin-spatial-visium": {
@@ -68,7 +70,7 @@ _SOURCES: dict[str, dict[str, Any]] = {
 
 
 def _zenodo_record() -> dict[str, Any]:
-    request = Request(_ZENODO_API, headers={"Accept": "application/json", "User-Agent": "testHP-reference-tissue/5.0"})
+    request = Request(_ZENODO_API, headers={"Accept": "application/json", "User-Agent": "testHP-reference-tissue/6.0"})
     try:
         with urlopen(request, timeout=15) as response:
             return json.loads(response.read(512 * 1024).decode("utf-8"))
@@ -104,7 +106,36 @@ def reference_tissue_manifest(source_id: str) -> dict[str, Any]:
                 "url": _NATURE_SUPPLEMENTARY_XLSX,
             }
         ],
+        "officialExplorer": {
+            "url": _EXPLORER_URL,
+            "type": "rstudio_connect_shiny",
+            "accessMode": "interactive_only",
+            "programmaticCellApi": "not_documented_publicly",
+            "supportsInteractiveSpatialPlots": True,
+            "notes": "The published explorer exposes interactive spatial plots and selectors, but no documented public REST endpoint for bounded cell-coordinate retrieval was found.",
+        },
         "note": "Large spatial data are not fetched automatically. A verified transform into the NIH hand-template frame is not established.",
+    }
+
+
+@router.get("/{source_id}/explorer")
+def reference_tissue_explorer(source_id: str) -> dict[str, Any]:
+    if source_id not in _SOURCES:
+        raise HTTPException(status_code=404, detail="reference tissue source not found")
+    return {
+        "sourceId": source_id,
+        "status": "interactive_only",
+        "url": _EXPLORER_URL if source_id == "human-skin-spatial-census" else None,
+        "type": "rstudio_connect_shiny" if source_id == "human-skin-spatial-census" else None,
+        "programmaticCellApi": "not_documented_publicly" if source_id == "human-skin-spatial-census" else None,
+        "spatialDataSource": "zenodo_processed_merfish",
+        "cellCountApprox": 1200000 if source_id == "human-skin-spatial-census" else None,
+        "sampleCount": 114 if source_id == "human-skin-spatial-census" else None,
+        "anatomicSiteCount": 15 if source_id == "human-skin-spatial-census" else None,
+        "coordinateScope": "sample_local",
+        "registrationStatus": "unregistered_to_hand",
+        "transform": None,
+        "note": "Use the explorer for interactive browsing. This API does not scrape session state or claim a hidden REST cell endpoint.",
     }
 
 
@@ -180,6 +211,11 @@ def reference_tissue_cells_preview(
                 "approxSize": "17.4 MB",
                 "containsCellSpatialCoordinates": False,
                 "url": _NATURE_SUPPLEMENTARY_XLSX,
+            },
+            "officialExplorer": {
+                "url": _EXPLORER_URL,
+                "type": "rstudio_connect_shiny",
+                "accessMode": "interactive_only",
             },
             "note": "The smaller supplementary workbook is metadata-focused and does not replace obsm/spatial. No full H5AD download or remote cell scan is attempted.",
         }
