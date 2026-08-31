@@ -7,11 +7,15 @@ from typing import Any
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
+import fsspec
+import h5py
 from fastapi import APIRouter, HTTPException, Query
 
 ZENODO_API = "https://zenodo.org/api/records/16795569"
+MERFISH_H5AD = "merfish.integrated_annotated.h5ad"
 MAX_PREVIEW_BYTES = 64 * 1024
 MAX_PREVIEW_ROWS = 12
+MAX_H5AD_METADATA_KEYS = 200
 USER_AGENT = "testHP-reference-tissue-preview/1.0"
 
 router = APIRouter(tags=["reference-tissue-preview"])
@@ -121,10 +125,49 @@ def _file_details(item: dict[str, Any]) -> dict[str, Any]:
             "gz": "compressed",
             "h5ad": "anndata_hdf5",
             "h5": "hdf5",
+            "yml": "yaml_text",
         }.get(suffix, "binary_or_unknown"),
         "previewableByBoundedTextRoute": suffix in {"csv", "tsv", "txt", "json"},
         "sizeBytes": int(size) if isinstance(size, (int, float)) else size,
     }
+
+
+def _find_merfish_file(record: dict[str, Any]) -> dict[str, Any] | None:
+    return next((item for item in _files(record) if item.get("key") == MERFISH_H5AD), None)
+
+
+def _h5ad_schema(remote_url: str) -> dict[str, Any]:
+    """Inspect H5AD structure through HTTP range reads without loading X/data matrices."""
+    try:
+        with fsspec.open(
+            remote_url,
+            mode="rb",
+            block_size=64 * 1024,
+            headers={"User-Agent": USER_AGENT, "Accept-Encoding": "identity"},
+        ) as remote:
+            with h5py.File(remote, "r") as handle:
+                top_level = list(handle.keys())[:MAX_H5AD_METADATA_KEYS]
+                obs = handle.get("obs")
+                var = handle.get("var")
+                obsm = handle.get("obsm")
+                uns = handle.get("uns")
+
+                def keys(group: Any) -> list[str]:
+                    return list(group.keys())[:MAX_H5AD_METADATA_KEYS] if group is not None else []
+
+                return {
+                    "hdf5": True,
+                    "anndataEncodingType": handle.attrs.get("encoding-type"),
+                    "anndataEncodingVersion": handle.attrs.get("encoding-version"),
+                    "topLevelKeys": top_level,
+                    "obsKeys": keys(obs),
+                    "varKeys": keys(var),
+                    "obsmKeys": keys(obsm),
+                    "unsKeys": keys(uns),
+                    "obsShape": tuple(obs.attrs.get("_index", [])) if False else None,
+                }
+    except (OSError, ValueError, RuntimeError) as exc:
+        raise HTTPException(status_code=502, detail=f"H5AD metadata inspection failed: {exc}") from exc
 
 
 @router.get("/api/reference/tissue/human-skin-spatial-census/files")
@@ -184,6 +227,30 @@ def preview_reference_file(
         "tissueIds": [],
         "spatialCoordinates": [],
         "note": "This is a bounded source-data preview. Records remain in the dataset's native/sample-local coordinate space; no projection onto the NIH hand template is performed.",
+    }
+
+
+@router.get("/api/reference/tissue/human-skin-spatial-census/schema")
+def inspect_reference_h5ad_schema() -> dict[str, Any]:
+    record = _json_get(ZENODO_API)
+    selected = _find_merfish_file(record)
+    if not selected:
+        raise HTTPException(status_code=404, detail=f"reference file {MERFISH_H5AD} not found")
+    url = selected.get("downloadUrl")
+    if not url:
+        raise HTTPException(status_code=502, detail="reference H5AD has no download URL")
+    schema = _h5ad_schema(str(url))
+    return {
+        "sourceId": "human-skin-spatial-census",
+        "status": "bounded_h5ad_schema",
+        "file": selected,
+        "schema": schema,
+        "matrixLoaded": False,
+        "dataLoaded": False,
+        "coordinateScope": "sample_local",
+        "registrationStatus": "unregistered_to_hand",
+        "transform": None,
+        "note": "Only AnnData/HDF5 group metadata is inspected through HTTP range reads. Expression matrices and full cell tables are not loaded.",
     }
 
 
