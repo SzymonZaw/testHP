@@ -4,6 +4,7 @@ import ssl
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
+import certifi
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel, Field
@@ -104,16 +105,24 @@ def photo_reconstruction_prepared(prepared_asset_id: str):
 @router.get("/reference-glb")
 def reference_hand_glb():
     request = Request(REFERENCE_HAND_GLB_URL, headers={"Accept": "model/gltf-binary, application/octet-stream, */*", "User-Agent": "testHP-reference-hand/1.0"})
+    contexts = [ssl.create_default_context(), ssl.create_default_context(cafile=certifi.where())]
+    last_ssl_error: Exception | None = None
     try:
-        # Prefer the operating system trust store. This is important for local
-        # environments that install an enterprise/intercepting CA outside certifi.
-        context = ssl.create_default_context()
-        with urlopen(request, timeout=60, context=context) as upstream:
-            body = upstream.read()
-            content_type = upstream.headers.get("Content-Type") or "model/gltf-binary"
-        if not body:
-            raise HTTPException(status_code=502, detail="NIH reference asset returned an empty response")
-        return Response(content=body, media_type=content_type.split(";", 1)[0].strip(), headers={"Cache-Control": "public, max-age=3600", "X-Content-Type-Options": "nosniff"})
+        for context in contexts:
+            try:
+                with urlopen(request, timeout=60, context=context) as upstream:
+                    body = upstream.read()
+                    content_type = upstream.headers.get("Content-Type") or "model/gltf-binary"
+                if not body:
+                    raise HTTPException(status_code=502, detail="NIH reference asset returned an empty response")
+                return Response(content=body, media_type=content_type.split(";", 1)[0].strip(), headers={"Cache-Control": "public, max-age=3600", "X-Content-Type-Options": "nosniff"})
+            except (ssl.SSLError, URLError) as exc:
+                reason = getattr(exc, "reason", exc)
+                if isinstance(reason, ssl.SSLError) or isinstance(exc, ssl.SSLError):
+                    last_ssl_error = exc
+                    continue
+                raise
+        raise last_ssl_error or URLError("TLS certificate verification failed")
     except HTTPException:
         raise
     except HTTPError as exc:
