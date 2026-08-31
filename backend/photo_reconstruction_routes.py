@@ -5,6 +5,7 @@ from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
 import certifi
+import truststore
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel, Field
@@ -105,7 +106,11 @@ def photo_reconstruction_prepared(prepared_asset_id: str):
 @router.get("/reference-glb")
 def reference_hand_glb():
     request = Request(REFERENCE_HAND_GLB_URL, headers={"Accept": "model/gltf-binary, application/octet-stream, */*", "User-Agent": "testHP-reference-hand/1.0"})
-    contexts = [ssl.create_default_context(), ssl.create_default_context(cafile=certifi.where())]
+    contexts = [
+        truststore.SSLContext(ssl.PROTOCOL_TLS_CLIENT),
+        ssl.create_default_context(),
+        ssl.create_default_context(cafile=certifi.where()),
+    ]
     last_ssl_error: Exception | None = None
     try:
         for context in contexts:
