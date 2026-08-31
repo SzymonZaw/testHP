@@ -287,5 +287,174 @@ def inspect_reference_h5ad_schema() -> dict[str, Any]:
     }
 
 
+class _RangeHTTPReader(io.RawIOBase):
+    """Seekable HTTP Range reader with a strict aggregate byte budget."""
+
+    def __init__(self, url: str, size: int, block_size: int = 64 * 1024, max_total_bytes: int = 4 * 1024 * 1024):
+        super().__init__()
+        self.url = url
+        self.size = int(size)
+        self.block_size = int(block_size)
+        self.max_total_bytes = int(max_total_bytes)
+        self.position = 0
+        self.total_fetched = 0
+        self.range_requests = 0
+        self.cache: dict[int, bytes] = {}
+
+    def readable(self) -> bool:
+        return True
+
+    def seekable(self) -> bool:
+        return True
+
+    def tell(self) -> int:
+        return self.position
+
+    def seek(self, offset: int, whence: int = io.SEEK_SET) -> int:
+        if whence == io.SEEK_SET:
+            new_position = offset
+        elif whence == io.SEEK_CUR:
+            new_position = self.position + offset
+        elif whence == io.SEEK_END:
+            new_position = self.size + offset
+        else:
+            raise ValueError("unsupported seek mode")
+        if new_position < 0:
+            raise ValueError("negative seek position")
+        self.position = new_position
+        return self.position
+
+    def _fetch_block(self, start: int) -> bytes:
+        if start in self.cache:
+            return self.cache[start]
+        if self.total_fetched >= self.max_total_bytes:
+            raise OSError("bounded random-access byte budget exceeded")
+        length = min(self.block_size, self.size - start, self.max_total_bytes - self.total_fetched)
+        if length <= 0:
+            return b""
+        request = Request(
+            self.url,
+            headers={
+                "Accept": "application/octet-stream, */*",
+                "Range": f"bytes={start}-{start + length - 1}",
+                "User-Agent": USER_AGENT,
+            },
+        )
+        try:
+            with urlopen(request, timeout=20) as response:
+                payload = response.read(length)
+                content_range = response.headers.get("Content-Range", "")
+        except (HTTPError, URLError, TimeoutError) as exc:
+            raise OSError(f"range request failed: {exc}") from exc
+        if len(payload) != length:
+            raise OSError(f"short range response: requested {length}, received {len(payload)}")
+        if content_range and not content_range.startswith(f"bytes {start}-"):
+            raise OSError(f"unexpected Content-Range: {content_range}")
+        self.cache[start] = payload
+        self.total_fetched += len(payload)
+        self.range_requests += 1
+        return payload
+
+    def read(self, size: int = -1) -> bytes:
+        if self.position >= self.size:
+            return b""
+        if size is None or size < 0:
+            size = self.size - self.position
+        end_position = min(self.size, self.position + size)
+        chunks: list[bytes] = []
+        cursor = self.position
+        while cursor < end_position:
+            block_start = (cursor // self.block_size) * self.block_size
+            block = self._fetch_block(block_start)
+            if not block:
+                break
+            start_in_block = cursor - block_start
+            take = min(len(block) - start_in_block, end_position - cursor)
+            chunks.append(block[start_in_block:start_in_block + take])
+            cursor += take
+        self.position = cursor
+        return b"".join(chunks)
+
+    def readinto(self, buffer: bytearray) -> int:
+        data = self.read(len(buffer))
+        buffer[:len(data)] = data
+        return len(data)
+
+
+@router.get("/api/reference/tissue/human-skin-spatial-census/schema/random-access")
+def inspect_reference_h5ad_random_access(
+    block_size: int = Query(default=64 * 1024, ge=4096, le=256 * 1024),
+    max_total_bytes: int = Query(default=4 * 1024 * 1024, ge=128 * 1024, le=4 * 1024 * 1024),
+) -> dict[str, Any]:
+    """Attempt real HDF5 metadata access using bounded HTTP Range reads."""
+    record = _json_get(ZENODO_API)
+    selected = _find_merfish_file(record)
+    if not selected:
+        raise HTTPException(status_code=404, detail=f"reference file {MERFISH_H5AD} not found")
+    url = selected.get("downloadUrl")
+    size = selected.get("size")
+    if not url or not isinstance(size, (int, float)):
+        raise HTTPException(status_code=502, detail="reference H5AD metadata is incomplete")
+
+    reader = _RangeHTTPReader(str(url), int(size), block_size=block_size, max_total_bytes=max_total_bytes)
+    try:
+        with h5py.File(reader, "r") as handle:
+            top_level = list(handle.keys())[:64]
+            obs = handle.get("obs")
+            var = handle.get("var")
+            obsm = handle.get("obsm")
+            uns = handle.get("uns")
+
+            def keys(group: Any) -> list[str]:
+                return list(group.keys())[:128] if group is not None else []
+
+            schema = {
+                "hdf5": True,
+                "probeStatus": "random_access_metadata_read",
+                "anndataEncodingType": handle.attrs.get("encoding-type"),
+                "anndataEncodingVersion": handle.attrs.get("encoding-version"),
+                "topLevelKeys": top_level,
+                "obsKeys": keys(obs),
+                "varKeys": keys(var),
+                "obsmKeys": keys(obsm),
+                "unsKeys": keys(uns),
+                "randomAccessInspection": True,
+            }
+        return {
+            "sourceId": "human-skin-spatial-census",
+            "status": "bounded_h5ad_random_access",
+            "file": selected,
+            "schema": schema,
+            "matrixLoaded": False,
+            "dataLoaded": False,
+            "bytesFetched": reader.total_fetched,
+            "rangeRequests": reader.range_requests,
+            "blockSize": reader.block_size,
+            "maxTotalBytes": reader.max_total_bytes,
+            "coordinateScope": "sample_local",
+            "registrationStatus": "unregistered_to_hand",
+            "transform": None,
+            "note": "AnnData/HDF5 metadata was inspected using bounded HTTP Range reads. No expression matrix or full cell table was loaded.",
+        }
+    except (OSError, ValueError, RuntimeError) as exc:
+        return {
+            "sourceId": "human-skin-spatial-census",
+            "status": "bounded_h5ad_random_access_failed",
+            "file": selected,
+            "schema": None,
+            "matrixLoaded": False,
+            "dataLoaded": False,
+            "bytesFetched": reader.total_fetched,
+            "rangeRequests": reader.range_requests,
+            "blockSize": reader.block_size,
+            "maxTotalBytes": reader.max_total_bytes,
+            "coordinateScope": "sample_local",
+            "registrationStatus": "unregistered_to_hand",
+            "transform": None,
+            "error": str(exc),
+            "note": "The bounded Range reader could not satisfy the HDF5 metadata access pattern without exceeding its byte budget. No full H5AD download was attempted.",
+        }
+
+
 def register_reference_tissue_preview(app: Any) -> None:
     app.include_router(router)
