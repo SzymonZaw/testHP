@@ -3,7 +3,7 @@
   if (window.__testhpReferenceTissueRegistryInstalled) return;
   window.__testhpReferenceTissueRegistryInstalled = true;
 
-  const VERSION = 'reference-tissue-safe-1';
+  const VERSION = 'reference-tissue-safe-2';
   const HAND_REFERENCE = 'nih-hand-template-3DPX-017237';
   const SOURCES = Object.freeze({
     human_skin_spatial_census: Object.freeze({
@@ -100,6 +100,7 @@
     sources: SOURCES,
     list: () => Object.values(SOURCES),
     selectSource,
+    select: selectSource,
     setRegion,
     getState: () => window.__testhpReferenceTissueRegistryState || makeState()
   });
