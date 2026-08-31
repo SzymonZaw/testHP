@@ -8,6 +8,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any
 from urllib.request import Request, urlopen
+import truststore
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
@@ -17,6 +18,11 @@ from .hand_segmentation import detect_hand_landmarks
 from .spatial_contract import canonical_spatial_id
 from .stage_2_4 import _load as load_spatial_evidence, _save as save_spatial_evidence
 from .hand_data_pipeline import router as hand_data_pipeline_router
+
+# Use the native OS certificate store for outbound public-reference requests.
+# This is required on local Windows environments where Python's OpenSSL bundle
+# does not contain the issuer trusted by the browser/Windows certificate store.
+truststore.inject_into_ssl()
 
 VIEWS = ("front", "back", "side_left", "side_right", "thumb")
 NIH_REFERENCE_HAND_GLB = "https://3d.nih.gov/api/submissions/23310/runs/c054b0b1-404c-4f43-b6a7-ddff98215e52/output-files/511811"
@@ -65,21 +71,26 @@ def state(subject_id: str="own_cohort", timepoint: str="T0", spatial_id: str="ha
 def reference_glb():
     """Stream one allow-listed public NIH reference asset through FastAPI."""
     try:
-        request = Request(NIH_REFERENCE_HAND_GLB, headers={"User-Agent": "testHP-reference-hand/1.0"})
-        upstream = urlopen(request, timeout=30)
+        request = Request(NIH_REFERENCE_HAND_GLB, headers={"Accept": "model/gltf-binary, application/octet-stream, */*", "User-Agent": "testHP-reference-hand/1.0"})
+        with urlopen(request, timeout=30) as upstream:
+            body = upstream.read()
+            if not body:
+                raise HTTPException(status_code=502, detail="NIH reference asset returned an empty response")
+            if body[:4] != b"glTF":
+                raise HTTPException(status_code=502, detail="NIH reference asset is not a valid GLB (missing glTF magic)")
+        headers = {
+            "Cache-Control": "public, max-age=3600",
+            "X-Reference-Source": NIH_REFERENCE_HAND_SOURCE_ID,
+            "X-Reference-Provenance": "public_reference",
+            "X-Reference-User-Health-Data": "false",
+            "X-Content-Type-Options": "nosniff",
+        }
+        headers["Content-Length"] = str(len(body))
+        return StreamingResponse(iter([body]), media_type="model/gltf-binary", headers=headers)
+    except HTTPException:
+        raise
     except Exception as exc:
         raise HTTPException(status_code=502, detail=f"NIH reference asset unavailable: {exc}") from exc
-    content_type = upstream.headers.get_content_type() or "model/gltf-binary"
-    content_length = upstream.headers.get("Content-Length")
-    headers = {
-        "Cache-Control": "public, max-age=3600",
-        "X-Reference-Source": NIH_REFERENCE_HAND_SOURCE_ID,
-        "X-Reference-Provenance": "public_reference",
-        "X-Reference-User-Health-Data": "false",
-    }
-    if content_length:
-        headers["Content-Length"] = content_length
-    return StreamingResponse(upstream, media_type=content_type, headers=headers)
 
 @router.post("/upload")
 async def upload(file: UploadFile=File(...), subject_id: str=Form("own_cohort"), timepoint: str=Form("T0"), spatial_node_id: str=Form("hand")):
