@@ -5,7 +5,9 @@
 
   const SOURCE_ID = 'nih-hand-template-3DPX-017237';
   const NIH_VIEWER_URL = 'https://3d.nih.gov/entries/3DPX-017237';
-  const VIEWER_VERSION = 'reference-3d-safe-6';
+  const VIEWER_VERSION = 'reference-3d-safe-7';
+  let mountObserver = null;
+  let mountTimer = null;
 
   function state(patch = {}) {
     window.__testhpReferenceHand3DViewerState = Object.freeze({
@@ -39,21 +41,25 @@
     document.head.appendChild(s);
   }
 
-  function card() {
+  function findMount() {
     const host = document.getElementById('testhp-end-user-layer');
     if (!host) return null;
-    let c = host.querySelector('.dt-reference-3d-card');
+    return host.querySelector('.center .viewport') || host.querySelector('.viewport') || host;
+  }
+
+  function card(mount) {
+    if (!mount) return null;
+    let c = mount.querySelector('.dt-reference-3d-card');
     if (c) return c;
     c = document.createElement('section');
     c.className = 'dt-reference-3d-card';
     c.setAttribute('aria-label', 'NIH 3D reference hand');
-    c.innerHTML = '<iframe class="dt-reference-3d-frame" title="NIH 3D reference hand" loading="eager" referrerpolicy="strict-origin-when-cross-origin"></iframe><div class="dt-reference-3d-overlay"><div class="dt-reference-3d-title">REFERENCE HAND · NIH 3D · 3DPX-017237</div><div class="dt-reference-3d-status">Public reference geometry · not user health data</div></div>';
-    const v = host.querySelector('.center .viewport,.viewport');
-    if (v) {
-      v.style.position = v.style.position || 'relative';
-      v.style.minHeight = v.style.minHeight || '520px';
-      v.appendChild(c);
-    } else host.appendChild(c);
+    c.innerHTML = '<iframe class="dt-reference-3d-frame" title="NIH 3D reference hand" loading="eager" referrerpolicy="strict-origin-when-cross-origin"></iframe><div class="dt-reference-3d-overlay"><div class="dt-reference-3d-title">REFERENCE HAND · NIH 3D · 3DPX-017237</div><div class="dt-reference-3d-status">Loading NIH 3D reference geometry…</div></div>';
+    if (mount !== document.getElementById('testhp-end-user-layer')) {
+      mount.style.position = mount.style.position || 'relative';
+      mount.style.minHeight = mount.style.minHeight || '520px';
+    }
+    mount.appendChild(c);
     return c;
   }
 
@@ -66,27 +72,58 @@
     f.querySelector('span').textContent = msg;
   }
 
-  async function boot() {
-    styles();
-    state({ active: true, loading: true, error: null });
-    const c = card();
-    if (!c) {
-      state({ active: true, loading: false, error: 'Reference viewer host is not available' });
-      return;
+  function cleanupMountObserver() {
+    if (mountObserver) {
+      mountObserver.disconnect();
+      mountObserver = null;
     }
+    if (mountTimer) {
+      clearTimeout(mountTimer);
+      mountTimer = null;
+    }
+  }
 
+  function mountViewer() {
+    const mount = findMount();
+    if (!mount) return false;
+    const c = card(mount);
+    if (!c) return false;
     const frame = c.querySelector('.dt-reference-3d-frame');
+    if (!frame || frame.dataset.testhpBound === '1') return true;
+    frame.dataset.testhpBound = '1';
     frame.addEventListener('load', () => {
+      cleanupMountObserver();
       state({ active: true, loading: false, loaded: true, error: null, regionId: window.__testhpReferenceHandState?.regionId || 'palm' });
       const status = c.querySelector('.dt-reference-3d-status');
       if (status) status.textContent = 'Loaded in NIH 3D · public reference geometry · not user health data';
     }, { once: true });
     frame.addEventListener('error', () => {
+      cleanupMountObserver();
       console.warn('[reference-hand-3d] NIH interactive viewer failed; keeping UI responsive.');
       state({ active: true, loading: false, loaded: false, error: 'NIH interactive reference viewer could not be loaded' });
       fallback(c, 'The NIH interactive viewer could not be loaded in this browser.');
     }, { once: true });
     frame.src = NIH_VIEWER_URL;
+    return true;
+  }
+
+  function boot() {
+    styles();
+    state({ active: true, loading: true, loaded: false, error: null });
+    if (mountViewer()) return;
+
+    // The exploration layout may still be rendering when the activation event fires.
+    // Wait for the stable viewport instead of inserting into a container that can be replaced.
+    mountObserver = new MutationObserver(() => {
+      if (mountViewer()) cleanupMountObserver();
+    });
+    mountObserver.observe(document.documentElement, { childList: true, subtree: true });
+    mountTimer = setTimeout(() => {
+      if (!mountViewer()) {
+        cleanupMountObserver();
+        state({ active: true, loading: false, loaded: false, error: 'Reference viewer host is not available' });
+      }
+    }, 5000);
   }
 
   function activate() {
