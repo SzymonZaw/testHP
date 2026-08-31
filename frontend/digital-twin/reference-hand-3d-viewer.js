@@ -6,8 +6,8 @@
   const SOURCE_ID = 'nih-hand-template-3DPX-017237';
   const NIH_ENTRY_URL = 'https://3d.nih.gov/entries/3DPX-017237';
   const NIH_GLB_URL = 'https://3d.nih.gov/api/submissions/23310/runs/c054b0b1-404c-4f43-b6a7-ddff98215e52/output-files/511811';
-  const PROXY_URL = `/digital-twin/reference-hand-glb-proxy.php?url=${encodeURIComponent(NIH_GLB_URL)}`;
-  const VIEWER_VERSION = 'reference-glb-safe-13';
+  const PROXY_URL = '/api/hand/photo-reconstruction/reference-glb';
+  const VIEWER_VERSION = 'reference-glb-safe-14';
   let observer = null;
   let retryTimer = null;
   let bootToken = 0;
@@ -41,16 +41,21 @@
 
   async function loadProxy(model,card,token){
     try{
-      setState({active:true,loading:true,loaded:false,error:null,loadMethod:'same_origin_proxy'});
+      setState({active:true,loading:true,loaded:false,error:null,loadMethod:'same_origin_fastapi'});
       const r=await fetch(PROXY_URL,{credentials:'same-origin',cache:'no-store'});
-      if(!r.ok)throw new Error(`Reference GLB proxy unavailable (${r.status})`);
-      const blob=await r.blob(); if(!blob.size)throw new Error('Reference GLB proxy returned an empty asset');
+      if(!r.ok)throw new Error(`Reference GLB endpoint unavailable (${r.status})`);
+      const contentType=r.headers.get('content-type')||'';
+      if(!contentType.includes('model/gltf-binary')&&!contentType.includes('application/octet-stream')){
+        const detail=(await r.text()).slice(0,160);
+        throw new Error(`Reference GLB endpoint returned ${contentType||'unknown content type'}: ${detail}`);
+      }
+      const blob=await r.blob(); if(!blob.size)throw new Error('Reference GLB endpoint returned an empty asset');
       if(token!==bootToken)return;
       const objectUrl=URL.createObjectURL(blob);
-      model.addEventListener('load',()=>{URL.revokeObjectURL(objectUrl);if(token!==bootToken)return;stopWaiting();setState({active:true,loading:false,loaded:true,error:null,loadMethod:'same_origin_proxy'});const st=card.querySelector('.dt-reference-3d-status');if(st)st.textContent='Loaded NIH GLB · public reference geometry · not user health data';},{once:true});
-      model.addEventListener('error',()=>{URL.revokeObjectURL(objectUrl);if(token!==bootToken)return;stopWaiting();setState({active:true,loading:false,loaded:false,error:'GLB returned by same-origin proxy could not be decoded'});showFallback(card,'The local proxy returned an asset that the 3D viewer could not decode.');},{once:true});
+      model.addEventListener('load',()=>{URL.revokeObjectURL(objectUrl);if(token!==bootToken)return;stopWaiting();setState({active:true,loading:false,loaded:true,error:null,loadMethod:'same_origin_fastapi'});const st=card.querySelector('.dt-reference-3d-status');if(st)st.textContent='Loaded NIH GLB · public reference geometry · not user health data';},{once:true});
+      model.addEventListener('error',()=>{URL.revokeObjectURL(objectUrl);if(token!==bootToken)return;stopWaiting();setState({active:true,loading:false,loaded:false,error:'GLB returned by FastAPI endpoint could not be decoded'});showFallback(card,'The FastAPI endpoint returned an asset that the 3D viewer could not decode.');},{once:true});
       model.src=objectUrl;
-    }catch(e){if(token!==bootToken)return;stopWaiting();setState({active:true,loading:false,loaded:false,error:e?.message||'Reference GLB proxy failed',loadMethod:'same_origin_proxy'});showFallback(card,e?.message||'The local reference asset proxy could not load the public NIH GLB.');}
+    }catch(e){if(token!==bootToken)return;stopWaiting();setState({active:true,loading:false,loaded:false,error:e?.message||'Reference GLB endpoint failed',loadMethod:'same_origin_fastapi'});showFallback(card,e?.message||'The same-origin reference asset endpoint could not load the public NIH GLB.');}
   }
   function mount(token){const m=findMount();if(!m)return false;const c=ensureCard(m);const v=c?.querySelector('.dt-reference-3d-model');if(!v)return false;loadProxy(v,c,token);return true;}
   function boot(){
