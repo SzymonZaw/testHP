@@ -5,7 +5,7 @@
 
   const SOURCE_ID = 'nih-hand-template-3DPX-017237';
   const NIH_VIEWER_URL = 'https://3d.nih.gov/entries/3DPX-017237';
-  const VIEWER_VERSION = 'reference-3d-safe-8';
+  const VIEWER_VERSION = 'reference-3d-safe-9';
   let mountObserver = null;
   let mountTimer = null;
   let bootToken = 0;
@@ -26,12 +26,12 @@
     const s = document.createElement('style');
     s.id = 'testhp-reference-hand-3d-style';
     s.textContent = `
-      .dt-reference-3d-card{position:relative;min-height:520px;width:100%;border:1px solid #263545;border-radius:16px;background:#0b1118;overflow:hidden;isolation:isolate}
+      .dt-reference-3d-card{position:relative;min-height:520px;width:100%;margin:16px 0;border:1px solid #263545;border-radius:16px;background:#0b1118;overflow:hidden;isolation:isolate;box-sizing:border-box}
       .dt-reference-3d-frame{display:block;width:100%;height:520px;border:0;background:#0b1118}
       .dt-reference-3d-overlay{position:absolute;inset:0;pointer-events:none;z-index:2}
       .dt-reference-3d-title{position:absolute;left:16px;top:14px;padding:8px 10px;border:1px solid #344456;border-radius:10px;background:#0d151ee8;color:#dce7f2;font:700 11px/1.2 system-ui,sans-serif;letter-spacing:.08em;text-transform:uppercase}
       .dt-reference-3d-status{position:absolute;left:16px;bottom:14px;max-width:80%;padding:7px 9px;border-radius:9px;background:#0d151ee8;color:#9fb0c2;font:600 11px/1.35 system-ui,sans-serif}
-      .dt-reference-3d-fallback{position:absolute;inset:0;display:grid;place-items:center;padding:32px;text-align:center;color:#9fb0c2;font:600 12px/1.5 system-ui,sans-serif;background:#0b1118}.dt-reference-3d-fallback strong{display:block;color:#dce7f2;margin-bottom:6px;font-size:13px}.dt-reference-3d-fallback a{color:#9bd8c4;pointer-events:auto}
+      .dt-reference-3d-fallback{position:absolute;inset:0;display:grid;place-items:center;padding:32px;text-align:center;color:#9fb0c2;font:600 12px/1.5 system-ui,sans-serif;background:#0b1118;z-index:3}.dt-reference-3d-fallback strong{display:block;color:#dce7f2;margin-bottom:6px;font-size:13px}.dt-reference-3d-fallback a{color:#9bd8c4;pointer-events:auto}
     `;
     document.head.appendChild(s);
   }
@@ -39,29 +39,31 @@
   function findMount() {
     const host = document.getElementById('testhp-end-user-layer');
     if (!host) return null;
-    return host.querySelector('.center .viewport') || host.querySelector('.viewport') || null;
+    return host.querySelector('.center .viewport') || host.querySelector('.viewport') || host;
   }
 
   function ensureCard(mount) {
     if (!mount) return null;
-    let c = mount.querySelector('.dt-reference-3d-card');
+    let c = mount.querySelector(':scope > .dt-reference-3d-card');
     if (c) return c;
     c = document.createElement('section');
     c.className = 'dt-reference-3d-card';
     c.setAttribute('aria-label', 'NIH 3D reference hand');
     c.innerHTML = '<iframe class="dt-reference-3d-frame" title="NIH 3D reference hand" loading="eager" referrerpolicy="strict-origin-when-cross-origin"></iframe><div class="dt-reference-3d-overlay"><div class="dt-reference-3d-title">REFERENCE HAND · NIH 3D · 3DPX-017237</div><div class="dt-reference-3d-status">Loading NIH 3D reference geometry…</div></div>';
-    mount.style.position = mount.style.position || 'relative';
-    mount.style.minHeight = mount.style.minHeight || '520px';
-    mount.appendChild(c);
+    if (mount === document.getElementById('testhp-end-user-layer')) mount.prepend(c);
+    else mount.appendChild(c);
     return c;
   }
 
   function fallback(c, msg) {
     if (!c) return;
-    const f = c.querySelector('.dt-reference-3d-fallback') || document.createElement('div');
-    f.className = 'dt-reference-3d-fallback';
-    f.innerHTML = '<div><strong>Reference 3D viewer unavailable</strong><span></span><br><a href="https://3d.nih.gov/entries/3DPX-017237" target="_blank" rel="noopener noreferrer">Open NIH 3D reference</a></div>';
-    if (!f.parentElement) c.appendChild(f);
+    let f = c.querySelector('.dt-reference-3d-fallback');
+    if (!f) {
+      f = document.createElement('div');
+      f.className = 'dt-reference-3d-fallback';
+      f.innerHTML = '<div><strong>Reference 3D viewer unavailable</strong><span></span><br><a href="https://3d.nih.gov/entries/3DPX-017237" target="_blank" rel="noopener noreferrer">Open NIH 3D reference</a></div>';
+      c.appendChild(f);
+    }
     f.querySelector('span').textContent = msg;
   }
 
@@ -82,7 +84,7 @@
     frame.addEventListener('load', () => {
       if (token !== bootToken) return;
       cleanup();
-      state({ active:true, loading:false, loaded:true, error:null, regionId:window.__testhpReferenceHandState?.regionId || 'palm' });
+      state({active:true, loading:false, loaded:true, error:null, regionId:window.__testhpReferenceHandState?.regionId || 'palm'});
       const status = c.querySelector('.dt-reference-3d-status');
       if (status) status.textContent = 'Loaded in NIH 3D · public reference geometry · not user health data';
     }, {once:true});
@@ -103,7 +105,9 @@
     cleanup();
     state({active:true, loading:true, loaded:false, error:null});
     if (mountViewer(token)) return;
-    mountObserver = new MutationObserver(() => { if (mountViewer(token)) cleanup(); });
+    mountObserver = new MutationObserver(() => {
+      if (mountViewer(token)) cleanup();
+    });
     mountObserver.observe(document.documentElement, {childList:true, subtree:true});
     mountTimer = setTimeout(() => {
       if (token !== bootToken) return;
