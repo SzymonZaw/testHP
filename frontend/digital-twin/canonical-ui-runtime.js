@@ -106,7 +106,7 @@ window.addEventListener('testhp:local-cell-selected', event => {
   if (!existing.some(item => String(item?.cellId ?? item?.cell_id ?? item?.id ?? '') === id)) {
     state = createDigitalTwinState({
       ...state,
-      anatomy: { ...state.anatomy, cells: [...existing, { ...cell, region }] },
+      anatomy: { ...state.anatomy, cells: [...existing, { ...cell, region, coordinateScope: 'sample_local', provenance: { sourceId: detail.sourceId } }] },
     });
   }
   state = sanitizeSelection(state, { cell: id });

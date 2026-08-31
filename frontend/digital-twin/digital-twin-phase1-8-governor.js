@@ -95,7 +95,13 @@ export function sanitizeSelection(state, patch = {}) {
   if (next.selection.tissue && !suppliedTissues(next, region).some((item) => suppliedTissueId(item) === String(next.selection.tissue))) {
     next = setSelection(next, { tissue: null, cell: null, molecularLayer: null });
   }
-  if (next.selection.cell && !suppliedCells(next, region, next.selection.tissue).some((item) => suppliedCellId(item) === String(next.selection.cell))) {
+  if (
+    next.selection.cell &&
+    !Object.prototype.hasOwnProperty.call(patch, 'cell') &&
+    !suppliedCells(next, region, next.selection.tissue).some(
+      (item) => suppliedCellId(item) === String(next.selection.cell)
+    )
+  ) {
     next = setSelection(next, { cell: null, molecularLayer: null });
   }
   if (next.selection.molecularLayer && !suppliedMolecularLayers(next, next.selection.cell).some((item) => item.id === next.selection.molecularLayer)) {
