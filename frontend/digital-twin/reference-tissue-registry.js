@@ -3,7 +3,7 @@
   if (window.__testhpReferenceTissueRegistryInstalled) return;
   window.__testhpReferenceTissueRegistryInstalled = true;
 
-  const VERSION = 'reference-tissue-safe-5';
+  const VERSION = 'reference-tissue-safe-6';
   const HAND_REFERENCE = 'nih-hand-template-3DPX-017237';
   const SOURCES = Object.freeze({
     human_skin_spatial_census: Object.freeze({
@@ -107,6 +107,14 @@
       anatomicalMatch: anatomicalMatch ? Object.freeze({ ...anatomicalMatch }) : null,
       handRegionMapped: Boolean(item?.handRegionIds?.includes(regionId)),
       registrationReadiness: item?.registrationReadiness || null,
+      registrationEvidence: Object.freeze({
+        transformAvailable: false,
+        transformVerified: false,
+        sourceCoordinateScope: item?.spatialCoordinateScope || null,
+        targetCoordinateFrame: item ? HAND_REFERENCE : null,
+        reason: item ? 'no_verified_transform_between_dataset_local_space_and_nih_hand_template' : null,
+        evidenceLevel: item ? 'anatomical_match_only' : null
+      }),
       tissueIds: [],
       spatialCoordinates: [],
       evidenceIds: [],
