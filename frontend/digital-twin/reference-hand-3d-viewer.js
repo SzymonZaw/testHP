@@ -7,7 +7,7 @@
   const NIH_ENTRY_URL = 'https://3d.nih.gov/entries/3DPX-017237';
   const NIH_GLB_URL = 'https://3d.nih.gov/api/submissions/23310/runs/c054b0b1-404c-4f43-b6a7-ddff98215e52/output-files/511847';
   const PROXY_URL = '/api/hand/photo-reconstruction/reference-glb';
-  const VIEWER_VERSION = 'reference-glb-safe-18';
+  const VIEWER_VERSION = 'reference-glb-safe-19';
 
   function state(p = {}) {
     window.__testhpReferenceHand3DViewerState = Object.freeze({
@@ -49,10 +49,12 @@
     const status = c.querySelector('.dt-reference-3d-status');
     if (status) status.textContent = msg;
     viewer.removeAttribute('src');
-    const f = document.createElement('div');
-    f.className = 'dt-reference-3d-fallback';
-    f.innerHTML = '<div><strong>Reference 3D viewer unavailable</strong><br><a href="'+NIH_ENTRY_URL+'" target="_blank" rel="noopener noreferrer">Open NIH 3D reference on NIH 3D</a></div>';
-    c.appendChild(f);
+    if (!c.querySelector('.dt-reference-3d-fallback')) {
+      const f = document.createElement('div');
+      f.className = 'dt-reference-3d-fallback';
+      f.innerHTML = '<div><strong>Reference 3D viewer unavailable</strong><br><a href="'+NIH_ENTRY_URL+'" target="_blank" rel="noopener noreferrer">Open NIH 3D reference on NIH 3D</a></div>';
+      c.appendChild(f);
+    }
   }
 
   async function load(token, model, c) {
@@ -67,19 +69,21 @@
       if (token !== bootToken) return;
       const blob = new Blob([buf], {type:'model/gltf-binary'});
       const url = URL.createObjectURL(blob);
-      model.addEventListener('load', () => {
+      const onLoad = () => {
         URL.revokeObjectURL(url);
         if (token !== bootToken) return;
         state({active:true, loading:false, loaded:true, error:null, loadMethod:'same_origin_fastapi'});
         const status = c.querySelector('.dt-reference-3d-status');
         if (status) status.textContent = 'Loaded NIH GLB · public reference geometry · not user health data';
-      }, {once:true});
-      model.addEventListener('error', () => {
+      };
+      const onError = () => {
         URL.revokeObjectURL(url);
         if (token !== bootToken) return;
         state({active:true, loading:false, loaded:false, error:'GLB returned by FastAPI endpoint could not be decoded', loadMethod:'same_origin_fastapi'});
         fallback(c, 'The verified NIH GLB was fetched but could not be decoded by model-viewer.');
-      }, {once:true});
+      };
+      model.addEventListener('load', onLoad, {once:true});
+      model.addEventListener('error', onError, {once:true});
       model.src = url;
     } catch (e) {
       if (token !== bootToken) return;
@@ -99,8 +103,8 @@
     const c = card(m);
     const model = c?.querySelector('.dt-reference-3d-model');
     if (!model) return false;
-    if (window.__testhpReferenceHand3DViewerState?.loading || model.getAttribute('src')) return true;
-    loadingPromise = load(token, model, c);
+    if (model.getAttribute('src') || loadingPromise) return true;
+    loadingPromise = load(token, model, c).finally(() => { loadingPromise = null; });
     return true;
   }
 
@@ -109,7 +113,8 @@
     const token = ++bootToken;
     if (observer) observer.disconnect();
     if (retryTimer) clearInterval(retryTimer);
-    state({active:true, loading:true, loaded:false, error:null, loadMethod:'same_origin_fastapi'});
+    loadingPromise = null;
+    state({active:true, loading:true, loaded:false, error:null, loadMethod:'same_origin_fastapi', assetFormat:'glb', assetUrl:NIH_GLB_URL});
     if (mount(token)) return;
     observer = new MutationObserver(() => { if (mount(token)) observer.disconnect(); });
     observer.observe(document.documentElement || document, {childList:true, subtree:true});
