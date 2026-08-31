@@ -3,7 +3,7 @@
   if (window.__testhpReferenceRegionGeometryInstalled) return;
   window.__testhpReferenceRegionGeometryInstalled = true;
 
-  const VERSION = 'reference-region-geometry-safe-3';
+  const VERSION = 'reference-region-geometry-safe-4';
   const SOURCE_ID = 'nih-hand-template-3DPX-017237';
   const REGIONS = Object.freeze({
     hand: Object.freeze({ label: 'Hand', mappingMethod: 'whole_model', confidence: 'high', focus: [50, 50], cameraOrbit: '0deg 75deg 105%' }),
@@ -64,11 +64,11 @@
   }
 
   function setRegion(regionId) {
-    const region = REGIONS[regionId] || REGIONS.palm;
-    const model = getModel();
+    const normalized = REGIONS[regionId] ? regionId : 'palm';
+    const region = REGIONS[normalized];
     const payload = Object.freeze({
       version: VERSION,
-      regionId: regionId || 'palm',
+      regionId: normalized,
       label: region.label,
       mappingMethod: region.mappingMethod,
       confidence: region.confidence,
@@ -81,6 +81,7 @@
 
     window.__testhpReferenceRegionGeometryState = payload;
 
+    const model = getModel();
     if (model) {
       model.dataset.referenceRegion = payload.regionId;
       model.dataset.referenceMapping = payload.mappingMethod;
@@ -99,6 +100,17 @@
       || 'palm';
   }
 
+  function bindRegionClicks() {
+    if (window.__testhpReferenceRegionGeometryClicksBound) return;
+    window.__testhpReferenceRegionGeometryClicksBound = true;
+    document.addEventListener('click', event => {
+      const target = event.target?.closest?.('[data-region]');
+      if (!target) return;
+      const regionId = target.getAttribute('data-region');
+      if (regionId && REGIONS[regionId]) setRegion(regionId);
+    }, { passive: true });
+  }
+
   window.testhpReferenceRegionGeometry = Object.freeze({
     version: VERSION,
     regions: REGIONS,
@@ -110,6 +122,9 @@
   window.addEventListener('testhp:canonical-state-changed', () => setRegion(currentRegion()));
   window.addEventListener('testhp:reference-hand-activated', () => setRegion(currentRegion()));
   window.addEventListener('testhp:reference-region-geometry-remounted', () => setRegion(currentRegion()));
+  window.addEventListener('testhp:reference-hand-3d-loaded', () => setRegion(currentRegion()));
+
+  bindRegionClicks();
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', () => setRegion(currentRegion()), { once: true });
   } else {
