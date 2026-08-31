@@ -122,10 +122,15 @@ def reference_hand_glb():
             try:
                 with urlopen(request, timeout=60, context=context) as upstream:
                     body = upstream.read()
-                    content_type = upstream.headers.get("Content-Type") or "model/gltf-binary"
                 if not body:
                     raise HTTPException(status_code=502, detail="NIH reference asset returned an empty response")
-                return Response(content=body, media_type=content_type.split(";", 1)[0].strip(), headers={"Cache-Control": "public, max-age=3600", "X-Content-Type-Options": "nosniff"})
+                # NIH currently returns text/plain for this binary endpoint.
+                # Validate the GLB signature and always expose the correct MIME type.
+                if body[:4] != b"glTF":
+                    raise HTTPException(status_code=502, detail="NIH reference asset is not a valid GLB (missing glTF magic)")
+                return Response(content=body, media_type="model/gltf-binary", headers={"Cache-Control": "public, max-age=3600", "X-Content-Type-Options": "nosniff"})
+            except HTTPException:
+                raise
             except (ssl.SSLError, URLError) as exc:
                 reason = getattr(exc, "reason", exc)
                 if isinstance(reason, ssl.SSLError) or isinstance(exc, ssl.SSLError):
