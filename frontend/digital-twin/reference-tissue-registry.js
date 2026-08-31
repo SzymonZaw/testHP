@@ -3,7 +3,7 @@
   if (window.__testhpReferenceTissueRegistryInstalled) return;
   window.__testhpReferenceTissueRegistryInstalled = true;
 
-  const VERSION = 'reference-tissue-safe-4';
+  const VERSION = 'reference-tissue-safe-5';
   const HAND_REFERENCE = 'nih-hand-template-3DPX-017237';
   const SOURCES = Object.freeze({
     human_skin_spatial_census: Object.freeze({
@@ -20,16 +20,23 @@
         study: 'Nature Genetics 2026',
         cellCountApprox: 1200000,
         donorCount: 22,
+        sampleCount: 114,
         anatomicSiteCount: 15,
         spatialMethod: 'MERFISH',
         histologyIncluded: true,
         sourceUrl: 'https://www.ebi.ac.uk/biostudies/arrayexpress/studies/S-BIAD2376',
         publicationUrl: 'https://doi.org/10.1038/s41588-026-02552-8'
       }),
+      verifiedAnatomicalSites: Object.freeze([
+        Object.freeze({ regionId: 'palm', sourceSite: 'palm', approxCellCount: 2600 }),
+        Object.freeze({ regionId: 'hand', sourceSite: 'hand', approxCellCount: 1148 })
+      ]),
+      spatialCoordinateScope: 'sample_local',
+      registrationReadiness: 'anatomical_match_verified_transform_missing',
       registrationStatus: 'unregistered_to_hand',
       handRegionIds: [],
       provenance: 'public_reference',
-      notes: 'Real human skin spatial data. Verified as a public spatial source; no automatic registration to NIH hand geometry is claimed.'
+      notes: 'Real human skin spatial data. Palm and hand samples are present. Spatial coordinates remain dataset/sample-local; no transform into the NIH hand-template frame is claimed.'
     }),
     geo_skin_spatial_visium: Object.freeze({
       id: 'geo-skin-spatial-visium',
@@ -47,6 +54,8 @@
       }),
       registrationStatus: 'unregistered_to_hand',
       handRegionIds: [],
+      spatialCoordinateScope: 'sample_local',
+      registrationReadiness: 'no_verified_hand_registration',
       provenance: 'public_reference',
       notes: 'Real Visium skin sample. The source provides local spatial coordinates, not coordinates in the NIH hand-template frame.'
     }),
@@ -65,6 +74,8 @@
       }),
       registrationStatus: 'unregistered_to_hand',
       handRegionIds: [],
+      spatialCoordinateScope: 'resource_dependent',
+      registrationReadiness: 'resource_dependent',
       provenance: 'public_reference',
       notes: 'Reference atlas/resource collection. Individual datasets require explicit anatomical and coordinate registration.'
     })
@@ -80,6 +91,7 @@
 
   function makeState(sourceId = selectedSourceId, regionId = selectedRegionId) {
     const item = sourceById(sourceId);
+    const anatomicalMatch = item?.verifiedAnatomicalSites?.find(site => site.regionId === regionId) || null;
     return Object.freeze({
       version: VERSION,
       sourceId: item?.id || null,
@@ -92,7 +104,9 @@
       verification: item?.verification || null,
       provenance: item?.provenance || 'public_reference',
       handReferenceId: HAND_REFERENCE,
+      anatomicalMatch: anatomicalMatch ? Object.freeze({ ...anatomicalMatch }) : null,
       handRegionMapped: Boolean(item?.handRegionIds?.includes(regionId)),
+      registrationReadiness: item?.registrationReadiness || null,
       tissueIds: [],
       spatialCoordinates: [],
       evidenceIds: [],
