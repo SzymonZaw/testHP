@@ -105,15 +105,40 @@ def _parse_text_sample(raw: bytes, file_name: str) -> dict[str, Any]:
     }
 
 
+def _file_details(item: dict[str, Any]) -> dict[str, Any]:
+    key = str(item.get("key") or "")
+    suffix = key.rsplit(".", 1)[-1].lower() if "." in key else ""
+    size = item.get("size")
+    return {
+        **item,
+        "extension": f".{suffix}" if suffix else None,
+        "formatHint": {
+            "csv": "table_text",
+            "tsv": "table_text",
+            "txt": "text",
+            "json": "json_text",
+            "zip": "archive",
+            "gz": "compressed",
+            "h5ad": "anndata_hdf5",
+            "h5": "hdf5",
+        }.get(suffix, "binary_or_unknown"),
+        "previewableByBoundedTextRoute": suffix in {"csv", "tsv", "txt", "json"},
+        "sizeBytes": int(size) if isinstance(size, (int, float)) else size,
+    }
+
+
 @router.get("/api/reference/tissue/human-skin-spatial-census/files")
 def list_reference_files() -> dict[str, Any]:
     record = _json_get(ZENODO_API)
+    files = [_file_details(item) for item in _files(record)]
+    candidates = [item for item in files if item.get("previewableByBoundedTextRoute")]
     return {
         "sourceId": "human-skin-spatial-census",
         "zenodoRecord": record.get("id"),
         "doi": record.get("doi"),
-        "files": _files(record),
-        "previewCandidateCount": len(_candidate_files(record)),
+        "files": files,
+        "previewCandidates": candidates,
+        "previewCandidateCount": len(candidates),
         "maxPreviewBytes": MAX_PREVIEW_BYTES,
     }
 
