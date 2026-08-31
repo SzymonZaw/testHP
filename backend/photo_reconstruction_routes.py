@@ -105,11 +105,9 @@ def photo_reconstruction_prepared(prepared_asset_id: str):
 def reference_hand_glb():
     request = Request(REFERENCE_HAND_GLB_URL, headers={"Accept": "model/gltf-binary, application/octet-stream, */*", "User-Agent": "testHP-reference-hand/1.0"})
     try:
-        try:
-            import certifi
-            context = ssl.create_default_context(cafile=certifi.where())
-        except (ImportError, OSError):
-            context = ssl.create_default_context()
+        # Prefer the operating system trust store. This is important for local
+        # environments that install an enterprise/intercepting CA outside certifi.
+        context = ssl.create_default_context()
         with urlopen(request, timeout=60, context=context) as upstream:
             body = upstream.read()
             content_type = upstream.headers.get("Content-Type") or "model/gltf-binary"
