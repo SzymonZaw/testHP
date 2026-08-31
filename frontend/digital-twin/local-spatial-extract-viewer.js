@@ -14,7 +14,7 @@
   function mountPoint() {
     const h = host();
     if (!h) return null;
-    return h.querySelector('#twin-viewport') || h.querySelector('.dt-viewport') || h;
+    return h.querySelector('#twin-viewport') || h.querySelector('.dt-viewport') || null;
   }
   function ensureStyles() {
     if (document.getElementById('testhp-local-spatial-extract-style')) return;
@@ -90,20 +90,38 @@
     return true;
   }
   function boot() {
+    let observer;
     let attempts = 0;
-    const observer = new MutationObserver(() => {
-      if (load()) observer.disconnect();
+    const tryMount = () => {
+      attempts += 1;
+      const mounted = !!document.querySelector(`.${CARD_CLASS}`) || !!mountPoint();
+      if (mounted) {
+        load();
+        if (document.querySelector(`.${CARD_CLASS}`)) {
+          observer?.disconnect();
+          observer = undefined;
+          return;
+        }
+      }
+      if (attempts >= 240) {
+        observer?.disconnect();
+        observer = undefined;
+        return;
+      }
+      window.requestAnimationFrame(tryMount);
+    };
+    observer = new MutationObserver(() => {
+      if (document.querySelector(`.${CARD_CLASS}`)) {
+        observer.disconnect(); observer = undefined;
+        return;
+      }
+      load();
     });
     observer.observe(document.documentElement || document, { childList: true, subtree: true });
-    const tick = () => {
-      attempts += 1;
-      if (load() || attempts >= 40) observer.disconnect();
-      else window.requestAnimationFrame(tick);
-    };
-    tick();
+    tryMount();
     window.addEventListener('testhp:reference-hand-activated', load);
     window.addEventListener('testhp:canonical-state-changed', load);
   }
-  window.testhpLocalSpatialExtract = Object.freeze({ version: 'local-spatial-extract-safe-2', sourceId: SOURCE_ID, load, getState: () => ({ installed: true, loaded, loading, cardPresent: !!document.querySelector(`.${CARD_CLASS}`) }) });
+  window.testhpLocalSpatialExtract = Object.freeze({ version: 'local-spatial-extract-safe-3', sourceId: SOURCE_ID, load, getState: () => ({ installed: true, loaded, loading, cardPresent: !!document.querySelector(`.${CARD_CLASS}`) }) });
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot, { once: true }); else boot();
 })();
