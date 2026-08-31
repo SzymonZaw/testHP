@@ -3,17 +3,17 @@
   if (window.__testhpReferenceRegionGeometryInstalled) return;
   window.__testhpReferenceRegionGeometryInstalled = true;
 
-  const VERSION = 'reference-region-geometry-safe-2';
+  const VERSION = 'reference-region-geometry-safe-3';
   const SOURCE_ID = 'nih-hand-template-3DPX-017237';
   const REGIONS = Object.freeze({
-    hand: Object.freeze({ label: 'Hand', mappingMethod: 'whole_model', confidence: 'high', focus: [50, 50] }),
-    palm: Object.freeze({ label: 'Palm', mappingMethod: 'visual_focus_only', confidence: 'low', focus: [50, 58] }),
-    thumb: Object.freeze({ label: 'Thumb', mappingMethod: 'visual_focus_only', confidence: 'low', focus: [28, 52] }),
-    index: Object.freeze({ label: 'Index', mappingMethod: 'visual_focus_only', confidence: 'low', focus: [42, 28] }),
-    middle: Object.freeze({ label: 'Middle', mappingMethod: 'visual_focus_only', confidence: 'low', focus: [51, 22] }),
-    ring: Object.freeze({ label: 'Ring', mappingMethod: 'visual_focus_only', confidence: 'low', focus: [60, 25] }),
-    little: Object.freeze({ label: 'Little', mappingMethod: 'visual_focus_only', confidence: 'low', focus: [70, 34] }),
-    wrist: Object.freeze({ label: 'Wrist', mappingMethod: 'visual_focus_only', confidence: 'low', focus: [50, 82] })
+    hand: Object.freeze({ label: 'Hand', mappingMethod: 'whole_model', confidence: 'high', focus: [50, 50], cameraOrbit: '0deg 75deg 105%' }),
+    palm: Object.freeze({ label: 'Palm', mappingMethod: 'visual_focus_only', confidence: 'low', focus: [50, 58], cameraOrbit: '0deg 82deg 92%' }),
+    thumb: Object.freeze({ label: 'Thumb', mappingMethod: 'visual_focus_only', confidence: 'low', focus: [28, 52], cameraOrbit: '-28deg 74deg 88%' }),
+    index: Object.freeze({ label: 'Index', mappingMethod: 'visual_focus_only', confidence: 'low', focus: [42, 28], cameraOrbit: '-8deg 58deg 86%' }),
+    middle: Object.freeze({ label: 'Middle', mappingMethod: 'visual_focus_only', confidence: 'low', focus: [51, 22], cameraOrbit: '0deg 55deg 86%' }),
+    ring: Object.freeze({ label: 'Ring', mappingMethod: 'visual_focus_only', confidence: 'low', focus: [60, 25], cameraOrbit: '8deg 58deg 86%' }),
+    little: Object.freeze({ label: 'Little', mappingMethod: 'visual_focus_only', confidence: 'low', focus: [70, 34], cameraOrbit: '24deg 64deg 87%' }),
+    wrist: Object.freeze({ label: 'Wrist', mappingMethod: 'visual_focus_only', confidence: 'low', focus: [50, 82], cameraOrbit: '0deg 96deg 94%' })
   });
 
   function getModel() {
@@ -55,6 +55,14 @@
     focus.hidden = payload.regionId === 'hand';
   }
 
+  function applyCamera(payload) {
+    const model = getModel();
+    if (!model || !model.loaded) return false;
+    if (payload.cameraOrbit) model.cameraOrbit = payload.cameraOrbit;
+    model.dataset.referenceCameraFocus = payload.regionId;
+    return true;
+  }
+
   function setRegion(regionId) {
     const region = REGIONS[regionId] || REGIONS.palm;
     const model = getModel();
@@ -66,6 +74,7 @@
       confidence: region.confidence,
       meshSegmented: false,
       focus: region.focus,
+      cameraOrbit: region.cameraOrbit,
       sourceId: SOURCE_ID,
       provenance: 'public_reference'
     });
@@ -76,6 +85,7 @@
       model.dataset.referenceRegion = payload.regionId;
       model.dataset.referenceMapping = payload.mappingMethod;
       model.dataset.referenceConfidence = payload.confidence;
+      applyCamera(payload);
     }
 
     renderFocus(payload);
@@ -93,6 +103,7 @@
     version: VERSION,
     regions: REGIONS,
     setRegion,
+    focusRegion: setRegion,
     getState: () => window.__testhpReferenceRegionGeometryState || setRegion(currentRegion())
   });
 
