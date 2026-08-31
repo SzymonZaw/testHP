@@ -18,6 +18,7 @@ from .hand_segmentation import detect_hand_landmarks
 from .spatial_contract import canonical_spatial_id
 from .stage_2_4 import _load as load_spatial_evidence, _save as save_spatial_evidence
 from .hand_data_pipeline import router as hand_data_pipeline_router
+from .reference_tissue_preview import register_reference_tissue_preview
 truststore.inject_into_ssl()
 VIEWS = ("front", "back", "side_left", "side_right", "thumb")
 NIH_REFERENCE_HAND_GLB = "https://3d.nih.gov/api/submissions/23310/runs/c054b0b1-404c-4f43-b6a7-ddff98215e52/output-files/511847"
@@ -143,3 +144,4 @@ def clear(request: TargetRequest):
 def register_hand_surface_photo_routes(app: Any) -> None:
     app.include_router(router)
     app.include_router(hand_data_pipeline_router)
+    register_reference_tissue_preview(app)
