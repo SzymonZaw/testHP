@@ -11,7 +11,11 @@
     status: 'available',
     modality: 'hand_3d',
     sourceUrl: 'https://3d.nih.gov/entries/3DPX-017237',
-    accession: '3DPX-017237'
+    assetUrl: 'https://3d.nih.gov/api/submissions/23310/runs/c054b0b1-404c-4f43-b6a7-ddff98215e52/output-files/511811',
+    assetFormat: 'glb',
+    accession: '3DPX-017237',
+    provenance: 'public_reference',
+    userHealthData: false
   });
 
   function currentRegion() {
@@ -28,6 +32,7 @@
     host.dataset.referenceHandActive = 'true';
     host.dataset.referenceHandSource = REFERENCE_HAND.sourceId;
     host.dataset.referenceHandRegion = regionId;
+    host.dataset.referenceHandAsset = REFERENCE_HAND.assetUrl;
 
     const head = host.querySelector('.viewer-head');
     if (head) {
@@ -37,7 +42,7 @@
         context.className = 'dt-explore-context';
         head.prepend(context);
       }
-      context.innerHTML = '<strong>REFERENCE HAND</strong><span>NIH 3D · 3DPX-017237 · reference geometry</span><em>Reference data · not user health data</em>';
+      context.innerHTML = '<strong>REFERENCE HAND</strong><span>NIH 3D · 3DPX-017237 · GLB reference geometry</span><em>Reference data · not user health data</em>';
     }
 
     const viewport = host.querySelector('.viewport');
@@ -48,14 +53,14 @@
         badge.className = 'dt-reference-active';
         viewport.appendChild(badge);
       }
-      badge.textContent = 'REFERENCE HAND · NIH 3D · 3DPX-017237';
+      badge.textContent = 'REFERENCE HAND · NIH 3D · 3DPX-017237 · GLB';
     }
 
     if (!head && !viewport && !host.querySelector('.dt-reference-runtime-state')) {
       const status = document.createElement('section');
       status.className = 'dt-reference-runtime-state';
       status.setAttribute('aria-label', 'Active reference hand');
-      status.innerHTML = '<strong>REFERENCE HAND</strong><span>NIH 3D · 3DPX-017237 · reference geometry</span><em>Public reference data · not user health data</em>';
+      status.innerHTML = '<strong>REFERENCE HAND</strong><span>NIH 3D · 3DPX-017237 · GLB reference geometry</span><em>Public reference data · not user health data</em>';
       host.prepend(status);
     }
   }
@@ -77,7 +82,10 @@
       active: true,
       sourceId: REFERENCE_HAND.sourceId,
       regionId,
-      provenance: 'public_reference'
+      provenance: 'public_reference',
+      assetUrl: REFERENCE_HAND.assetUrl,
+      assetFormat: REFERENCE_HAND.assetFormat,
+      userHealthData: false
     });
     publishUiState();
     window.dispatchEvent(new CustomEvent('testhp:reference-hand-activated', {
