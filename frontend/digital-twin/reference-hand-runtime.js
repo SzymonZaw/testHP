@@ -14,14 +14,20 @@
     accession: '3DPX-017237'
   });
 
+  function currentRegion() {
+    const region = window.TestHPCanonicalState?.get?.()?.selection?.region;
+    return region || window.__testhpReferenceHandState?.regionId || 'palm';
+  }
+
   function publishUiState() {
     if (!window.__testhpReferenceHandState?.active) return;
     const host = document.getElementById('testhp-end-user-layer');
     if (!host) return;
 
+    const regionId = currentRegion();
     host.dataset.referenceHandActive = 'true';
     host.dataset.referenceHandSource = REFERENCE_HAND.sourceId;
-    host.dataset.referenceHandRegion = 'palm';
+    host.dataset.referenceHandRegion = regionId;
 
     const head = host.querySelector('.viewer-head');
     if (head) {
@@ -54,12 +60,23 @@
     }
   }
 
+  function syncRegionFromCanonicalState() {
+    if (!window.__testhpReferenceHandState?.active) return;
+    const regionId = currentRegion();
+    window.__testhpReferenceHandState = Object.freeze({
+      ...window.__testhpReferenceHandState,
+      regionId
+    });
+    publishUiState();
+  }
+
   function activate() {
+    const regionId = currentRegion();
     window.__testhpReferenceHandActivated = true;
     window.__testhpReferenceHandState = Object.freeze({
       active: true,
       sourceId: REFERENCE_HAND.sourceId,
-      regionId: 'palm',
+      regionId,
       provenance: 'public_reference'
     });
     publishUiState();
@@ -71,10 +88,7 @@
 
   window.testhpReferenceHand = Object.freeze({ REFERENCE_HAND, activate });
   window.addEventListener('testhp:reference-hand-requested', activate);
+  window.addEventListener('testhp:canonical-state-changed', syncRegionFromCanonicalState);
 
-  const observer = new MutationObserver(() => publishUiState());
-  if (document.documentElement) {
-    observer.observe(document.documentElement, { childList: true, subtree: true });
-  }
   if (window.__testhpReferenceHandActivated) publishUiState();
 })();
