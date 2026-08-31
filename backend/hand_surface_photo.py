@@ -7,7 +7,9 @@ from __future__ import annotations
 import uuid
 from datetime import datetime, timezone
 from typing import Any
+from urllib.request import Request, urlopen
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from .data_ingestion import ingest_upload, registry_status
 from .photo_reconstruction import prepare_image
@@ -17,6 +19,8 @@ from .stage_2_4 import _load as load_spatial_evidence, _save as save_spatial_evi
 from .hand_data_pipeline import router as hand_data_pipeline_router
 
 VIEWS = ("front", "back", "side_left", "side_right", "thumb")
+NIH_REFERENCE_HAND_GLB = "https://3d.nih.gov/api/submissions/23310/runs/c054b0b1-404c-4f43-b6a7-ddff98215e52/output-files/511811"
+NIH_REFERENCE_HAND_SOURCE_ID = "nih-hand-template-3DPX-017237"
 router = APIRouter(prefix="/api/hand/photo-reconstruction", tags=["hand-photo-reconstruction"])
 
 class TargetRequest(BaseModel):
@@ -56,6 +60,26 @@ def _state(request: TargetRequest) -> dict[str, Any]:
 
 @router.get("/state")
 def state(subject_id: str="own_cohort", timepoint: str="T0", spatial_id: str="hand"): return _state(TargetRequest(subject_id=subject_id,timepoint=timepoint,spatial_id=spatial_id))
+
+@router.get("/reference-glb")
+def reference_glb():
+    """Stream one allow-listed public NIH reference asset through FastAPI."""
+    try:
+        request = Request(NIH_REFERENCE_HAND_GLB, headers={"User-Agent": "testHP-reference-hand/1.0"})
+        upstream = urlopen(request, timeout=30)
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"NIH reference asset unavailable: {exc}") from exc
+    content_type = upstream.headers.get_content_type() or "model/gltf-binary"
+    content_length = upstream.headers.get("Content-Length")
+    headers = {
+        "Cache-Control": "public, max-age=3600",
+        "X-Reference-Source": NIH_REFERENCE_HAND_SOURCE_ID,
+        "X-Reference-Provenance": "public_reference",
+        "X-Reference-User-Health-Data": "false",
+    }
+    if content_length:
+        headers["Content-Length"] = content_length
+    return StreamingResponse(upstream, media_type=content_type, headers=headers)
 
 @router.post("/upload")
 async def upload(file: UploadFile=File(...), subject_id: str=Form("own_cohort"), timepoint: str=Form("T0"), spatial_node_id: str=Form("hand")):
