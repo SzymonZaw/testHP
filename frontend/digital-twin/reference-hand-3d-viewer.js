@@ -6,7 +6,7 @@
 
   const NIH_GLB_URL = 'https://3d.nih.gov/api/submissions/23310/runs/c054b0b1-404c-4f43-b6a7-ddff98215e52/output-files/511811';
   const SOURCE_ID = 'nih-hand-template-3DPX-017237';
-  const VIEWER_VERSION = 'reference-3d-safe-1';
+  const VIEWER_VERSION = 'reference-3d-safe-2';
   const THREE_URL = 'https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js';
   const GLTF_URL = 'https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/loaders/GLTFLoader.js';
 
@@ -35,7 +35,7 @@
     const style = document.createElement('style');
     style.id = 'testhp-reference-hand-3d-style';
     style.textContent = `
-      .dt-reference-3d-card{position:relative;min-height:360px;border:1px solid #263545;border-radius:16px;background:#0b1118;overflow:hidden;isolation:isolate}
+      .dt-reference-3d-card{position:relative;min-height:360px;width:100%;border:1px solid #263545;border-radius:16px;background:#0b1118;overflow:hidden;isolation:isolate}
       .dt-reference-3d-canvas{display:block;width:100%;height:100%;min-height:360px;touch-action:none;cursor:grab}
       .dt-reference-3d-canvas:active{cursor:grabbing}
       .dt-reference-3d-overlay{position:absolute;inset:0;pointer-events:none;z-index:2}
@@ -71,9 +71,9 @@
 
     const preferred = host.querySelector('.center .viewport, .viewport');
     if (preferred) {
-      preferred.replaceChildren(card);
-      preferred.style.position = 'relative';
-      preferred.style.minHeight = '360px';
+      preferred.style.position = preferred.style.position || 'relative';
+      preferred.style.minHeight = preferred.style.minHeight || '360px';
+      preferred.appendChild(card);
     } else {
       const anchor = host.querySelector('.dt-reference-runtime-state, .workspace, .dt-phase9');
       if (anchor?.parentElement) anchor.parentElement.insertBefore(card, anchor.nextSibling);
@@ -166,7 +166,6 @@
     const observer = new ResizeObserver(resize);
     observer.observe(canvas);
     resize();
-
     sceneState = { renderer, scene, camera, root, observer };
 
     loader.load(
