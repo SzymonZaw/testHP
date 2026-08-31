@@ -14,7 +14,7 @@ _HAND_REFERENCE = "nih-hand-template-3DPX-017237"
 _ZENODO_API = "https://zenodo.org/api/records/16795569"
 _EXPLORER_URL = "https://rstudio-connect.hpc.mssm.edu/humanskin-spatialcensus/"
 _ROOT = Path(__file__).resolve().parents[1]
-_LOCAL_PREVIEW = _ROOT / "data" / "reference" / "human-skin-spatial-census" / "palm_cells.json"
+_LOCAL_PREVIEW = _ROOT / "data" / "reference" / "human-skin-spatial-census" / "cells_preview.json"
 _NATURE_SUPPLEMENTARY_XLSX = "https://media.springernature.com/original/springer-static/esm/art%3A10.1038%2Fs41588-026-02552-8/MediaObjects/41588_2026_2552_MOESM3_ESM.xlsx"
 _SUPPLEMENTARY_ZIP = "supplementary_tables.zip"
 _MAX_ARCHIVE_INSPECT_BYTES = 1 * 1024 * 1024
@@ -285,20 +285,25 @@ def inspect_supplementary_archive(
 def reference_tissue_cells_preview(
     source_id: str,
     region: str = Query(default="palm"),
-    limit: int = Query(default=25, ge=1, le=100),
+    limit: int = Query(default=25, ge=1, le=1000),
 ) -> dict[str, Any]:
     if source_id not in _SOURCES:
         raise HTTPException(status_code=404, detail="reference tissue source not found")
-    if region.lower() not in {"palm", "hand"}:
-        raise HTTPException(status_code=400, detail="bounded cell preview supports palm or hand only")
+    normalized_region = region.strip().lower()
+    if not normalized_region:
+        raise HTTPException(status_code=400, detail="region must not be empty")
     if source_id == "human-skin-spatial-census" and _LOCAL_PREVIEW.is_file():
         try:
             payload = json.loads(_LOCAL_PREVIEW.read_text(encoding="utf-8"))
-            cells = [x for x in payload.get("cells", []) if region.lower() in str(x.get("anatomicSite", "")).lower() or region.lower() in str(x.get("regionName", "")).lower()][:limit]
+            cells = [
+                x for x in payload.get("cells", [])
+                if normalized_region in str(x.get("anatomicSite", "")).lower()
+                or normalized_region in str(x.get("regionName", "")).lower()
+            ][:limit]
             return {
                 "sourceId": source_id,
-                "status": "bounded_local_cell_preview",
-                "region": region,
+                "status": "bounded_local_cell_preview" if cells else "bounded_local_cell_preview_empty",
+                "region": normalized_region,
                 "requestedLimit": limit,
                 "returnedCount": len(cells),
                 "cells": cells,
@@ -313,10 +318,25 @@ def reference_tissue_cells_preview(
                 "note": "Cells are served from a locally materialized bounded extract. Coordinates remain in dataset/sample-local space and are not projected onto NIH hand geometry.",
             }
         except (OSError, UnicodeError, json.JSONDecodeError) as exc:
-            return {"sourceId": source_id, "status": "local_cell_preview_invalid", "region": region, "requestedLimit": limit, "returnedCount": 0, "cells": [], "coordinateScope": "sample_local", "registrationStatus": "unregistered_to_hand", "transform": None, "matrixLoaded": False, "dataLoaded": False, "error": f"{type(exc).__name__}: {exc}", "note": "The local extract exists but could not be read safely."}
+            return {"sourceId": source_id, "status": "local_cell_preview_invalid", "region": normalized_region, "requestedLimit": limit, "returnedCount": 0, "cells": [], "coordinateScope": "sample_local", "registrationStatus": "unregistered_to_hand", "transform": None, "matrixLoaded": False, "dataLoaded": False, "error": f"{type(exc).__name__}: {exc}", "note": "The local extract exists but could not be read safely."}
+    if source_id == "human-skin-spatial-census":
+        return {
+            "sourceId": source_id,
+            "status": "bounded_cell_preview_not_materialized",
+            "region": normalized_region,
+            "requestedLimit": limit,
+            "returnedCount": 0,
+            "cells": [],
+            "coordinateScope": "sample_local",
+            "registrationStatus": "unregistered_to_hand",
+            "transform": None,
+            "matrixLoaded": False,
+            "dataLoaded": False,
+            "note": "No local bounded extract is available for the requested region. No full H5AD download or remote cell scan is attempted.",
+        }
     try:
         record = _zenodo_record()
         f = _file_metadata(record, "merfish.integrated_annotated.h5ad")
-        return {"sourceId": source_id, "status": "bounded_cell_preview_not_materialized", "region": region, "requestedLimit": limit, "returnedCount": 0, "cells": [], "coordinateScope": "sample_local", "registrationStatus": "unregistered_to_hand", "transform": None, "matrixLoaded": False, "dataLoaded": False, "remoteFile": {"name": f.get("key"), "size": f.get("size")}, "supplementaryArtifact": {"id": "nature-supplementary-tables-1-12", "approxSize": "17.4 MB", "containsCellSpatialCoordinates": False, "url": _NATURE_SUPPLEMENTARY_XLSX}, "officialExplorer": {"url": _EXPLORER_URL, "type": "rstudio_connect_shiny", "accessMode": "interactive_only"}, "note": "The smaller supplementary workbook is metadata-focused and does not replace obsm/spatial. No full H5AD download or remote cell scan is attempted."}
+        return {"sourceId": source_id, "status": "bounded_cell_preview_not_materialized", "region": normalized_region, "requestedLimit": limit, "returnedCount": 0, "cells": [], "coordinateScope": "sample_local", "registrationStatus": "unregistered_to_hand", "transform": None, "matrixLoaded": False, "dataLoaded": False, "remoteFile": {"name": f.get("key"), "size": f.get("size")}, "supplementaryArtifact": {"id": "nature-supplementary-tables-1-12", "approxSize": "17.4 MB", "containsCellSpatialCoordinates": False, "url": _NATURE_SUPPLEMENTARY_XLSX}, "officialExplorer": {"url": _EXPLORER_URL, "type": "rstudio_connect_shiny", "accessMode": "interactive_only"}, "note": "The smaller supplementary workbook is metadata-focused and does not replace obsm/spatial. No full H5AD download or remote cell scan is attempted."}
     except Exception as exc:
-        return {"sourceId": source_id, "status": "bounded_cell_preview_unavailable", "region": region, "requestedLimit": limit, "returnedCount": 0, "cells": [], "coordinateScope": "sample_local", "registrationStatus": "unregistered_to_hand", "transform": None, "matrixLoaded": False, "dataLoaded": False, "error": f"{type(exc).__name__}: {exc}", "note": "No full H5AD download was attempted."}
+        return {"sourceId": source_id, "status": "bounded_cell_preview_unavailable", "region": normalized_region, "requestedLimit": limit, "returnedCount": 0, "cells": [], "coordinateScope": "sample_local", "registrationStatus": "unregistered_to_hand", "transform": None, "matrixLoaded": False, "dataLoaded": False, "error": f"{type(exc).__name__}: {exc}", "note": "No full H5AD download was attempted."}
