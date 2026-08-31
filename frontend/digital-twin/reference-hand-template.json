@@ -5,21 +5,24 @@
   "source": {
     "type": "public-reference",
     "url": "https://3d.nih.gov/entries/3DPX-017237",
-    "downloadUrl": "https://3d.nih.gov/entries/download/17237/1",
+    "downloadUrl": "https://3d.nih.gov/entries/download/17237/2",
     "upstreamRepository": "https://github.com/HegdeUSA/Hand_template",
     "license": "MIT (upstream HegdeUSA/Hand_template repository)"
   },
   "asset": {
-    "format": "stl",
-    "expectedFile": "T_template_MASKED.nii_.gz__0_resaved_1.stl",
+    "format": "glb",
+    "viewerAssetUrl": "https://3d.nih.gov/api/submissions/23310/runs/c054b0b1-404c-4f43-b6a7-ddff98215e52/output-files/511811",
+    "expectedFile": "T_template_MASKED.nii_.gz__0_resaved_1_NIH3D",
     "kind": "anatomical-template-surface",
-    "status": "reference_geometry_only"
+    "status": "reference_geometry_only",
+    "processedVersion": 2,
+    "nihVersionHash": "08f4f9f419a0d79fd4ae27b16d96f1e2229c6519"
   },
   "provenance": {
     "modality": "T1-weighted MRI",
     "inputHands": 27,
     "subjects": 21,
-    "processing": ["ANTs template creation", "3D Slicer segmentation", "STL export"]
+    "processing": ["ANTs template creation", "3D Slicer segmentation", "STL export", "NIH3D GLB processing"]
   },
   "coordinateSystem": {
     "id": "source-defined",
