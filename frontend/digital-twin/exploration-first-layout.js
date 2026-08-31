@@ -12,9 +12,19 @@
     script.id = 'testhp-reference-region-geometry-script';
     script.src = '/digital-twin/reference-region-geometry.js?v=reference-region-safe-1';
     script.async = true;
-    script.addEventListener('error', () => {
-      window.__testhpReferenceRegionGeometryLoadError = true;
-    }, { once: true });
+    script.addEventListener('error', () => { window.__testhpReferenceRegionGeometryLoadError = true; }, { once: true });
+    document.head.appendChild(script);
+  }
+
+  function ensureReferenceTissueRegistry() {
+    if (!window.__testhpReferenceHandState?.active) return;
+    if (window.testhpReferenceTissueRegistry) return;
+    if (document.getElementById('testhp-reference-tissue-registry-script')) return;
+    const script = document.createElement('script');
+    script.id = 'testhp-reference-tissue-registry-script';
+    script.src = '/digital-twin/reference-tissue-registry.js?v=reference-tissue-safe-1';
+    script.async = true;
+    script.addEventListener('error', () => { window.__testhpReferenceTissueRegistryLoadError = true; }, { once: true });
     document.head.appendChild(script);
   }
 
@@ -26,6 +36,7 @@
     if (window.__testhpReferenceHandState?.active && window.testhpReferenceHand3D?.activate) {
       window.testhpReferenceHand3D.activate();
       ensureReferenceRegionGeometry();
+      ensureReferenceTissueRegistry();
     }
 
     const workspace = host.querySelector('.workspace');
@@ -65,10 +76,9 @@
       regionId: detail.regionId || 'palm',
       provenance: 'public_reference'
     });
-    window.dispatchEvent(new CustomEvent('testhp:reference-hand-activated', {
-      detail: window.__testhpReferenceHandState
-    }));
+    window.dispatchEvent(new CustomEvent('testhp:reference-hand-activated', { detail: window.__testhpReferenceHandState }));
     ensureReferenceRegionGeometry();
+    ensureReferenceTissueRegistry();
     render();
   }
 
