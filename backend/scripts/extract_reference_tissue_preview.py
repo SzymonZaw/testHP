@@ -10,6 +10,7 @@ import numpy as np
 
 REQUIRED_OBS = ["cell_id", "cell_barcode", "anatomic_site", "region_name", "sample_id"]
 DEFAULT_OUTPUT = Path("data/reference/human-skin-spatial-census/cells_preview.json")
+LEGACY_PREVIEW = Path("data/reference/human-skin-spatial-census/palm_cells.json")
 DEFAULT_LIMIT = 1000
 SEARCH_FIELDS = [
     "anatomic_site",
@@ -187,10 +188,17 @@ def main() -> int:
         "returnedCount": len(rows),
         "matchedFields": dict(matched_fields),
         "cells": rows,
-        "note": "Locally materialized bounded extract. Coordinates remain in dataset/sample-local space and are not projected onto NIH hand geometry.",
+        "compatibilityAlias": str(LEGACY_PREVIEW),
+        "note": "Locally materialized bounded extract. Coordinates remain in dataset/sample-local space and are not projected onto NIH hand geometry. palm_cells.json is retained only as a legacy preview-route filename; its payload preserves the actual anatomicSite/sampleId.",
     }
-    args.output.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    encoded = json.dumps(payload, ensure_ascii=False, indent=2) + "\n"
+    args.output.write_text(encoded, encoding="utf-8")
+    if args.output.resolve() != LEGACY_PREVIEW.resolve():
+        LEGACY_PREVIEW.parent.mkdir(parents=True, exist_ok=True)
+        LEGACY_PREVIEW.write_text(encoded, encoding="utf-8")
     print(f"Wrote {len(rows)} cells to {args.output}")
+    if args.output.resolve() != LEGACY_PREVIEW.resolve():
+        print(f"Updated compatibility preview: {LEGACY_PREVIEW}")
     return 0
 
 
