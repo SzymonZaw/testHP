@@ -20,12 +20,10 @@ from .stage_2_4 import _load as load_spatial_evidence, _save as save_spatial_evi
 from .hand_data_pipeline import router as hand_data_pipeline_router
 
 # Use the native OS certificate store for outbound public-reference requests.
-# This is required on local Windows environments where Python's OpenSSL bundle
-# does not contain the issuer trusted by the browser/Windows certificate store.
 truststore.inject_into_ssl()
 
 VIEWS = ("front", "back", "side_left", "side_right", "thumb")
-NIH_REFERENCE_HAND_GLB = "https://3d.nih.gov/api/submissions/23310/runs/c054b0b1-404c-4f43-b6a7-ddff98215e52/output-files/511811"
+NIH_REFERENCE_HAND_GLB = "https://3d.nih.gov/api/submissions/23310/runs/c054b0b1-404c-4f43-b6a7-ddff98215e52/output-files/511847"
 NIH_REFERENCE_HAND_SOURCE_ID = "nih-hand-template-3DPX-017237"
 router = APIRouter(prefix="/api/hand/photo-reconstruction", tags=["hand-photo-reconstruction"])
 
@@ -69,28 +67,17 @@ def state(subject_id: str="own_cohort", timepoint: str="T0", spatial_id: str="ha
 
 @router.get("/reference-glb")
 def reference_glb():
-    """Stream one allow-listed public NIH reference asset through FastAPI."""
+    """Stream one allow-listed public NIH GLB reference asset through FastAPI."""
     try:
         request = Request(NIH_REFERENCE_HAND_GLB, headers={"Accept": "model/gltf-binary, application/octet-stream, */*", "User-Agent": "testHP-reference-hand/1.0"})
         with urlopen(request, timeout=30) as upstream:
             body = upstream.read()
-            if not body:
-                raise HTTPException(status_code=502, detail="NIH reference asset returned an empty response")
-            if body[:4] != b"glTF":
-                raise HTTPException(status_code=502, detail="NIH reference asset is not a valid GLB (missing glTF magic)")
-        headers = {
-            "Cache-Control": "public, max-age=3600",
-            "X-Reference-Source": NIH_REFERENCE_HAND_SOURCE_ID,
-            "X-Reference-Provenance": "public_reference",
-            "X-Reference-User-Health-Data": "false",
-            "X-Content-Type-Options": "nosniff",
-        }
-        headers["Content-Length"] = str(len(body))
+            if not body: raise HTTPException(status_code=502, detail="NIH reference asset returned an empty response")
+            if body[:4] != b"glTF": raise HTTPException(status_code=502, detail="NIH reference asset is not a valid GLB (missing glTF magic)")
+        headers = {"Cache-Control":"public, max-age=3600","X-Reference-Source":NIH_REFERENCE_HAND_SOURCE_ID,"X-Reference-Provenance":"public_reference","X-Reference-User-Health-Data":"false","X-Content-Type-Options":"nosniff","Content-Length":str(len(body))}
         return StreamingResponse(iter([body]), media_type="model/gltf-binary", headers=headers)
-    except HTTPException:
-        raise
-    except Exception as exc:
-        raise HTTPException(status_code=502, detail=f"NIH reference asset unavailable: {exc}") from exc
+    except HTTPException: raise
+    except Exception as exc: raise HTTPException(status_code=502, detail=f"NIH reference asset unavailable: {exc}") from exc
 
 @router.post("/upload")
 async def upload(file: UploadFile=File(...), subject_id: str=Form("own_cohort"), timepoint: str=Form("T0"), spatial_node_id: str=Form("hand")):
@@ -117,13 +104,11 @@ def prepare_asset(asset_id: str, spatial_id: str="hand", subject_id: str="own_co
     try: prepared=prepare_image(record)
     except FileNotFoundError as exc: raise HTTPException(status_code=404,detail=f"source image not found: {exc.args[0]}") from exc
     except Exception as exc: raise HTTPException(status_code=422,detail=f"image preparation failed: {exc}") from exc
-    landmarks=detect_hand_landmarks(prepared["prepared_path"])
-    landmark_status=landmarks.get("status")
+    landmarks=detect_hand_landmarks(prepared["prepared_path"]); landmark_status=landmarks.get("status")
     prepared_payload={"prepared_asset_id":prepared["prepared_asset_id"],"asset_id":item["asset_id"],"view":view,"spatial_id":target,"status":"ready","source_path":item["path"],"prepared_path":prepared["prepared_path"],"filename":prepared.get("filename",item["filename"]),"prepared_at":prepared.get("updated_at",_now()),"method":"target-scoped-preparation-v3","background_method":prepared.get("background_method"),"quality":prepared.get("quality"),"warnings":prepared.get("warnings",[]),"crop":prepared.get("crop"),"width":prepared.get("prepared_width"),"height":prepared.get("prepared_height")}
     item["prepared_asset"]=prepared_payload; item["prepared"]=True; item["prepared_path"]=prepared["prepared_path"]; item["prepared_asset_id"]=prepared["prepared_asset_id"]
     item["landmarks"]={"status":landmark_status,"method":landmarks.get("method"),"points":landmarks.get("landmarks",[]),"count":len(landmarks.get("landmarks",[])),"detected_at":_now(),"reason":landmarks.get("reason")}
-    item["preparation"]={"status":"prepared","method":prepared_payload["method"],"quality":prepared.get("quality"),"warnings":prepared.get("warnings",[]),"source_unchanged":True,"prepared_path":prepared["prepared_path"],"prepared_at":prepared.get("updated_at",_now()),"landmark_status":landmark_status}
-    save_spatial_evidence(items)
+    item["preparation"]={"status":"prepared","method":prepared_payload["method"],"quality":prepared.get("quality"),"warnings":prepared.get("warnings",[]),"source_unchanged":True,"prepared_path":prepared["prepared_path"],"prepared_at":prepared.get("updated_at",_now()),"landmark_status":landmark_status}; save_spatial_evidence(items)
     return {"status":"prepared","prepared_asset":prepared_payload,"landmarks":item["landmarks"],"source_unchanged":True,"spatial_id":target}
 
 @router.post("/prepare")
