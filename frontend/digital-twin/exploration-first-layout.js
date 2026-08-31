@@ -8,6 +8,11 @@
     const host = root();
     if (!host || !host.querySelector('.dt-phase9')) return;
     host.classList.add('dt-exploration-first');
+
+    if (window.__testhpReferenceHandState?.active && window.testhpReferenceHand3D?.activate) {
+      window.testhpReferenceHand3D.activate();
+    }
+
     const workspace = host.querySelector('.workspace');
     if (!workspace || workspace.dataset.explorationFirst === '1') return;
     workspace.dataset.explorationFirst = '1';
@@ -52,7 +57,6 @@
   }
 
   window.addEventListener('testhp:reference-hand-requested', activateReference);
-
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', render, { once: true });
   else render();
   new MutationObserver(render).observe(document.documentElement, { childList: true, subtree: true });
