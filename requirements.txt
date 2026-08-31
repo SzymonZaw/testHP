@@ -13,5 +13,5 @@ fastapi>=0.115,<1
 uvicorn[standard]>=0.30,<1
 python-multipart>=0.0.20,<1
 psycopg[binary]>=3.2,<4
-httpx2
+httpx>=0.27,<1
 certifi>=2024.8.30
