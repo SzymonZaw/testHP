@@ -4,17 +4,22 @@
   window.__testhpLocalSpatialExtractViewerInstalled = true;
 
   const SOURCE_ID = 'human-skin-spatial-census';
-  const ENDPOINT = `/api/reference/tissue/${SOURCE_ID}/cells/local-preview?limit=1000`;
+  const ENDPOINT = `/api/reference/tissue/${SOURCE_ID}/cells/preview`;
   const CARD_CLASS = 'dt-reference-spatial-extract';
   const MAX_POINTS = 1000;
   let loading = false;
   let loaded = false;
+  let activeRegion = null;
+  let abortController = null;
 
   function host() { return document.getElementById('testhp-end-user-layer'); }
   function mountPoint() {
     const h = host();
     if (!h) return null;
     return h.querySelector('#twin-viewport') || h.querySelector('.dt-viewport') || null;
+  }
+  function currentRegion() {
+    return window.TestHPCanonicalState?.get?.()?.selection?.region || 'palm';
   }
   function ensureStyles() {
     if (document.getElementById('testhp-local-spatial-extract-style')) return;
@@ -39,7 +44,7 @@
     card.className = CARD_CLASS;
     card.setAttribute('aria-label', 'Local MERFISH spatial extract');
     card.innerHTML = `
-      <div class="dt-local-spatial-head"><div><div class="dt-local-spatial-kicker">REAL LINKED DATA</div><div class="dt-local-spatial-title">MERFISH · LOCAL SPATIAL EXTRACT</div></div><div class="dt-local-spatial-meta">FOREARM · SAMPLE-LOCAL<br>Not registered to NIH hand geometry</div></div>
+      <div class="dt-local-spatial-head"><div><div class="dt-local-spatial-kicker">REAL LINKED DATA</div><div class="dt-local-spatial-title">MERFISH · LOCAL SPATIAL EXTRACT</div></div><div class="dt-local-spatial-meta">SAMPLE-LOCAL<br>Not registered to NIH hand geometry</div></div>
       <div class="dt-local-spatial-note">Actual cells from the locally materialized H5AD extract. Coordinates are shown in their dataset/sample-local frame only.</div>
       <canvas aria-label="MERFISH sample-local cell coordinates"></canvas>
       <div class="dt-local-spatial-status">Loading local cell extract…</div>`;
@@ -55,7 +60,11 @@
     const ctx = canvas.getContext('2d');
     if (!ctx) return 0;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.clearRect(0, 0, width, height);
-    const points = cells.map(c => Array.isArray(c?.spatial) ? c.spatial : null).filter(p => p && p.length >= 2 && Number.isFinite(Number(p[0])) && Number.isFinite(Number(p[1]))).slice(0, MAX_POINTS).map(p => [Number(p[0]), Number(p[1])]);
+    const points = cells.map(c => {
+      const x = Array.isArray(c?.spatial) ? c.spatial[0] : c?.x;
+      const y = Array.isArray(c?.spatial) ? c.spatial[1] : c?.y;
+      return Number.isFinite(Number(x)) && Number.isFinite(Number(y)) ? [Number(x), Number(y)] : null;
+    }).filter(Boolean).slice(0, MAX_POINTS);
     if (!points.length) return 0;
     let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
     for (const [x, y] of points) { minX = Math.min(minX, x); maxX = Math.max(maxX, x); minY = Math.min(minY, y); maxY = Math.max(maxY, y); }
@@ -65,29 +74,48 @@
     ctx.fillStyle = '#9fb0c2'; ctx.font = '10px system-ui, sans-serif'; ctx.fillText(`n=${points.length}`, 10, height - 10);
     return points.length;
   }
-  async function load() {
+  async function load(region = currentRegion()) {
     const parent = mountPoint();
     if (!parent) return false;
     ensureStyles();
     const card = cardRoot(parent);
-    if (loaded || loading) return true;
+    const normalizedRegion = String(region || 'palm').trim().toLowerCase() || 'palm';
+    if (loading && activeRegion === normalizedRegion) return true;
+    if (loaded && activeRegion === normalizedRegion) return true;
+    abortController?.abort();
+    abortController = new AbortController();
     loading = true;
+    activeRegion = normalizedRegion;
     const status = card.querySelector('.dt-local-spatial-status');
+    const meta = card.querySelector('.dt-local-spatial-meta');
+    if (status) status.textContent = `Loading local cell extract · ${normalizedRegion}…`;
+    if (meta) meta.innerHTML = `${normalizedRegion.toUpperCase()} · SAMPLE-LOCAL<br>Not registered to NIH hand geometry`;
     try {
-      const response = await fetch(ENDPOINT, { cache: 'no-store', credentials: 'same-origin' });
+      const params = new URLSearchParams({ region: normalizedRegion, limit: String(MAX_POINTS) });
+      const response = await fetch(`${ENDPOINT}?${params.toString()}`, { cache: 'no-store', credentials: 'same-origin', signal: abortController.signal });
       const payload = await response.json();
       if (!response.ok) throw new Error(payload?.detail || `local extract endpoint returned ${response.status}`);
+      if (activeRegion !== normalizedRegion) return true;
       const cells = Array.isArray(payload?.cells) ? payload.cells : [];
       const count = draw(card.querySelector('canvas'), cells);
-      const site = payload?.anatomicSite || cells[0]?.anatomic_site || 'unknown site';
-      const sample = payload?.sampleId || cells[0]?.sample_id || 'unknown sample';
-      if (status) status.textContent = `${count} plotted real cells · ${site} · sample ${sample}`;
+      const site = payload?.anatomicSite || payload?.region || cells[0]?.anatomicSite || 'unknown site';
+      if (status) status.textContent = `${count} plotted real cells · ${site} · sample-local coordinates`;
       loaded = true;
     } catch (error) {
+      if (error?.name === 'AbortError') return true;
       if (status) status.textContent = `Local spatial extract unavailable: ${error?.message || error}`;
       loaded = false;
-    } finally { loading = false; }
+    } finally {
+      if (activeRegion === normalizedRegion) loading = false;
+    }
     return true;
+  }
+  function onCanonicalStateChanged() {
+    const region = currentRegion();
+    if (region !== activeRegion) {
+      loaded = false;
+      load(region);
+    }
   }
   function boot() {
     let observer;
@@ -120,8 +148,8 @@
     observer.observe(document.documentElement || document, { childList: true, subtree: true });
     tryMount();
     window.addEventListener('testhp:reference-hand-activated', load);
-    window.addEventListener('testhp:canonical-state-changed', load);
+    window.addEventListener('testhp:canonical-state-changed', onCanonicalStateChanged);
   }
-  window.testhpLocalSpatialExtract = Object.freeze({ version: 'local-spatial-extract-safe-3', sourceId: SOURCE_ID, load, getState: () => ({ installed: true, loaded, loading, cardPresent: !!document.querySelector(`.${CARD_CLASS}`) }) });
+  window.testhpLocalSpatialExtract = Object.freeze({ version: 'local-spatial-extract-safe-4', sourceId: SOURCE_ID, load, getState: () => ({ installed: true, loaded, loading, region: activeRegion, cardPresent: !!document.querySelector(`.${CARD_CLASS}`) }) });
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot, { once: true }); else boot();
 })();
