@@ -11,6 +11,19 @@ import numpy as np
 REQUIRED_OBS = ["cell_id", "cell_barcode", "anatomic_site", "region_name", "sample_id"]
 DEFAULT_OUTPUT = Path("data/reference/human-skin-spatial-census/palm_cells.json")
 DEFAULT_LIMIT = 1000
+SEARCH_FIELDS = [
+    "anatomic_site",
+    "region_name",
+    "sample_id",
+    "sample_barcode",
+    "run_name",
+    "run_name.short",
+    "run_region",
+    "collection_source",
+    "collection_type",
+    "sample_compartment",
+    "component",
+]
 
 
 def decode(value):
@@ -45,18 +58,29 @@ def read_obs_values(group: h5py.Group, key: str, start: int, stop: int) -> np.nd
 
 
 def read_obs_value(group: h5py.Group, key: str, index: int):
-    """Read a single obs value using the same dataset/categorical rules."""
-    values = read_obs_values(group, key, index, index + 1)
-    return decode(values[0])
+    return decode(read_obs_values(group, key, index, index + 1)[0])
+
+
+def dataset_length(node: h5py.Dataset | h5py.Group) -> int:
+    if isinstance(node, h5py.Dataset):
+        return int(node.shape[0])
+    if isinstance(node, h5py.Group):
+        if "codes" in node:
+            return int(node["codes"].shape[0])
+        for child in node.values():
+            if isinstance(child, h5py.Dataset) and child.ndim:
+                return int(child.shape[0])
+    raise TypeError(f"Cannot determine AnnData column length for {type(node).__name__}")
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Create a bounded local preview from the MERFISH H5AD.")
     parser.add_argument("h5ad", type=Path, help="Path to merfish.integrated_annotated.h5ad")
-    parser.add_argument("--region", default="palm", help="Case-insensitive substring for anatomic_site or region_name")
+    parser.add_argument("--region", default="palm", help="Case-insensitive search term")
     parser.add_argument("--limit", type=int, default=DEFAULT_LIMIT)
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
     parser.add_argument("--list-regions", action="store_true", help="Print observed anatomic_site/region_name labels and exit")
+    parser.add_argument("--search-all-obs", action="store_true", help="Search additional text obs fields for the requested term")
     args = parser.parse_args()
 
     if not args.h5ad.is_file():
@@ -75,23 +99,38 @@ def main() -> int:
         if "spatial" not in obsm:
             raise SystemExit("AnnData obsm/spatial is missing")
 
-        total = int(obs["cell_id"].shape[0]) if isinstance(obs["cell_id"], h5py.Dataset) else int(obs["cell_barcode"].shape[0])
-        matches: list[int] = []
+        total = dataset_length(obs[REQUIRED_OBS[0]])
         site_counts: Counter[str] = Counter()
         region_counts: Counter[str] = Counter()
+        search_fields = [k for k in SEARCH_FIELDS if k in obs]
+        if args.search_all_obs:
+            search_fields = list(obs.keys())
+
         needle = args.region.strip().lower()
+        matches: list[int] = []
+        matched_fields: Counter[str] = Counter()
         chunk = 5000
+
         for start in range(0, total, chunk):
             stop = min(total, start + chunk)
             sites = read_obs_values(obs, "anatomic_site", start, stop)
             regions = read_obs_values(obs, "region_name", start, stop)
-            for offset, (site, region) in enumerate(zip(sites, regions)):
-                site_text = str(decode(site) or "")
-                region_text = str(decode(region) or "")
-                site_counts[site_text] += 1
-                region_counts[region_text] += 1
-                if needle and (needle in site_text.lower() or needle in region_text.lower()):
-                    matches.append(start + offset)
+            for site in sites:
+                site_counts[str(decode(site) or "")] += 1
+            for region in regions:
+                region_counts[str(decode(region) or "")] += 1
+
+            if needle:
+                row_hits: set[int] = set()
+                for field in search_fields:
+                    values = read_obs_values(obs, field, start, stop)
+                    for offset, value in enumerate(values):
+                        text = str(decode(value) or "").lower()
+                        if needle in text:
+                            row_hits.add(start + offset)
+                            matched_fields[field] += 1
+                for index in sorted(row_hits):
+                    matches.append(index)
                     if len(matches) >= args.limit:
                         break
             if len(matches) >= args.limit:
@@ -107,18 +146,18 @@ def main() -> int:
             return 0
 
         if not matches:
-            print(f"No cells matched region={args.region!r}.")
-            print("Top anatomic_site labels:")
-            for label, count in site_counts.most_common(20):
-                print(f"  {count:>7}  {label}")
-            print("Top region_name labels:")
-            for label, count in region_counts.most_common(20):
-                print(f"  {count:>7}  {label}")
+            print(f"No cells matched search term={args.region!r}.")
+            print("Fields searched:", ", ".join(search_fields))
+            print("Match counts by field:")
+            for field, count in matched_fields.most_common():
+                print(f"  {count:>7}  {field}")
+            if not args.search_all_obs:
+                print("Tip: rerun with --search-all-obs to search all textual obs fields.")
             raise SystemExit(2)
 
         rows: list[dict[str, object]] = []
         spatial = obsm["spatial"]
-        for index in matches:
+        for index in matches[: args.limit]:
             point = np.asarray(spatial[index]).reshape(-1)
             coords = [float(point[0]), float(point[1])] if point.size >= 2 else []
             row = {key: read_obs_value(obs, key, index) for key in REQUIRED_OBS}
@@ -136,6 +175,7 @@ def main() -> int:
         "transform": None,
         "sourceCellCount": total,
         "returnedCount": len(rows),
+        "matchedFields": dict(matched_fields),
         "cells": rows,
         "note": "Locally materialized bounded extract. Coordinates remain in dataset/sample-local space and are not projected onto NIH hand geometry.",
     }
