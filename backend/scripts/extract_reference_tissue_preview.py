@@ -20,6 +20,36 @@ def decode(value):
     return value
 
 
+def read_obs_values(group: h5py.Group, key: str, start: int, stop: int) -> np.ndarray:
+    """Read one AnnData obs column, supporting datasets and pandas categorical groups."""
+    node = group[key]
+    if isinstance(node, h5py.Dataset):
+        return np.asarray(node[start:stop])
+
+    if not isinstance(node, h5py.Group):
+        raise TypeError(f"Unsupported HDF5 node for obs[{key!r}]: {type(node).__name__}")
+
+    # AnnData categorical encoding: group with `codes` + `categories`.
+    if "codes" in node and "categories" in node:
+        codes = np.asarray(node["codes"][start:stop])
+        categories = np.asarray(node["categories"][:])
+        values = []
+        for code in codes:
+            idx = int(decode(code))
+            values.append(categories[idx] if idx >= 0 and idx < len(categories) else None)
+        return np.asarray(values, dtype=object)
+
+    raise TypeError(
+        f"Unsupported obs group encoding for {key!r}; expected categorical codes/categories"
+    )
+
+
+def read_obs_value(group: h5py.Group, key: str, index: int):
+    """Read a single obs value using the same dataset/categorical rules."""
+    values = read_obs_values(group, key, index, index + 1)
+    return decode(values[0])
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Create a bounded local preview from the MERFISH H5AD.")
     parser.add_argument("h5ad", type=Path, help="Path to merfish.integrated_annotated.h5ad")
@@ -44,16 +74,18 @@ def main() -> int:
         if "spatial" not in obsm:
             raise SystemExit("AnnData obsm/spatial is missing")
 
-        total = int(obs["cell_id"].shape[0])
+        total = int(obs["cell_id"].shape[0]) if isinstance(obs["cell_id"], h5py.Dataset) else int(obs["cell_barcode"].shape[0])
         matches: list[int] = []
         needle = args.region.lower()
         chunk = 5000
         for start in range(0, total, chunk):
             stop = min(total, start + chunk)
-            sites = np.asarray(obs["anatomic_site"][start:stop])
-            regions = np.asarray(obs["region_name"][start:stop])
+            sites = read_obs_values(obs, "anatomic_site", start, stop)
+            regions = read_obs_values(obs, "region_name", start, stop)
             for offset, (site, region) in enumerate(zip(sites, regions)):
-                if needle in str(decode(site)).lower() or needle in str(decode(region)).lower():
+                site_text = str(decode(site) or "").lower()
+                region_text = str(decode(region) or "").lower()
+                if needle in site_text or needle in region_text:
                     matches.append(start + offset)
                     if len(matches) >= args.limit:
                         break
@@ -65,7 +97,7 @@ def main() -> int:
         for index in matches:
             point = np.asarray(spatial[index]).reshape(-1)
             coords = [float(point[0]), float(point[1])] if point.size >= 2 else []
-            row = {key: decode(obs[key][index]) for key in REQUIRED_OBS}
+            row = {key: read_obs_value(obs, key, index) for key in REQUIRED_OBS}
             row["index"] = int(index)
             row["spatial"] = coords
             rows.append(row)
