@@ -5,12 +5,12 @@
 
   const SOURCE_ID = 'nih-hand-template-3DPX-017237';
   const NIH_VIEWER_URL = 'https://3d.nih.gov/entries/3DPX-017237';
-  const VIEWER_VERSION = 'reference-3d-safe-9';
-  let mountObserver = null;
-  let mountTimer = null;
+  const VIEWER_VERSION = 'reference-3d-safe-10';
+  let observer = null;
+  let retryTimer = null;
   let bootToken = 0;
 
-  function state(patch = {}) {
+  function setState(patch = {}) {
     window.__testhpReferenceHand3DViewerState = Object.freeze({
       installed: true, version: VIEWER_VERSION, active: false, loading: false,
       loaded: false, sourceId: SOURCE_ID, assetUrl: NIH_VIEWER_URL,
@@ -21,7 +21,7 @@
     return window.__testhpReferenceHand3DViewerState;
   }
 
-  function styles() {
+  function installStyles() {
     if (document.getElementById('testhp-reference-hand-3d-style')) return;
     const s = document.createElement('style');
     s.id = 'testhp-reference-hand-3d-style';
@@ -36,92 +36,120 @@
     document.head.appendChild(s);
   }
 
+  function getHost() {
+    return document.getElementById('testhp-end-user-layer');
+  }
+
   function findMount() {
-    const host = document.getElementById('testhp-end-user-layer');
+    const host = getHost();
     if (!host) return null;
     return host.querySelector('.center .viewport') || host.querySelector('.viewport') || host;
   }
 
   function ensureCard(mount) {
     if (!mount) return null;
-    let c = mount.querySelector(':scope > .dt-reference-3d-card');
-    if (c) return c;
-    c = document.createElement('section');
-    c.className = 'dt-reference-3d-card';
-    c.setAttribute('aria-label', 'NIH 3D reference hand');
-    c.innerHTML = '<iframe class="dt-reference-3d-frame" title="NIH 3D reference hand" loading="eager" referrerpolicy="strict-origin-when-cross-origin"></iframe><div class="dt-reference-3d-overlay"><div class="dt-reference-3d-title">REFERENCE HAND · NIH 3D · 3DPX-017237</div><div class="dt-reference-3d-status">Loading NIH 3D reference geometry…</div></div>';
-    if (mount === document.getElementById('testhp-end-user-layer')) mount.prepend(c);
-    else mount.appendChild(c);
-    return c;
+    let card = mount.querySelector(':scope > .dt-reference-3d-card');
+    if (card) return card;
+    card = document.createElement('section');
+    card.className = 'dt-reference-3d-card';
+    card.setAttribute('aria-label', 'NIH 3D reference hand');
+    card.innerHTML = '<iframe class="dt-reference-3d-frame" title="NIH 3D reference hand" loading="eager" referrerpolicy="strict-origin-when-cross-origin"></iframe><div class="dt-reference-3d-overlay"><div class="dt-reference-3d-title">REFERENCE HAND · NIH 3D · 3DPX-017237</div><div class="dt-reference-3d-status">Loading NIH 3D reference geometry…</div></div>';
+    card.style.display = 'block';
+    card.style.position = 'relative';
+    if (mount === getHost()) mount.prepend(card); else mount.appendChild(card);
+    return card;
   }
 
-  function fallback(c, msg) {
-    if (!c) return;
-    let f = c.querySelector('.dt-reference-3d-fallback');
+  function showFallback(card, message) {
+    if (!card) return;
+    let f = card.querySelector('.dt-reference-3d-fallback');
     if (!f) {
       f = document.createElement('div');
       f.className = 'dt-reference-3d-fallback';
       f.innerHTML = '<div><strong>Reference 3D viewer unavailable</strong><span></span><br><a href="https://3d.nih.gov/entries/3DPX-017237" target="_blank" rel="noopener noreferrer">Open NIH 3D reference</a></div>';
-      c.appendChild(f);
+      card.appendChild(f);
     }
-    f.querySelector('span').textContent = msg;
+    f.querySelector('span').textContent = message;
   }
 
-  function cleanup() {
-    if (mountObserver) { mountObserver.disconnect(); mountObserver = null; }
-    if (mountTimer) { clearTimeout(mountTimer); mountTimer = null; }
+  function stopWaiting() {
+    if (observer) { observer.disconnect(); observer = null; }
+    if (retryTimer) { clearInterval(retryTimer); retryTimer = null; }
   }
 
-  function mountViewer(token) {
-    if (token !== bootToken) return true;
-    const mount = findMount();
-    if (!mount) return false;
-    const c = ensureCard(mount);
-    const frame = c?.querySelector('.dt-reference-3d-frame');
-    if (!frame) return false;
-    if (frame.dataset.testhpBound === '1') return true;
+  function bindFrame(card, token) {
+    const frame = card?.querySelector('.dt-reference-3d-frame');
+    if (!frame || frame.dataset.testhpBound === '1') return !!frame;
     frame.dataset.testhpBound = '1';
     frame.addEventListener('load', () => {
       if (token !== bootToken) return;
-      cleanup();
-      state({active:true, loading:false, loaded:true, error:null, regionId:window.__testhpReferenceHandState?.regionId || 'palm'});
-      const status = c.querySelector('.dt-reference-3d-status');
+      stopWaiting();
+      setState({active:true, loading:false, loaded:true, error:null, regionId:window.__testhpReferenceHandState?.regionId || 'palm'});
+      const status = card.querySelector('.dt-reference-3d-status');
       if (status) status.textContent = 'Loaded in NIH 3D · public reference geometry · not user health data';
     }, {once:true});
     frame.addEventListener('error', () => {
       if (token !== bootToken) return;
-      cleanup();
-      console.warn('[reference-hand-3d] NIH interactive viewer failed; keeping UI responsive.');
-      state({active:true, loading:false, loaded:false, error:'NIH interactive reference viewer could not be loaded'});
-      fallback(c, 'The NIH interactive viewer could not be loaded in this browser.');
+      stopWaiting();
+      setState({active:true, loading:false, loaded:false, error:'NIH interactive reference viewer could not be loaded'});
+      showFallback(card, 'The NIH interactive viewer could not be loaded in this browser.');
     }, {once:true});
     frame.src = NIH_VIEWER_URL;
     return true;
   }
 
+  function tryMount(token) {
+    if (token !== bootToken) return true;
+    const mount = findMount();
+    if (!mount) return false;
+    const card = ensureCard(mount);
+    if (!card) return false;
+    bindFrame(card, token);
+    setState({active:true, loading:true, loaded:false, error:null, regionId:window.__testhpReferenceHandState?.regionId || 'palm'});
+    return true;
+  }
+
   function boot() {
-    styles();
+    installStyles();
     const token = ++bootToken;
-    cleanup();
-    state({active:true, loading:true, loaded:false, error:null});
-    if (mountViewer(token)) return;
-    mountObserver = new MutationObserver(() => {
-      if (mountViewer(token)) cleanup();
-    });
-    mountObserver.observe(document.documentElement, {childList:true, subtree:true});
-    mountTimer = setTimeout(() => {
-      if (token !== bootToken) return;
-      if (!mountViewer(token)) {
-        cleanup();
-        state({active:true, loading:false, loaded:false, error:'Reference viewer host is not available'});
+    stopWaiting();
+    setState({active:true, loading:true, loaded:false, error:null});
+
+    if (tryMount(token)) return;
+
+    const root = document.documentElement || document;
+    observer = new MutationObserver(() => { tryMount(token); });
+    observer.observe(root, {childList:true, subtree:true});
+
+    // The main UI is rendered dynamically; retry without blocking or throwing.
+    let attempts = 0;
+    retryTimer = setInterval(() => {
+      attempts += 1;
+      if (tryMount(token)) {
+        stopWaiting();
+        return;
       }
-    }, 5000);
+      if (attempts >= 30) {
+        stopWaiting();
+        setState({active:true, loading:false, loaded:false, error:'Reference viewer host is not available'});
+      }
+    }, 250);
   }
 
   function activate() { boot(); }
 
-  window.testhpReferenceHand3D = Object.freeze({version:VIEWER_VERSION, sourceId:SOURCE_ID, assetUrl:NIH_VIEWER_URL, activate, getState:() => window.__testhpReferenceHand3DViewerState});
-  state();
+  window.testhpReferenceHand3D = Object.freeze({
+    version: VIEWER_VERSION,
+    sourceId: SOURCE_ID,
+    assetUrl: NIH_VIEWER_URL,
+    activate,
+    getState: () => window.__testhpReferenceHand3DViewerState
+  });
+
+  setState();
   window.addEventListener('testhp:reference-hand-activated', activate);
+  window.addEventListener('DOMContentLoaded', () => {
+    if (window.__testhpReferenceHandState?.active) activate();
+  }, {once:true});
   if (window.__testhpReferenceHandState?.active) activate();
 })();
