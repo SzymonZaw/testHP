@@ -47,8 +47,10 @@ def build_preview(input_path: Path, output_path: Path, anatomic_site: str, limit
             category_code = normalized.index(requested_site)
         except ValueError:
             return {
+                "status": "bounded_local_cell_preview_empty",
                 "sourceFile": str(input_path.relative_to(ROOT)),
                 "sourceCellCount": int(obs["_index"].shape[0]),
+                "region": requested_site,
                 "anatomicSite": requested_site,
                 "requestedLimit": limit,
                 "returnedCount": 0,
@@ -88,8 +90,10 @@ def build_preview(input_path: Path, output_path: Path, anatomic_site: str, limit
         ]
 
         return {
+            "status": "bounded_local_cell_preview",
             "sourceFile": str(input_path.relative_to(ROOT)),
             "sourceCellCount": int(obs["_index"].shape[0]),
+            "region": categories[category_code],
             "anatomicSite": categories[category_code],
             "requestedLimit": limit,
             "returnedCount": len(cells),
@@ -125,7 +129,7 @@ def main() -> None:
     payload = build_preview(args.input.resolve(), args.output.resolve(), args.anatomic_site, args.limit)
     write_atomic(payload, args.output.resolve())
     print(
-        f"Wrote {payload['returnedCount']} cells for {payload['anatomicSite']!r} "
+        f"Wrote {payload['returnedCount']} cells for {payload['region']!r} "
         f"to {args.output.resolve()}"
     )
 
