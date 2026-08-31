@@ -137,11 +137,15 @@ def main() -> None:
     sites = args.anatomic_sites or discover_sites(input_path)
 
     regions: dict[str, dict] = {}
+    combined_cells: list[dict] = []
+    source_cell_count: int | None = None
     for site in sites:
         payload = build_preview(input_path, site, args.limit)
         safe_name = site.strip().lower().replace(" ", "-")
         output_path = output_dir / f"{safe_name}.json"
         write_atomic(payload, output_path)
+        combined_cells.extend(payload["cells"])
+        source_cell_count = payload["sourceCellCount"]
         regions[site] = {
             "file": output_path.name,
             "cellCount": payload["returnedCount"],
@@ -151,14 +155,33 @@ def main() -> None:
     manifest = {
         "status": "bounded_local_cell_preview_manifest",
         "sourceFile": str(input_path.relative_to(ROOT)),
-        "sourceCellCount": build_preview(input_path, sites[0], 1)["sourceCellCount"],
+        "sourceCellCount": source_cell_count,
         "limitPerRegion": args.limit,
         "coordinateScope": "sample_local",
         "registrationStatus": "unregistered_to_hand",
         "regions": regions,
+        "totalMaterializedCells": len(combined_cells),
         "note": "Precomputed local MERFISH previews. No H5AD reads are required by the web request path.",
     }
     write_atomic(manifest, output_dir / "manifest.json")
+
+    combined = {
+        "status": "bounded_local_cell_preview",
+        "sourceFile": str(input_path.relative_to(ROOT)),
+        "sourceCellCount": source_cell_count,
+        "requestedLimit": args.limit,
+        "materializedRegionCount": len(regions),
+        "materializedCellCount": len(combined_cells),
+        "cells": combined_cells,
+        "coordinateScope": "sample_local",
+        "registrationStatus": "unregistered_to_hand",
+        "transform": None,
+        "matrixLoaded": False,
+        "dataLoaded": True,
+        "note": "Combined bounded local MERFISH preview for the existing API compatibility path. Each anatomic_site is limited independently; coordinates remain sample-local and are not projected onto NIH hand geometry.",
+    }
+    write_atomic(combined, output_dir / "cells_preview.json")
+    print(f"Wrote combined preview with {len(combined_cells)} cells to {output_dir / 'cells_preview.json'}")
     print(f"Wrote manifest to {output_dir / 'manifest.json'}")
 
 
