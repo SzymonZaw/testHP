@@ -4,10 +4,10 @@
   window.__testhpLocalSpatialExtractViewerInstalled = true;
 
   const SOURCE_ID = 'human-skin-spatial-census';
-  const ENDPOINT = `/api/reference/tissue/${SOURCE_ID}/cells/preview`;
+  const ENDPOINT = `/api/reference/tissue/${SOURCE_ID}/cells/local-preview`;
   const CARD_CLASS = 'dt-reference-spatial-extract';
   const MAX_POINTS = 1000;
-  const REQUEST_TIMEOUT_MS = 15000;
+  const REQUEST_TIMEOUT_MS = 30000;
   let loading = false;
   let loaded = false;
   let activeRegion = null;
@@ -58,6 +58,6 @@
   }
   function onCanonicalStateChanged(){const state=window.TestHPCanonicalState?.get?.();const region=currentRegion();if(region!==activeRegion){loaded=false;load(region);return;}const canonicalCell=state?.selection?.cell||null;if(canonicalCell!==selectedCellId){selectedCellId=canonicalCell;const card=document.querySelector('.'+CARD_CLASS);if(card){renderSelection(card);draw(card.querySelector('canvas'),activeCells);}}}
   function boot(){let observer,attempts=0;const tryMount=()=>{attempts+=1;load();if(attempts>=240)return;window.requestAnimationFrame(tryMount);};observer=new MutationObserver(()=>{if(mountPoint()&&!document.querySelector('.'+CARD_CLASS))load();});observer.observe(document.documentElement||document,{childList:true,subtree:true});tryMount();window.addEventListener('testhp:reference-hand-activated',load);window.addEventListener('testhp:canonical-state-changed',onCanonicalStateChanged);}
-  window.testhpLocalSpatialExtract=Object.freeze({version:'local-spatial-extract-safe-8',sourceId:SOURCE_ID,load,getState:()=>({installed:true,loaded,loading,region:activeRegion,selectedCellId,cardPresent:!!document.querySelector(`.${CARD_CLASS}`)})});
+  window.testhpLocalSpatialExtract=Object.freeze({version:'local-spatial-extract-safe-9',sourceId:SOURCE_ID,load,getState:()=>({installed:true,loaded,loading,region:activeRegion,selectedCellId,cardPresent:!!document.querySelector(`.${CARD_CLASS}`)})});
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',boot,{once:true});else boot();
 })();
