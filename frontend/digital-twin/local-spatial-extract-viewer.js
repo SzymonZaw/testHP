@@ -4,7 +4,7 @@
   window.__testhpLocalSpatialExtractViewerInstalled = true;
 
   const SOURCE_ID = 'human-skin-spatial-census';
-  const ENDPOINT = `/api/reference/tissue/${SOURCE_ID}/cells/local-preview`;
+  const ENDPOINT = `/api/reference/tissue/${SOURCE_ID}/cells/preview`;
   const CARD_CLASS = 'dt-reference-spatial-extract';
   const MAX_POINTS = 1000;
   const REQUEST_TIMEOUT_MS = 30000;
