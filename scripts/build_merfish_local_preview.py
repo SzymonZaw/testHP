@@ -10,6 +10,7 @@ SOURCE_ID = "human-skin-spatial-census"
 DEFAULT_INPUT = Path("data/raw/merfish.integrated_annotated.h5ad")
 DEFAULT_OUTPUT = Path("data/reference/human-skin-spatial-census/cells_preview.json")
 DEFAULT_LIMIT = 1000
+DEFAULT_REGIONS = ("palm", "hand", "elbow")
 
 
 def _normalise(value: object) -> str | None:
@@ -25,13 +26,6 @@ def _pick_column(columns: Iterable[object], candidates: tuple[str, ...]) -> str 
         if candidate.lower() in by_lower:
             return by_lower[candidate.lower()]
     return None
-
-
-def _series_value(series, index: int, column: str | None) -> str | None:
-    if not column:
-        return None
-    value = series.iloc[index][column]
-    return _normalise(value)
 
 
 def _as_float(value: object) -> float | None:
@@ -50,11 +44,22 @@ def _sha256(path: Path, chunk_size: int = 8 * 1024 * 1024) -> str:
     return digest.hexdigest()
 
 
-def build_preview(input_path: Path, output_path: Path, limit: int = DEFAULT_LIMIT) -> dict:
+def build_preview(
+    input_path: Path,
+    output_path: Path,
+    limit: int = DEFAULT_LIMIT,
+    regions: Iterable[str] = DEFAULT_REGIONS,
+) -> dict:
     if not input_path.is_file():
         raise FileNotFoundError(f"AnnData input not found: {input_path}")
     if limit < 1:
         raise ValueError("limit must be >= 1")
+
+    requested_regions = tuple(dict.fromkeys(
+        str(region).strip().lower() for region in regions if str(region).strip()
+    ))
+    if not requested_regions:
+        raise ValueError("at least one region is required")
 
     import scanpy as sc
 
@@ -75,8 +80,19 @@ def build_preview(input_path: Path, output_path: Path, limit: int = DEFAULT_LIMI
                 break
 
         cells: list[dict] = []
+        counts = {region: 0 for region in requested_regions}
         for index in range(adata.n_obs):
             row = obs.iloc[index]
+            anatomic_site = _normalise(row[anatomic_column]) if anatomic_column else None
+            region_name = _normalise(row[region_column]) if region_column else None
+            searchable = " ".join(filter(None, (anatomic_site, region_name))).lower()
+            matched_region = next(
+                (region for region in requested_regions if region in searchable),
+                None,
+            )
+            if matched_region is None or counts[matched_region] >= limit:
+                continue
+
             cell_id = _normalise(row[cell_id_column]) if cell_id_column else _normalise(obs.index[index])
             if not cell_id:
                 continue
@@ -92,14 +108,17 @@ def build_preview(input_path: Path, output_path: Path, limit: int = DEFAULT_LIMI
             if x is None or y is None:
                 continue
 
-            cell = {
+            cells.append({
                 "cellId": cell_id,
-                "anatomicSite": _normalise(row[anatomic_column]) if anatomic_column else None,
-                "regionName": _normalise(row[region_column]) if region_column else None,
+                "anatomicSite": anatomic_site,
+                "regionName": region_name,
                 "x": x,
                 "y": y,
-            }
-            cells.append(cell)
+            })
+            counts[matched_region] += 1
+
+            if all(count >= limit for count in counts.values()):
+                break
     finally:
         adata.file.close()
 
@@ -119,10 +138,12 @@ def build_preview(input_path: Path, output_path: Path, limit: int = DEFAULT_LIMI
         },
         "extraction": {
             "method": "AnnData obs + spatial coordinates",
-            "maxCellsPerSourceRegion": limit,
+            "regions": list(requested_regions),
+            "maxCellsPerRegion": limit,
             "selectionOrder": "source observation order",
             "cellIdFallback": "AnnData obs index",
         },
+        "countsByRequestedRegion": counts,
         "cells": cells,
     }
     output_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -131,26 +152,33 @@ def build_preview(input_path: Path, output_path: Path, limit: int = DEFAULT_LIMI
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Materialize a bounded MERFISH cell-coordinate preview without loading expression data into the output."
+        description="Materialize bounded MERFISH cell-coordinate previews without copying the expression matrix."
     )
     parser.add_argument("--input", type=Path, default=DEFAULT_INPUT)
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
     parser.add_argument("--limit", type=int, default=DEFAULT_LIMIT)
+    parser.add_argument(
+        "--region",
+        action="append",
+        dest="regions",
+        help="Region/site substring to include; repeat for multiple regions. Defaults to palm, hand and elbow.",
+    )
     args = parser.parse_args()
 
-    payload = build_preview(args.input, args.output, args.limit)
-    print(
-        json.dumps(
-            {
-                "status": "ok",
-                "sourceId": payload["sourceId"],
-                "cells": len(payload["cells"]),
-                "output": str(args.output),
-                "inputSha256": payload["input"]["sha256"],
-            },
-            ensure_ascii=False,
-        )
+    payload = build_preview(
+        args.input,
+        args.output,
+        args.limit,
+        tuple(args.regions) if args.regions else DEFAULT_REGIONS,
     )
+    print(json.dumps({
+        "status": "ok",
+        "sourceId": payload["sourceId"],
+        "cells": len(payload["cells"]),
+        "countsByRequestedRegion": payload["countsByRequestedRegion"],
+        "output": str(args.output),
+        "inputSha256": payload["input"]["sha256"],
+    }, ensure_ascii=False))
 
 
 if __name__ == "__main__":
