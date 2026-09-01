@@ -6,6 +6,8 @@ import json
 from pathlib import Path
 from typing import Iterable
 
+from backend.merfish_region_mapping import exact_source_sites, get_mapping, matches_anatomic_site
+
 SOURCE_ID = "human-skin-spatial-census"
 DEFAULT_INPUT = Path("data/raw/merfish.integrated_annotated.h5ad")
 DEFAULT_OUTPUT = Path("data/reference/human-skin-spatial-census/cells_preview.json")
@@ -42,6 +44,19 @@ def _sha256(path: Path, chunk_size: int = 8 * 1024 * 1024) -> str:
         for chunk in iter(lambda: handle.read(chunk_size), b""):
             digest.update(chunk)
     return digest.hexdigest()
+
+
+def _matches_region(region: str, anatomic_site: str | None, region_name: str | None) -> bool:
+    try:
+        mapping = get_mapping(region)
+    except KeyError:
+        searchable = " ".join(filter(None, (anatomic_site, region_name))).casefold()
+        return region.casefold() in searchable
+    if mapping.anatomic_sites:
+        return matches_anatomic_site(region, anatomic_site)
+    # A known hand UI region with no exact source site must remain empty; this
+    # prevents accidental substring matches such as "middle" -> unrelated data.
+    return False
 
 
 def build_preview(
@@ -90,9 +105,8 @@ def build_preview(
             row = obs.iloc[index]
             anatomic_site = _normalise(row[anatomic_column]) if anatomic_column else None
             region_name = _normalise(row[region_column]) if region_column else None
-            searchable = " ".join(filter(None, (anatomic_site, region_name))).lower()
             matched_region = next(
-                (region for region in requested_regions if region in searchable),
+                (region for region in requested_regions if _matches_region(region, anatomic_site, region_name)),
                 None,
             )
             if matched_region is None or counts[matched_region] >= limit:
@@ -134,8 +148,16 @@ def build_preview(
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
     input_sha = _sha256(input_path)
+    mapping_metadata = {
+        region: {
+            "anatomicSites": list(exact_source_sites(region)) if region in {r for r in requested_regions if r in ("hand", "wrist", "palm", "thumb", "index", "middle", "ring", "little", "skin_regions", "elbow")} else [],
+            "mode": get_mapping(region).mode if region in {r for r in requested_regions if r in ("hand", "wrist", "palm", "thumb", "index", "middle", "ring", "little", "skin_regions", "elbow")} else "legacy_substring",
+            "note": get_mapping(region).note if region in {r for r in requested_regions if r in ("hand", "wrist", "palm", "thumb", "index", "middle", "ring", "little", "skin_regions", "elbow")} else "Unknown source selector; legacy substring matching.",
+        }
+        for region in requested_regions
+    }
     payload = {
-        "schemaVersion": "1.1.0",
+        "schemaVersion": "1.2.0",
         "sourceId": SOURCE_ID,
         "sourceDataset": "human-skin-spatial-census-merfish",
         "accession": "S-BIAD2376",
@@ -150,6 +172,7 @@ def build_preview(
         "extraction": {
             "method": "AnnData obs + spatial coordinates",
             "regions": list(requested_regions),
+            "regionMapping": mapping_metadata,
             "maxCellsPerRegion": limit,
             "selectionOrder": "source observation order",
             "cellIdFallback": "AnnData obs index",
@@ -173,7 +196,7 @@ def main() -> None:
         "--region",
         action="append",
         dest="regions",
-        help="Region/site substring to include; repeat for multiple regions. Defaults to palm, hand and elbow.",
+        help="Region/site selector; repeat for multiple regions. Known hand zones use explicit H5AD mapping.",
     )
     args = parser.parse_args()
 
