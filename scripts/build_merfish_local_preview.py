@@ -61,9 +61,9 @@ def build_preview(
     if not requested_regions:
         raise ValueError("at least one region is required")
 
-    import scanpy as sc
+    import anndata as ad
 
-    adata = sc.read_h5ad(input_path, backed="r")
+    adata = ad.read_h5ad(input_path, backed="r")
     try:
         obs = adata.obs
         columns = tuple(obs.columns)
