@@ -70,6 +70,11 @@ def build_preview(
         cell_id_column = _pick_column(columns, ("cellId", "cell_id", "cellid", "CellID", "cell"))
         anatomic_column = _pick_column(columns, ("anatomicSite", "anatomic_site", "anatomicalSite", "anatomical_site", "site"))
         region_column = _pick_column(columns, ("regionName", "region_name", "region", "Region"))
+        tissue_column = _pick_column(columns, ("tissue_compartment", "tissueCompartment", "compartment"))
+        cell_type_column = _pick_column(columns, ("cell_type.detailed", "cell_type", "cellType", "cell_category"))
+        donor_age_column = _pick_column(columns, ("donor_age", "donorAge", "age"))
+        donor_id_column = _pick_column(columns, ("donor_id", "donorId", "donor"))
+        sample_id_column = _pick_column(columns, ("sample_id", "sampleId", "sample_barcode"))
         x_column = _pick_column(columns, ("x", "X", "spatial_x", "spatialX", "center_x", "centroid_x"))
         y_column = _pick_column(columns, ("y", "Y", "spatial_y", "spatialY", "center_y", "centroid_y"))
 
@@ -112,6 +117,11 @@ def build_preview(
                 "cellId": cell_id,
                 "anatomicSite": anatomic_site,
                 "regionName": region_name,
+                "tissueCompartment": _normalise(row[tissue_column]) if tissue_column else None,
+                "cellType": _normalise(row[cell_type_column]) if cell_type_column else None,
+                "donorAgeYears": _as_float(row[donor_age_column]) if donor_age_column else None,
+                "donorId": _normalise(row[donor_id_column]) if donor_id_column else None,
+                "sampleId": _normalise(row[sample_id_column]) if sample_id_column else None,
                 "x": x,
                 "y": y,
             })
@@ -123,8 +133,9 @@ def build_preview(
         adata.file.close()
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
+    input_sha = _sha256(input_path)
     payload = {
-        "schemaVersion": "1.0.0",
+        "schemaVersion": "1.1.0",
         "sourceId": SOURCE_ID,
         "sourceDataset": "human-skin-spatial-census-merfish",
         "accession": "S-BIAD2376",
@@ -134,7 +145,7 @@ def build_preview(
         "input": {
             "path": str(input_path),
             "sizeBytes": input_path.stat().st_size,
-            "sha256": _sha256(input_path),
+            "sha256": input_sha,
         },
         "extraction": {
             "method": "AnnData obs + spatial coordinates",
@@ -142,6 +153,7 @@ def build_preview(
             "maxCellsPerRegion": limit,
             "selectionOrder": "source observation order",
             "cellIdFallback": "AnnData obs index",
+            "interpretation": "observations only; health and biological-age labels require validated downstream models",
         },
         "countsByRequestedRegion": counts,
         "cells": cells,
