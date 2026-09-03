@@ -1,6 +1,7 @@
 # Local biological datasets and generated analysis outputs
 /data/raw/
 /data/processed/
+/data/cache/reference-hand/
 *.h5ad
 *.h5
 *.mtx
