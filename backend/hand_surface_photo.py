@@ -4,13 +4,17 @@ The service keeps acquisition, preparation, landmark detection, registration and
 reconstruction separate. It never labels metadata as a completed 3D mesh.
 """
 from __future__ import annotations
+import os
+import re
+import threading
 import uuid
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any, Iterator
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 import truststore
-from fastapi import APIRouter, File, Form, HTTPException, Header, UploadFile
+from fastapi import APIRouter, File, Form, Header, HTTPException, UploadFile
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from .data_ingestion import ingest_upload, registry_status
@@ -24,6 +28,11 @@ truststore.inject_into_ssl()
 VIEWS = ("front", "back", "side_left", "side_right", "thumb")
 NIH_REFERENCE_HAND_GLB = "https://3d.nih.gov/api/submissions/23310/runs/c054b0b1-404c-4f43-b6a7-ddff98215e52/output-files/511847"
 NIH_REFERENCE_HAND_SOURCE_ID = "nih-hand-template-3DPX-017237"
+ROOT = Path(__file__).resolve().parents[1]
+REFERENCE_GLB_CACHE_DIR = ROOT / "data" / "cache" / "reference-hand"
+REFERENCE_GLB_CACHE_PATH = REFERENCE_GLB_CACHE_DIR / "nih-hand-template-3DPX-017237.glb"
+_REFERENCE_GLB_CACHE_LOCK = threading.Lock()
+_REFERENCE_GLB_RANGE_RE = re.compile(r"^bytes=(\d*)-(\d*)$")
 router = APIRouter(prefix="/api/hand/photo-reconstruction", tags=["hand-photo-reconstruction"])
 class TargetRequest(BaseModel):
     subject_id: str = "own_cohort"
@@ -58,49 +67,101 @@ def _state(request: TargetRequest) -> dict[str, Any]:
     return {"schema":"hand-photo-reconstruction-state-v4","subject_id":request.subject_id,"timepoint":request.timepoint,"spatial_id":target,"evidence":evidence,"inputs":prepared,"landmarks":landmarks,"prepared_count":len(prepared_views),"prepared_views":prepared_views,"registered_count":len(registered_views),"registered_views":registered_views,"views":{v:{"prepared":v in prepared_views,"registered":v in registered_views} for v in VIEWS},"reconstruction":recon.get("reconstruction") if recon else None}
 @router.get("/state")
 def state(subject_id: str="own_cohort", timepoint: str="T0", spatial_id: str="hand"): return _state(TargetRequest(subject_id=subject_id,timepoint=timepoint,spatial_id=spatial_id))
+def _ensure_reference_glb_cache() -> Path:
+    if REFERENCE_GLB_CACHE_PATH.is_file() and REFERENCE_GLB_CACHE_PATH.stat().st_size > 0:
+        return REFERENCE_GLB_CACHE_PATH
+    with _REFERENCE_GLB_CACHE_LOCK:
+        if REFERENCE_GLB_CACHE_PATH.is_file() and REFERENCE_GLB_CACHE_PATH.stat().st_size > 0:
+            return REFERENCE_GLB_CACHE_PATH
+        REFERENCE_GLB_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+        temp_path = REFERENCE_GLB_CACHE_PATH.with_suffix(".glb.part")
+        try:
+            request = Request(
+                NIH_REFERENCE_HAND_GLB,
+                headers={
+                    "Accept": "model/gltf-binary, application/octet-stream, */*",
+                    "User-Agent": "testHP-reference-hand/1.0",
+                },
+            )
+            with urlopen(request, timeout=60) as upstream, temp_path.open("wb") as target:
+                while True:
+                    chunk = upstream.read(1024 * 1024)
+                    if not chunk:
+                        break
+                    target.write(chunk)
+            if temp_path.stat().st_size < 4:
+                raise RuntimeError("NIH reference asset is unexpectedly empty")
+            with temp_path.open("rb") as handle:
+                if handle.read(4) != b"glTF":
+                    raise RuntimeError("NIH reference asset is not a GLB")
+            os.replace(temp_path, REFERENCE_GLB_CACHE_PATH)
+            return REFERENCE_GLB_CACHE_PATH
+        except HTTPError as exc:
+            raise HTTPException(status_code=502, detail=f"NIH reference asset returned HTTP {exc.code}") from exc
+        except HTTPException:
+            raise
+        except Exception as exc:
+            raise HTTPException(status_code=502, detail=f"NIH reference asset unavailable: {exc}") from exc
+        finally:
+            try:
+                temp_path.unlink(missing_ok=True)
+            except OSError:
+                pass
+
+def _reference_glb_range(range_header: str | None, size: int) -> tuple[int, int, int]:
+    if not range_header:
+        return 0, size - 1, 200
+    match = _REFERENCE_GLB_RANGE_RE.fullmatch(range_header.strip())
+    if not match:
+        raise HTTPException(status_code=416, detail="invalid Range header", headers={"Content-Range": f"bytes */{size}"})
+    start_text, end_text = match.groups()
+    if not start_text and not end_text:
+        raise HTTPException(status_code=416, detail="invalid Range header", headers={"Content-Range": f"bytes */{size}"})
+    if start_text:
+        start = int(start_text)
+        if start >= size:
+            raise HTTPException(status_code=416, detail="range not satisfiable", headers={"Content-Range": f"bytes */{size}"})
+        end = min(int(end_text), size - 1) if end_text else size - 1
+        if end < start:
+            raise HTTPException(status_code=416, detail="range not satisfiable", headers={"Content-Range": f"bytes */{size}"})
+        return start, end, 206
+    suffix_length = int(end_text)
+    if suffix_length <= 0:
+        raise HTTPException(status_code=416, detail="range not satisfiable", headers={"Content-Range": f"bytes */{size}"})
+    return max(0, size - suffix_length), size - 1, 206
+
 @router.get("/reference-glb")
 def reference_glb(range_header: str | None = Header(default=None, alias="Range")):
-    """Stream the allow-listed NIH GLB while forwarding HTTP Range requests."""
-    request_headers = {
-        "Accept": "model/gltf-binary, application/octet-stream, */*",
-        "User-Agent": "testHP-reference-hand/1.0",
-    }
-    if range_header:
-        request_headers["Range"] = range_header
-
-    try:
-        upstream = urlopen(Request(NIH_REFERENCE_HAND_GLB, headers=request_headers), timeout=30)
-    except HTTPError as exc:
-        raise HTTPException(status_code=502, detail=f"NIH reference asset returned HTTP {exc.code}") from exc
-    except Exception as exc:
-        raise HTTPException(status_code=502, detail=f"NIH reference asset unavailable: {exc}") from exc
-
-    status = getattr(upstream, "status", 200)
-    content_type = upstream.headers.get("Content-Type") or "model/gltf-binary"
+    """Serve the allow-listed NIH GLB from a local cache with HTTP Range support."""
+    path = _ensure_reference_glb_cache()
+    size = path.stat().st_size
+    start, end, status = _reference_glb_range(range_header, size)
+    length = end - start + 1
     response_headers = {
         "Cache-Control": "public, max-age=3600",
         "X-Reference-Source": NIH_REFERENCE_HAND_SOURCE_ID,
         "X-Reference-Provenance": "public_reference",
         "X-Reference-User-Health-Data": "false",
         "X-Content-Type-Options": "nosniff",
-        "Accept-Ranges": upstream.headers.get("Accept-Ranges") or "bytes",
+        "Accept-Ranges": "bytes",
+        "Content-Length": str(length),
+        "Content-Type": "model/gltf-binary",
     }
-    for source, target in (("Content-Length", "Content-Length"), ("Content-Range", "Content-Range"), ("ETag", "ETag"), ("Last-Modified", "Last-Modified")):
-        value = upstream.headers.get(source)
-        if value:
-            response_headers[target] = value
+    if status == 206:
+        response_headers["Content-Range"] = f"bytes {start}-{end}/{size}"
 
     def stream() -> Iterator[bytes]:
-        try:
-            while True:
-                chunk = upstream.read(1024 * 1024)
+        with path.open("rb") as source:
+            source.seek(start)
+            remaining = length
+            while remaining:
+                chunk = source.read(min(1024 * 1024, remaining))
                 if not chunk:
                     break
+                remaining -= len(chunk)
                 yield chunk
-        finally:
-            upstream.close()
 
-    return StreamingResponse(stream(), status_code=status, media_type=content_type, headers=response_headers)
+    return StreamingResponse(stream(), status_code=status, media_type="model/gltf-binary", headers=response_headers)
 @router.post("/upload")
 async def upload(file: UploadFile=File(...), subject_id: str=Form("own_cohort"), timepoint: str=Form("T0"), spatial_node_id: str=Form("hand")):
     try: asset=await ingest_upload(file,subject_id,timepoint,"hand",view=None)
