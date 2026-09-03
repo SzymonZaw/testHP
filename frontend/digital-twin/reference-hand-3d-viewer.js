@@ -7,7 +7,7 @@
   const NIH_ENTRY_URL = 'https://3d.nih.gov/entries/3DPX-017237';
   const NIH_GLB_URL = 'https://3d.nih.gov/api/submissions/23310/runs/c054b0b1-404c-4f43-b6a7-ddff98215e52/output-files/511847';
   const PROXY_URL = '/api/hand/photo-reconstruction/reference-glb';
-  const VIEWER_VERSION = 'reference-glb-safe-28';
+  const VIEWER_VERSION = 'reference-glb-safe-29';
   const LOCAL_SPATIAL_URL = '/api/reference/tissue/human-skin-spatial-census/cells/preview?region=forearm&limit=100';
 
   let observer = null;
@@ -103,9 +103,66 @@
     })().finally(()=>{spatialPreviewPromise=null});
   }
 
-  async function load(token,model,c){try{state({active:true,loading:true,loaded:false,error:null,loadMethod:'same_origin_fastapi'});if(window.customElements?.whenDefined)await window.customElements.whenDefined('model-viewer');if(token!==bootToken)return;const r=await fetch(PROXY_URL,{credentials:'same-origin',cache:'no-store'});if(!r.ok)throw new Error(`Reference GLB endpoint unavailable (${r.status})`);const ct=r.headers.get('content-type')||'';if(!ct.includes('model/gltf-binary')&&!ct.includes('application/octet-stream'))throw new Error(`Reference GLB endpoint returned ${ct||'unknown content type'}`);const buf=new Uint8Array(await r.arrayBuffer());if(buf.length<4||String.fromCharCode(...buf.slice(0,4))!=='glTF')throw new Error('Reference asset is not a valid GLB');if(token!==bootToken)return;const onLoad=()=>markLoaded(token,model,c);const onError=()=>{if(token!==bootToken)return;stopTimers();state({active:true,loading:false,loaded:false,error:'GLB returned by FastAPI endpoint could not be decoded',loadMethod:'same_origin_fastapi'});fallback(c,'The verified NIH GLB was fetched but could not be decoded by model-viewer.')};model.addEventListener('load',onLoad,{once:true});model.addEventListener('error',onError,{once:true});model.setAttribute('src',PROXY_URL);if(model.loaded){markLoaded(token,model,c);return}let checks=0;loadPollTimer=setInterval(()=>{checks++;if(model.loaded)markLoaded(token,model,c);else if(checks>=120){stopTimers();if(token===bootToken){state({active:true,loading:false,loaded:false,error:'Timed out waiting for model-viewer to finish loading',loadMethod:'same_origin_fastapi'});fallback(c,'The verified NIH GLB did not finish loading in the allotted time.')}}},250)}catch(e){if(token!==bootToken)return;stopTimers();state({active:true,loading:false,loaded:false,error:e?.message||'Reference GLB endpoint failed',loadMethod:'same_origin_fastapi'});fallback(c,e?.message||'The same-origin reference asset endpoint could not load the verified NIH GLB.')}finally{loadingPromise=null}}
-  function mount(token){const m=mountPoint();if(!m)return false;let c=m.querySelector(':scope > .dt-reference-3d-card');if(!c&&activeModel&&activeModel.isConnected===false){const oldCard=activeModel.closest('.dt-reference-3d-card');if(oldCard){m.appendChild(oldCard);c=oldCard}}if(!c)c=card(m);const model=c?.querySelector('.dt-reference-3d-model');if(!model)return false;if(model.loaded){markLoaded(token,model,c);return true}if(model.getAttribute('src')||loadingPromise)return true;loadingPromise=load(token,model,c);return true}
-  function boot(){styles();const current=window.__testhpReferenceHand3DViewerState;const existing=activeModel||document.querySelector('.dt-reference-3d-model');if(current?.active&&current?.loaded&&existing?.loaded){mountLocalSpatialPreview(existing.closest('.dt-reference-3d-card')?.parentElement||mountPoint());return}const token=++bootToken;stopTimers();loadingPromise=null;if(activeModel&&!document.contains(activeModel))activeModel=null;state({active:true,loading:true,loaded:false,error:null,loadMethod:'same_origin_fastapi',assetFormat:'glb',assetUrl:NIH_GLB_URL});if(mount(token))return;observer=new MutationObserver(()=>{if(mount(token)){observer.disconnect();observer=null}});observer.observe(document.documentElement||document,{childList:true,subtree:true});let attempts=0;retryTimer=setInterval(()=>{attempts++;if(mount(token)||attempts>=30){clearInterval(retryTimer);retryTimer=null}},250)}
+  async function load(token,model,c){
+    try{
+      state({active:true,loading:true,loaded:false,error:null,loadMethod:'same_origin_fastapi'});
+      if(window.customElements?.whenDefined)await window.customElements.whenDefined('model-viewer');
+      if(token!==bootToken)return;
+      const onLoad=()=>markLoaded(token,model,c);
+      const onError=()=>{
+        if(token!==bootToken)return;
+        stopTimers();
+        state({active:true,loading:false,loaded:false,error:'GLB returned by FastAPI endpoint could not be decoded',loadMethod:'same_origin_fastapi'});
+        fallback(c,'The verified NIH GLB could not be decoded by model-viewer.');
+      };
+      model.addEventListener('load',onLoad,{once:true});
+      model.addEventListener('error',onError,{once:true});
+      model.setAttribute('src',PROXY_URL);
+      let checks=0;
+      loadPollTimer=setInterval(()=>{
+        checks++;
+        if(model.loaded)markLoaded(token,model,c);
+        else if(checks>=120){
+          stopTimers();
+          if(token===bootToken){
+            state({active:true,loading:false,loaded:false,error:'Timed out waiting for model-viewer to finish loading',loadMethod:'same_origin_fastapi'});
+            fallback(c,'The verified NIH GLB did not finish loading in the allotted time.');
+          }
+        }
+      },250);
+    }catch(e){
+      if(token!==bootToken)return;
+      stopTimers();
+      state({active:true,loading:false,loaded:false,error:e?.message||'Reference GLB endpoint failed',loadMethod:'same_origin_fastapi'});
+      fallback(c,e?.message||'The same-origin reference asset endpoint could not load the verified NIH GLB.');
+    }finally{loadingPromise=null}
+  }
+  function mount(token){
+    const m=mountPoint();if(!m)return false;
+    let c=m.querySelector(':scope > .dt-reference-3d-card');
+    if(!c&&activeModel&&activeModel.isConnected===false){const oldCard=activeModel.closest('.dt-reference-3d-card');if(oldCard){m.appendChild(oldCard);c=oldCard}}
+    if(!c)c=card(m);
+    const model=c?.querySelector('.dt-reference-3d-model');if(!model)return false;
+    if(model.loaded){markLoaded(token,model,c);return true}
+    if(model.getAttribute('src')||loadingPromise)return true;
+    loadingPromise=load(token,model,c);return true;
+  }
+  function boot(){
+    styles();
+    const current=window.__testhpReferenceHand3DViewerState;
+    const existing=activeModel||document.querySelector('.dt-reference-3d-model');
+    if(current?.active&&current?.loaded&&existing?.loaded){mountLocalSpatialPreview(existing.closest('.dt-reference-3d-card')?.parentElement||mountPoint());return}
+    if(loadingPromise){return}
+    const token=++bootToken;
+    stopTimers();
+    if(activeModel&&!document.contains(activeModel))activeModel=null;
+    state({active:true,loading:true,loaded:false,error:null,loadMethod:'same_origin_fastapi',assetFormat:'glb',assetUrl:NIH_GLB_URL});
+    if(mount(token))return;
+    observer=new MutationObserver(()=>{if(mount(token)){observer.disconnect();observer=null}});
+    observer.observe(document.documentElement||document,{childList:true,subtree:true});
+    let attempts=0;
+    retryTimer=setInterval(()=>{attempts++;if(mount(token)||attempts>=30){clearInterval(retryTimer);retryTimer=null}},250)
+  }
   window.testhpReferenceHand3D=Object.freeze({version:VIEWER_VERSION,sourceId:SOURCE_ID,entryUrl:NIH_ENTRY_URL,assetUrl:NIH_GLB_URL,proxyUrl:PROXY_URL,assetFormat:'glb',activate:boot,getState:()=>window.__testhpReferenceHand3DViewerState});
   state();window.addEventListener('testhp:reference-hand-activated',boot);window.addEventListener('DOMContentLoaded',()=>{if(window.__testhpReferenceHandState?.active)boot()},{once:true});if(window.__testhpReferenceHandState?.active)boot();
 })();
