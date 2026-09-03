@@ -6,7 +6,8 @@ reconstruction separate. It never labels metadata as a completed 3D mesh.
 from __future__ import annotations
 import uuid
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, Iterator
+from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 import truststore
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
@@ -58,18 +59,76 @@ def _state(request: TargetRequest) -> dict[str, Any]:
 @router.get("/state")
 def state(subject_id: str="own_cohort", timepoint: str="T0", spatial_id: str="hand"): return _state(TargetRequest(subject_id=subject_id,timepoint=timepoint,spatial_id=spatial_id))
 @router.get("/reference-glb")
-def reference_glb():
-    """Stream one allow-listed public NIH GLB reference asset through FastAPI."""
+def reference_glb(range_header: str | None = None):
+    """Stream the allow-listed NIH GLB without buffering it in FastAPI.
+
+    A Range header is forwarded upstream so model-viewer can make bounded
+    requests. The response is streamed in chunks and retains upstream range
+    metadata instead of reading the entire ~10 MB asset into memory first.
+    """
+    headers = {
+        "Accept": "model/gltf-binary, application/octet-stream, */*",
+        "User-Agent": "testHP-reference-hand/1.0",
+    }
+    if range_header:
+        headers["Range"] = range_header
+
+    def stream() -> Iterator[bytes]:
+        try:
+            request = Request(NIH_REFERENCE_HAND_GLB, headers=headers)
+            with urlopen(request, timeout=30) as upstream:
+                while True:
+                    chunk = upstream.read(1024 * 1024)
+                    if not chunk:
+                        break
+                    yield chunk
+        except HTTPError as exc:
+            raise RuntimeError(f"NIH reference asset returned HTTP {exc.code}") from exc
+        except Exception as exc:
+            raise RuntimeError(f"NIH reference asset unavailable: {exc}") from exc
+
+    # FastAPI maps the explicitly named header parameter to the HTTP Range header.
+    # Keep response metadata aligned with the upstream response where possible.
+    upstream_headers = {
+        "Accept": "model/gltf-binary, application/octet-stream, */*",
+        "User-Agent": "testHP-reference-hand/1.0",
+    }
+    if range_header:
+        upstream_headers["Range"] = range_header
     try:
-        request = Request(NIH_REFERENCE_HAND_GLB, headers={"Accept": "model/gltf-binary, application/octet-stream, */*", "User-Agent": "testHP-reference-hand/1.0"})
-        with urlopen(request, timeout=30) as upstream:
-            body = upstream.read()
-            if not body: raise HTTPException(status_code=502, detail="NIH reference asset returned an empty response")
-            if body[:4] != b"glTF": raise HTTPException(status_code=502, detail="NIH reference asset is not a valid GLB (missing glTF magic)")
-        headers = {"Cache-Control":"public, max-age=3600","X-Reference-Source":NIH_REFERENCE_HAND_SOURCE_ID,"X-Reference-Provenance":"public_reference","X-Reference-User-Health-Data":"false","X-Content-Type-Options":"nosniff","Content-Length":str(len(body))}
-        return StreamingResponse(iter([body]), media_type="model/gltf-binary", headers=headers)
-    except HTTPException: raise
-    except Exception as exc: raise HTTPException(status_code=502, detail=f"NIH reference asset unavailable: {exc}") from exc
+        probe = Request(NIH_REFERENCE_HAND_GLB, headers=upstream_headers)
+        with urlopen(probe, timeout=30) as upstream:
+            status = getattr(upstream, "status", 200)
+            content_type = upstream.headers.get("Content-Type") or "model/gltf-binary"
+            content_length = upstream.headers.get("Content-Length")
+            content_range = upstream.headers.get("Content-Range")
+            accept_ranges = upstream.headers.get("Accept-Ranges") or "bytes"
+            # The probe only reads headers; closing it before the streaming request
+            # avoids holding a second upstream connection open.
+    except HTTPError as exc:
+        raise HTTPException(status_code=502, detail=f"NIH reference asset returned HTTP {exc.code}") from exc
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"NIH reference asset unavailable: {exc}") from exc
+
+    response_headers = {
+        "Cache-Control": "public, max-age=3600",
+        "X-Reference-Source": NIH_REFERENCE_HAND_SOURCE_ID,
+        "X-Reference-Provenance": "public_reference",
+        "X-Reference-User-Health-Data": "false",
+        "X-Content-Type-Options": "nosniff",
+        "Accept-Ranges": accept_ranges,
+    }
+    if content_length:
+        response_headers["Content-Length"] = content_length
+    if content_range:
+        response_headers["Content-Range"] = content_range
+
+    return StreamingResponse(
+        stream(),
+        status_code=status,
+        media_type=content_type,
+        headers=response_headers,
+    )
 @router.post("/upload")
 async def upload(file: UploadFile=File(...), subject_id: str=Form("own_cohort"), timepoint: str=Form("T0"), spatial_node_id: str=Form("hand")):
     try: asset=await ingest_upload(file,subject_id,timepoint,"hand",view=None)
