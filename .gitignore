@@ -1,0 +1,14 @@
+# Local biological datasets and generated analysis outputs
+/data/raw/
+/data/processed/
+*.h5ad
+*.h5
+*.mtx
+*.mtx.gz
+*.rds
+*.tar
+*.tar.gz
+*.fastq
+*.fastq.gz
+*.bam
+*.bai
