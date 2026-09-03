@@ -1,0 +1,77 @@
+# Public Yamanaka-factor reprogramming datasets used by the research prototype.
+# Raw/processed data must stay outside Git under data/raw/rna/reprogramming/.
+
+project:
+  id: yamanaka_reprogramming
+  description: >-
+    Transcriptomic analysis of OSKM-mediated cellular reprogramming,
+    with emphasis on longitudinal cell-state transitions and early-response signals.
+
+storage:
+  root: data/raw/rna/reprogramming
+  processed_root: data/processed/rna/reprogramming
+
+analysis:
+  min_genes: 200
+  min_cells: 3
+  n_top_genes: 2000
+  n_pca_components: 20
+  log1p: true
+
+# GEO accessions selected for different levels of the project.
+datasets:
+  - id: GSE148158
+    organism: human
+    assay: bulk_rna_seq
+    role: baseline
+    description: Early human OSKM response at 48h and 72h.
+    geo_url: https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE148158
+
+  - id: GSE297234
+    organism: human
+    assay: single_cell_rna_seq
+    role: longitudinal
+    description: Human fibroblast partial reprogramming, days 0, 3, 7 and 10.
+    geo_url: https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE297234
+
+  - id: GSE28688
+    organism: human
+    assay: microarray
+    role: lightweight_validation
+    description: Human HFF1 cells at 0h, 24h, 48h and 72h after OSKM transduction.
+    geo_url: https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE28688
+
+  - id: GSE67520
+    organism: mouse
+    assay: chromatin
+    role: regulatory_followup
+    description: Oct4 binding and histone modifications during OSKM reprogramming.
+    geo_url: https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE67520
+
+  - id: GSE67462
+    organism: mouse
+    assay: expression_array
+    role: regulatory_followup
+    description: Expression data paired with the OSKM chromatin study.
+    geo_url: https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE67462
+
+factor_markers:
+  - POU5F1
+  - SOX2
+  - KLF4
+  - MYC
+
+state_markers:
+  pluripotency:
+    - NANOG
+    - LIN28A
+    - DPPA4
+    - DPPA5
+    - ESRRB
+    - ZFP42
+  fibroblast_identity:
+    - COL1A1
+    - COL1A2
+    - DCN
+    - LUM
+    - VIM
