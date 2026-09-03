@@ -7,10 +7,6 @@
 
     const revealModel = () => {
       try {
-        // Use model-viewer's native reveal path. The viewer previously used
-        // reveal="manual", which left its internal WebGL canvas at display:none
-        // even after dismissPoster(). Switching to auto lets model-viewer manage
-        // the canvas visibility together with its viewport/render lifecycle.
         if (model.getAttribute('reveal') !== 'auto') {
           model.setAttribute('reveal', 'auto');
         }
@@ -51,10 +47,6 @@
     }
 
     if (!document.querySelector('.dt-reference-3d-model')) {
-      // The canonical region tree rebuild can detach the existing model-viewer.
-      // Mark the stale loaded state as needing a remount, then use the viewer's
-      // public activation hook. The reference viewer can reattach its existing
-      // loaded card instead of downloading the GLB again.
       if (viewerState?.loaded) {
         window.__testhpReferenceHand3DViewerState = Object.freeze({
           ...window.__testhpReferenceHand3DViewerState,
@@ -78,7 +70,8 @@
     });
     mutationObserver.observe(document.documentElement || document, { childList: true, subtree: true });
 
-    window.addEventListener('testhp-canonical-state-changed', syncAfterCanonicalRegionChange);
+    // canonical-ui-runtime dispatches the namespaced event with a colon.
+    window.addEventListener('testhp:canonical-state-changed', syncAfterCanonicalRegionChange);
   };
 
   if (document.readyState === 'loading') {
