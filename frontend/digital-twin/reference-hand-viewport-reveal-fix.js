@@ -8,7 +8,13 @@
 
       const revealModel = () => {
         try {
-          model.dismissPoster?.();
+          // Use model-viewer's native reveal path. The viewer previously used
+          // reveal="manual", which left its internal WebGL canvas at display:none
+          // even after dismissPoster(). Switching to auto lets model-viewer manage
+          // the canvas visibility together with its viewport/render lifecycle.
+          if (model.getAttribute('reveal') !== 'auto') {
+            model.setAttribute('reveal', 'auto');
+          }
           model.updateFraming?.();
           model.requestUpdate?.();
         } catch (_) {}
