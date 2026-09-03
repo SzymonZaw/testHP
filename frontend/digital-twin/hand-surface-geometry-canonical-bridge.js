@@ -8,9 +8,11 @@
 
   const DEFAULT = Object.freeze({ palmLength: 1, palmWidth: 1, fingerSpread: 1, thumbAngle: 1, taper: 1, thickness: 1 });
   const STORAGE = 'digitalTwinHandSurface.v1';
+  const PARTS = ['palm', 'index', 'middle', 'ring', 'little', 'thumb'];
   let base = new Map();
   let lastSignature = '';
   let installed = false;
+  let proceduralBuildPromise = null;
 
   const manager = () => window.spatialViewportManager;
   const active = () => manager()?.active;
@@ -19,7 +21,7 @@
   const clone = value => Object.fromEntries(Object.keys(DEFAULT).map(key => [key, Number(value?.[key] ?? DEFAULT[key])]));
 
   function captureBase() {
-    const ids = ['palm', 'index', 'middle', 'ring', 'little', 'thumb'];
+    const ids = PARTS;
     let count = 0;
     for (const id of ids) {
       const m = mesh(id);
@@ -34,6 +36,66 @@
       count++;
     }
     return count;
+  }
+
+  async function ensureProceduralHand() {
+    if (captureBase() === PARTS.length) return true;
+    if (proceduralBuildPromise) return proceduralBuildPromise;
+
+    proceduralBuildPromise = (async () => {
+      const current = active();
+      const scene = current?.scene;
+      if (!scene) return false;
+
+      // The macro hand is deliberately defined as code, not as a downloadable
+      // GLB/OBJ asset. This keeps the highest layer deterministic and makes the
+      // geometry available even when no external hand model asset is present.
+      let THREE;
+      try {
+        THREE = await import('https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js');
+      } catch {
+        return false;
+      }
+
+      if (captureBase() === PARTS.length) return true;
+
+      let handRoot = scene.getObjectByName?.('macro-hand-root');
+      if (!handRoot) {
+        handRoot = new THREE.Group();
+        handRoot.name = 'macro-hand-root';
+        scene.add(handRoot);
+      }
+
+      const existing = id => handRoot.getObjectByName?.(id);
+      const material = () => new THREE.MeshStandardMaterial({ color: 0xc68b72, roughness: 0.72, metalness: 0.02 });
+      const addCapsule = (id, radius, length, position, rotation = [0, 0, 0], segments = 18) => {
+        if (existing(id)) return existing(id);
+        const m = new THREE.Mesh(new THREE.CapsuleGeometry(radius, length, 8, segments), material());
+        m.name = id;
+        m.position.set(...position);
+        m.rotation.set(...rotation);
+        handRoot.add(m);
+        return m;
+      };
+
+      addCapsule('palm', 1.55, 2.35, [0, -0.32, 0], [0, 0, 0], 24);
+      addCapsule('index', 0.43, 2.18, [-1.05, 1.96, 0]);
+      addCapsule('middle', 0.46, 2.58, [-0.35, 2.27, 0]);
+      addCapsule('ring', 0.45, 2.34, [0.42, 2.14, 0]);
+      addCapsule('little', 0.40, 1.98, [1.12, 1.88, 0], [0, 0, 0.08]);
+      addCapsule('thumb', 0.48, 1.48, [-1.42, 0.02, 0.02], [0, 0, -0.82]);
+
+      captureBase();
+      const renderer = current?.renderer;
+      const camera = current?.camera;
+      if (renderer && camera) renderer.render(scene, camera);
+      window.dispatchEvent(new CustomEvent('testhp:macro-hand-procedural-ready', {
+        detail: { meshCount: captureBase(), source: 'embedded-procedural-v1' }
+      }));
+      return captureBase() === PARTS.length;
+    })().finally(() => { proceduralBuildPromise = null; });
+
+    return proceduralBuildPromise;
   }
 
   function readState() {
@@ -58,7 +120,10 @@
   function apply(geometry = readState(), reason = 'api') {
     const g = clone(geometry);
     const count = captureBase();
-    if (!count) return { ok: false, reason: 'canonical meshes unavailable' };
+    if (!count) {
+      void ensureProceduralHand().then(ok => { if (ok) apply(g, 'procedural-ready'); });
+      return { ok: false, reason: 'canonical meshes unavailable', pending: true };
+    }
 
     const applyMesh = (id, fn) => {
       const m = mesh(id);
@@ -90,9 +155,9 @@
 
     lastSignature = JSON.stringify(g);
     window.dispatchEvent(new CustomEvent('testhp:geometry-canonical-applied', {
-      detail: { geometry: g, reason, meshCount: count }
+      detail: { geometry: g, reason, meshCount: count, source: 'embedded-procedural-v1' }
     }));
-    return { ok: true, meshCount: count, geometry: g };
+    return { ok: true, meshCount: count, geometry: g, source: 'embedded-procedural-v1' };
   }
 
   function reset() {
@@ -102,7 +167,7 @@
   }
 
   window.digitalTwinGeometry = {
-    version: 'canonical-geometry-3',
+    version: 'canonical-geometry-4',
     __canonicalBridgeInstalled: true,
     getState: readState,
     setParameter(name, value) {
@@ -118,9 +183,10 @@
     },
     reset,
     apply,
+    ensureProceduralHand,
     inspect() {
       const result = {};
-      ['palm', 'index', 'middle', 'ring', 'little', 'thumb'].forEach(id => {
+      PARTS.forEach(id => {
         const m = mesh(id);
         if (m) result[id] = {
           position: m.position.toArray(),
@@ -178,7 +244,7 @@
     ensureLayout();
     const wired = wireControls();
     ensurePreviewLink();
-    if (active() && base.size === 0) captureBase();
+    if (active() && captureBase() === 0) void ensureProceduralHand();
     const state = readState();
     if (active() && JSON.stringify(state) !== lastSignature) apply(state, 'sync');
     return wired;
@@ -192,6 +258,7 @@
     window.addEventListener('testhp:deep-3d-active', () => setTimeout(sync, 0));
     window.addEventListener('testhp:viewport-manager-ready', () => setTimeout(sync, 0));
     window.addEventListener('testhp:spatial-layer-changed', () => setTimeout(sync, 0));
+    window.addEventListener('testhp:macro-hand-procedural-ready', () => setTimeout(sync, 0));
     [0, 100, 300, 800, 1500, 3000].forEach(ms => setTimeout(sync, ms));
   }
 
